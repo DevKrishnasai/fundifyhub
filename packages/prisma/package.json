@@ -31,7 +31,8 @@
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
-    "@fundifyhub/logger": "workspace:*"
+    "@fundifyhub/logger": "workspace:*",
+    "@fundifyhub/utils": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^5.19.1",
