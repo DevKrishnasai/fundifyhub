@@ -50,8 +50,7 @@ FundifyHub is a full-stack financial application that includes:
 - **TypeScript** - Static type checking
 
 ## 🏗 Architecture
-
-
+![WhatsApp Image 2025-09-23 at 15 41 56_05fa8a06](https://github.com/user-attachments/assets/e3770d3a-eb65-4b3f-b6f0-ccc7613ce4cb)
 
 ## 📋 Prerequisites (Windows)
 
@@ -81,7 +80,7 @@ docker --version  # For Docker users only
 
 ### Step 1: Clone Repository
 ```powershell
-git clone <repository-url>
+git clone https://github.com/DevKrishnasai/fundifyhub.git
 cd fundifyhub
 ```
 
@@ -186,7 +185,7 @@ psql -U postgres -c "CREATE DATABASE fundifyhub;"
 
 ### Step 5: Clone and Install
 ```powershell
-git clone <repository-url>
+git clone https://github.com/DevKrishnasai/fundifyhub.git
 cd fundifyhub
 pnpm install
 ```
