@@ -1,0 +1,43 @@
+{
+  "name": "@fundifyhub/logger",
+  "version": "1.0.0",
+  "description": "Simple logging utility for FundifyHub applications",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint .",
+    "clean": "rimraf dist",
+    "prepack": "pnpm build"
+  },
+  "keywords": [
+    "logging",
+    "simple",
+    "typescript",
+    "fundifyhub"
+  ],
+  "author": "FundifyHub Team",
+  "license": "ISC",
+  "packageManager": "pnpm@10.17.1",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS", 
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@fundifyhub/types": ["./packages/types/src"],
+      "@fundifyhub/utils": ["./packages/utils/src"], 
+      "@fundifyhub/prisma": ["./packages/prisma/src"],
+      "@fundifyhub/logger": ["./packages/logger/src"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}

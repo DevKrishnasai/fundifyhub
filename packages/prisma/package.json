@@ -1,0 +1,42 @@
+{
+  "name": "@fundifyhub/prisma",
+  "version": "1.0.0",
+  "description": "Shared Prisma database schema and client",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./client": {
+      "import": "./dist/client.js",
+      "require": "./dist/client.js",
+      "types": "./dist/client.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint .",
+    "clean": "rimraf dist",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:prod": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.1",
+    "@fundifyhub/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "prisma": "^5.19.1",
+    "typescript": "^5.9.2",
+    "@types/node": "^24.5.2",
+    "tsx": "^4.20.5"
+  }
+}

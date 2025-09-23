@@ -1,0 +1,23 @@
+{
+  "name": "job-worker",
+  "version": "1.0.0",
+  "description": "Job Worker for Finance Application",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "bullmq": "^5.13.0",
+    "redis": "^4.7.0",
+    "@fundifyhub/logger": "workspace:*",
+    "@fundifyhub/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "tsx": "^4.20.5",
+    "@types/node": "^24.5.2"
+  }
+}

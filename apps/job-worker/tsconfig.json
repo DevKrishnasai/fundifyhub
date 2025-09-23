@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
+  "references": [
+    { "path": "../../packages/logger" },
+    { "path": "../../packages/types" },
+    { "path": "../../packages/utils" },
+    { "path": "../../packages/prisma" }
+  ]
+}

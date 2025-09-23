@@ -1,0 +1,66 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fundifyhub-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
+      POSTGRES_DB: ${POSTGRES_DB:-fundifyhub}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-fundifyhub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fundifyhub-network
+
+  # Redis Cache & Job Queue
+  redis:
+    image: redis:7-alpine
+    container_name: fundifyhub-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fundifyhub-network
+
+  # RedisInsight (Redis Management UI)
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: fundifyhub-redis-insight
+    ports:
+      - "${REDIS_INSIGHT_PORT:-5540}:5540"
+    volumes:
+      - redis_insight_data:/db
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fundifyhub-network
+
+volumes:
+  postgres_data:
+    name: fundifyhub_postgres_data
+  redis_data:
+    name: fundifyhub_redis_data
+  redis_insight_data:
+    name: fundifyhub_redis_insight_data
+
+networks:
+  fundifyhub-network:
+    name: fundifyhub-network
+    driver: bridge

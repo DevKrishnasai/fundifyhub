@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true
+  },
+  "references": [
+    { "path": "./packages/types" },
+    { "path": "./packages/utils" },
+    { "path": "./packages/prisma" },
+    { "path": "./packages/logger" },
+    { "path": "./apps/frontend" },
+    { "path": "./apps/main-backend" },
+    { "path": "./apps/live-sockets" },
+    { "path": "./apps/job-worker" }
+  ]
+}

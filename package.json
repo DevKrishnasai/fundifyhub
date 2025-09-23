@@ -1,0 +1,57 @@
+{
+  "name": "fundifyhub",
+  "version": "1.0.0",
+  "description": "Finance Application Monorepo with Next.js, Express, WebSocket, and Job Worker",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "setup": "node setup.js",
+    "setup:windows": "powershell -ExecutionPolicy Bypass -File setup.ps1",
+    "infra:up": "docker-compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker-compose -f infra/docker-compose.yml down",
+    "infra:logs": "docker-compose -f infra/docker-compose.yml logs -f",
+    "infra:reset": "docker-compose -f infra/docker-compose.yml down -v && docker-compose -f infra/docker-compose.yml up -d",
+    "db:generate": "pnpm --filter @fundifyhub/prisma prisma generate",
+    "db:migrate": "pnpm --filter @fundifyhub/prisma prisma migrate dev",
+    "db:seed": "pnpm --filter @fundifyhub/prisma run seed",
+    "db:ui": "pnpm --filter @fundifyhub/prisma prisma studio",
+    "db:reset": "pnpm --filter @fundifyhub/prisma prisma migrate reset --force",
+    "db:deploy": "pnpm --filter @fundifyhub/prisma prisma migrate deploy",
+    "dev:frontend": "turbo run dev --filter=frontend",
+    "dev:main": "turbo run dev --filter=main-backend",
+    "dev:sockets": "turbo run dev --filter=live-sockets",
+    "dev:worker": "turbo run dev --filter=job-worker"
+  },
+  "keywords": [
+    "finance",
+    "payments",
+    "razorpay",
+    "monorepo",
+    "nextjs",
+    "express"
+  ],
+  "author": "Krishna",
+  "license": "ISC",
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=22.19.0",
+    "pnpm": ">=10.17.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@typescript-eslint/eslint-plugin": "^8.44.1",
+    "@typescript-eslint/parser": "^8.44.1",
+    "eslint": "^9.36.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-unused-imports": "^4.2.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.5",
+    "turbo": "^2.5.6",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.1"
+  }
+}

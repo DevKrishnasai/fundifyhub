@@ -1,0 +1,23 @@
+{
+  "name": "@fundifyhub/types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types and interfaces",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint .",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
