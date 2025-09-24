@@ -18,14 +18,30 @@ model User {
   firstName     String    @map("first_name")
   lastName      String    @map("last_name")
   passwordHash  String    @map("password_hash")
+  phone         String?   @unique
+  dateOfBirth   DateTime? @map("date_of_birth") @db.Date
+  address       String?
+  city          String?
+  state         String?
+  country       String?   @default("India")
+  pincode       String?
+  kycStatus     KycStatus @default(PENDING) @map("kyc_status")
   emailVerified Boolean   @default(false) @map("email_verified")
+  phoneVerified Boolean   @default(false) @map("phone_verified")
   isActive      Boolean   @default(true) @map("is_active")
+  role          UserRole  @default(USER)
+  lastLoginAt   DateTime? @map("last_login_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relations
   payments      Payment[]
   wallets       Wallet[]
+  sessions      Session[]
+  kycDocuments  KycDocument[]
+  fundRequests  FundRequest[]
+  investments   Investment[]
+  notifications Notification[]
   
   @@map("users")
 }
@@ -37,9 +53,15 @@ model Payment {
   amount            Decimal       @db.Decimal(12, 2)
   currency          String        @default("INR")
   status            PaymentStatus @default(PENDING)
+  paymentMethod     String?       @map("payment_method") // UPI, CARD, NET_BANKING, etc.
   razorpayPaymentId String?       @map("razorpay_payment_id")
   razorpayOrderId   String?       @map("razorpay_order_id")
+  razorpaySignature String?       @map("razorpay_signature")
   description       String?
+  purpose           String?       // WALLET_TOPUP, INVESTMENT, LOAN_PAYMENT, etc.
+  failureReason     String?       @map("failure_reason")
+  refundAmount      Decimal?      @db.Decimal(12, 2) @map("refund_amount")
+  refundedAt        DateTime?     @map("refunded_at")
   metadata          Json?         @default("{}")
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
@@ -130,4 +152,163 @@ enum TransactionType {
   DEBIT
 
   @@map("transaction_type")
+}
+
+// User role enum
+enum UserRole {
+  USER
+  ADMIN
+  MODERATOR
+
+  @@map("user_role")
+}
+
+// KYC status enum
+enum KycStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+
+  @@map("kyc_status")
+}
+
+// Fund request status enum
+enum FundRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  DISBURSED
+
+  @@map("fund_request_status")
+}
+
+// Investment status enum
+enum InvestmentStatus {
+  ACTIVE
+  MATURED
+  CANCELLED
+  DEFAULTED
+
+  @@map("investment_status")
+}
+
+// Notification type enum
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  PAYMENT
+  INVESTMENT
+  KYC
+  FUND_REQUEST
+
+  @@map("notification_type")
+}
+
+// Session model for user authentication
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// KYC Document model
+model KycDocument {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  documentType String   @map("document_type")
+  documentUrl  String   @map("document_url")
+  status       String   @default("pending")
+  remarks      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("kyc_documents")
+}
+
+// Fund Request model for loan applications
+model FundRequest {
+  id             String            @id @default(cuid())
+  userId         String            @map("user_id")
+  amount         Decimal           @db.Decimal(12, 2)
+  purpose        String
+  description    String?
+  status         FundRequestStatus @default(PENDING)
+  interestRate   Decimal?          @db.Decimal(5, 2) @map("interest_rate")
+  tenure         Int?              // in months
+  approvedAmount Decimal?          @db.Decimal(12, 2) @map("approved_amount")
+  approvedBy     String?           @map("approved_by")
+  approvedAt     DateTime?         @map("approved_at")
+  disbursedAt    DateTime?         @map("disbursed_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investments Investment[]
+  
+  @@index([userId])
+  @@index([status])
+  @@map("fund_requests")
+}
+
+// Investment model for people investing in fund requests
+model Investment {
+  id            String           @id @default(cuid())
+  userId        String           @map("user_id") // investor
+  fundRequestId String           @map("fund_request_id")
+  amount        Decimal          @db.Decimal(12, 2)
+  status        InvestmentStatus @default(ACTIVE)
+  expectedReturn Decimal?        @db.Decimal(12, 2) @map("expected_return")
+  actualReturn   Decimal?        @db.Decimal(12, 2) @map("actual_return")
+  maturityDate   DateTime?       @map("maturity_date")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fundRequest FundRequest @relation(fields: [fundRequestId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([fundRequestId])
+  @@index([status])
+  @@map("investments")
+}
+
+// Notification model for user notifications
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  title     String
+  message   String
+  type      NotificationType @default(INFO)
+  isRead    Boolean          @default(false) @map("is_read")
+  metadata  Json?            @default("{}")
+  createdAt DateTime         @default(now()) @map("created_at")
+  readAt    DateTime?        @map("read_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }

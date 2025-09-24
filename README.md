@@ -1,6 +1,6 @@
 # 🚀 FundifyHub
 
-A comprehensive financial application built with modern technologies in a monorepo architecture. FundifyHub provides payment processing, real-time communications, and background job processing capabilities.
+A comprehensive financial application built with modern technologies in a monorepo architecture. FundifyHub provides secure payment processing, real-time communications, background job processing, and a clean dashboard for financial data visualization.
 
 ## 📋 Table of Contents
 
@@ -16,27 +16,29 @@ A comprehensive financial application built with modern technologies in a monore
 
 ## 🎯 Project Overview
 
-FundifyHub is a full-stack financial application that includes:
+FundifyHub is a production-ready full-stack financial application that includes:
 
-- **Frontend**: Modern React/Next.js web application
-- **API Backend**: RESTful API server for handling business logic
-- **WebSocket Server**: Real-time communication capabilities
-- **Job Worker**: Background job processing for payments and notifications
-- **Database**: PostgreSQL for data persistence
-- **Cache & Queue**: Redis for caching and job queuing
+- **📱 Frontend**: Clean, minimal Next.js dashboard displaying financial data
+- **🔗 API Backend**: RESTful API server with CORS-enabled endpoints and database integration
+- **🌐 WebSocket Server**: Real-time communication capabilities for live updates
+- **⚡ Job Worker**: Background processing for payments, notifications, and financial operations
+- **🗄️ Database**: PostgreSQL with Prisma ORM for type-safe database access
+- **🚀 Cache & Queue**: Redis for caching and reliable job queuing with BullMQ
 
 ## 🛠 Tech Stack
 
 ### Frontend
 - **Next.js 14** - React framework with App Router
 - **TypeScript** - Type-safe JavaScript
-- **Tailwind CSS** - Utility-first CSS framework
+- **Minimal CSS** - Clean, fast-loading UI with inline styles
+- **Real-time Data** - Live users and payments dashboard
 
 ### Backend Services
-- **Express.js** - Fast, minimalist web framework
+- **Express.js** - Fast API server with CORS configuration
 - **WebSocket** - Real-time bidirectional communication
-- **BullMQ** - Redis-based job queue system
-- **Prisma ORM** - Type-safe database access
+- **BullMQ** - Redis-based job queue system for payment processing
+- **Prisma ORM** - Type-safe database access with optimized logging
+- **Centralized URLs** - Environment-based configuration for all services
 
 ### Database & Infrastructure
 - **PostgreSQL 15** - Robust relational database
@@ -44,10 +46,12 @@ FundifyHub is a full-stack financial application that includes:
 - **Docker** - Containerization for consistent environments
 
 ### Development Tools
-- **Turbo** - High-performance monorepo build system
-- **pnpm** - Fast, disk space efficient package manager
-- **ESLint & Prettier** - Code linting and formatting
-- **TypeScript** - Static type checking
+- **Turbo** - High-performance monorepo build system with optimized caching
+- **pnpm** - Fast, disk space efficient package manager with workspace support
+- **ESLint & Prettier** - Code linting and formatting across all packages
+- **TypeScript** - Static type checking with shared configurations
+- **Enhanced Logging** - Colored console output with service-specific prefixes
+- **Environment Management** - Centralized `.env` configuration for all services
 
 ## 🏗 Architecture
 ![WhatsApp Image 2025-09-23 at 15 41 56_05fa8a06](https://github.com/user-attachments/assets/e3770d3a-eb65-4b3f-b6f0-ccc7613ce4cb)
@@ -112,9 +116,11 @@ pnpm db:generate
 # Run database migrations
 pnpm db:migrate
 
-# (Optional) Seed with sample data
+# Seed with realistic sample data (recommended)
 pnpm db:seed
 ```
+
+**✅ Database will be seeded with sample data for testing**
 
 ### Step 6: Start Development
 ```powershell
@@ -123,11 +129,11 @@ pnpm dev
 ```
 
 **✅ Your services are now running:**
-- Frontend: http://localhost:3000
-- API Backend: http://localhost:3001
-- WebSocket Server: ws://localhost:3002
-- Redis Management UI: http://localhost:5540 (RedisInsight)
-- Database UI: Run `pnpm db:ui` to open Prisma Studio
+- **Frontend Dashboard**: http://localhost:3000
+- **API Backend**: http://localhost:3001
+- **WebSocket Server**: ws://localhost:3002
+- **Redis Management UI**: http://localhost:5540 (RedisInsight)
+- **Database UI**: Run `pnpm db:ui` to open Prisma Studio
 
 ---
 
@@ -204,7 +210,7 @@ Copy-Item .env.example .env
 ```powershell
 pnpm db:generate
 pnpm db:migrate
-pnpm db:seed
+pnpm db:seed  # Load realistic sample data
 ```
 
 ### Step 8: Start Development
@@ -213,11 +219,11 @@ pnpm dev
 ```
 
 **✅ Your services are now running:**
-- Frontend: http://localhost:3000
-- API Backend: http://localhost:3001
-- WebSocket Server: ws://localhost:3002
-- Redis Management UI: Launch RedisInsight app (if installed)
-- Database UI: Run `pnpm db:ui` to open Prisma Studio
+- **Frontend Dashboard**: http://localhost:3000
+- **API Backend**: http://localhost:3001
+- **WebSocket Server**: ws://localhost:3002
+- **Redis Management UI**: Launch RedisInsight app
+- **Database UI**: Run `pnpm db:ui` to open Prisma Studio
 
 ---
 
@@ -237,11 +243,13 @@ pnpm dev:worker      # Background job worker only
 
 ### Database Commands
 ```powershell
-pnpm db:generate     # Generate Prisma client
+pnpm db:generate     # Generate Prisma client from schema
 pnpm db:migrate      # Run database migrations
 pnpm db:seed         # Seed database with sample data
-pnpm db:ui           # Open Prisma Studio (database UI)
-pnpm db:reset        # Reset database schema
+pnpm db:ui           # Open Prisma Studio (visual database browser)
+pnpm db:reset        # Reset database schema and data
+pnpm db:push         # Push schema changes without migrations
+pnpm db:status       # Check migration status
 pnpm db:deploy       # Deploy migrations (production)
 ```
 
@@ -266,86 +274,161 @@ pnpm format:check    # Check code formatting
 ```
 fundifyhub/
 ├── apps/                          # Applications
-│   ├── frontend/                  # Next.js web app (Port: 3000)
-│   ├── main-backend/             # Express API server (Port: 3001)
-│   ├── live-sockets/             # WebSocket server (Port: 3002)
-│   └── job-worker/               # Background job processor
+│   ├── frontend/                  # 📱 Next.js dashboard (Port: 3000)
+│   │   └── src/app/page.tsx      # 🎨 Clean UI showing live data
+│   ├── main-backend/             # 🔗 Express API server (Port: 3001)
+│   │   └── src/data-service.ts   # 📊 Real database operations
+│   ├── live-sockets/             # 🌐 WebSocket server (Port: 3002)
+│   └── job-worker/               # ⚡ Background job processor
+│       └── src/prisma-jobs.ts    # 💳 Payment & notification jobs
 │
 ├── packages/                      # Shared packages
-│   ├── logger/                   # Logging utility
-│   ├── prisma/                   # Database schema & client
-│   ├── types/                    # Shared TypeScript types
-│   └── utils/                    # Shared utilities
+│   ├── logger/                   # 🎯 Logging utility
+│   ├── prisma/                   # 🗄️ Database schema & client
+│   │   ├── schema.prisma         # 📋 Database schema definition
+│   │   └── seed.ts               # 🌱 Sample data seeding
+│   ├── types/                    # 🔷 Shared TypeScript types
+│   └── utils/                    # 🛠️ Shared utilities
 │
 ├── infra/                        # Infrastructure
-│   ├── docker-compose.yml        # Docker services
-│   └── redis/                    # Redis configuration
+│   └── docker-compose.yml        # 🐳 PostgreSQL, Redis, RedisInsight
 │
-├── .env                          # Environment variables
-├── package.json                  # Root package.json
-├── turbo.json                    # Turbo configuration
-└── README.md                     # This file
+├── .env                          # 🔧 Centralized configuration
+├── package.json                  # 📦 Root commands (db:*, dev:*, etc.)
+├── turbo.json                    # 🚀 Monorepo build optimization
+└── README.md                     # 📖 This enhanced guide
 ```
 
 ## 🔧 Environment Variables
 
 ### Default Configuration (.env)
 ```bash
+# =============================================================================
 # Database Configuration
+# =============================================================================
 DATABASE_URL="postgresql://user:pass@localhost:5432/fundifyhub"
 POSTGRES_USER=user
 POSTGRES_PASSWORD=pass
 POSTGRES_DB=fundifyhub
-POSTGRES_PORT=5432
 
+# =============================================================================
 # Redis Configuration  
+# =============================================================================
 REDIS_URL="redis://localhost:6379"
 REDIS_HOST=localhost
 REDIS_PORT=6379
 
+# =============================================================================
 # Application Configuration
+# =============================================================================
 NODE_ENV=development
-LOG_LEVEL=info
+LOG_LEVEL=debug
 
-# Service Ports
+# =============================================================================
+# Backend Services Configuration
+# =============================================================================
 API_PORT=3001
-WEBSOCKET_PORT=3002
-FRONTEND_PORT=3000
+API_URL="http://localhost:3001"
+WS_PORT=3002
+WS_URL="ws://localhost:3002"
 
-# Admin Tools
-REDIS_INSIGHT_PORT=5540
+# =============================================================================
+# Frontend Configuration (CORS & API Communication)
+# =============================================================================
+FRONTEND_URL="http://localhost:3000"
+FRONTEND_URL_ALT="http://127.0.0.1:3000"
+NEXT_PUBLIC_API_URL="http://localhost:3001"
+NEXT_PUBLIC_WS_URL="ws://localhost:3002"
+
+# =============================================================================
+# Development/Debugging
+# =============================================================================
+FORCE_COLOR=1
+COLORTERM=truecolor
+PRISMA_HIDE_UPDATE_MESSAGE=true
+
+# =============================================================================
+# Authentication & Security
+# =============================================================================
+JWT_SECRET="your-super-secret-jwt-key-change-in-production"
+JWT_EXPIRES_IN="7d"
 ```
 
 ## 🔍 Troubleshooting (Windows)
 
 ### Common Issues
 
-1. **Port Already in Use**
+1. **Frontend Shows "Failed to fetch data from backend"**
    ```powershell
-   # Check what's using the port
-   netstat -ano | findstr :3001
-   # Kill the process using Task Manager or change port in .env
+   # Check if backend is running and accessible
+   curl.exe http://localhost:3001/health
+   
+   # Verify CORS configuration in main-backend/src/index.ts
+   # Ensure .env has correct FRONTEND_URL and NEXT_PUBLIC_API_URL
    ```
 
 2. **Database Connection Issues**
    ```powershell
-   # For Docker users - check containers
+   # For Docker users - check containers are running
    docker ps
+   docker-compose -f infra/docker-compose.yml up -d
 
-   # For manual setup - check PostgreSQL service
+   # For manual setup - verify PostgreSQL service
    Get-Service postgresql*
+   
+   # Test database connection
+   pnpm db:status
    ```
 
-3. **Redis Connection Issues**
+3. **Prisma Commands Not Working**
    ```powershell
-   # Test Redis connection
-   redis-cli ping  # Should return PONG
+   # Regenerate Prisma client
+   pnpm db:generate
+   
+   # Check if .env DATABASE_URL is correct
+   # For Docker: postgresql://user:pass@localhost:5432/fundifyhub
+   # For manual: postgresql://postgres:YOUR_PASSWORD@localhost:5432/fundifyhub
    ```
 
-4. **Package Installation Issues**
+4. **Port Already in Use**
+   ```powershell
+   # Check what's using the port
+   netstat -ano | findstr :3001
+   
+   # Kill the process (replace PID with actual number)
+   taskkill /PID 1234 /F
+   ```
+
+5. **No Colored Logs Visible**
+   ```powershell
+   # Set environment variables for color support
+   $env:FORCE_COLOR="1"
+   $env:COLORTERM="truecolor"
+   
+   # Then restart your applications
+   pnpm dev
+   ```
+
+6. **Package Installation Issues**
    ```powershell
    # Clear cache and reinstall
    pnpm store prune
    Remove-Item -Recurse -Force node_modules
    pnpm install
    ```
+
+### 🚀 **Quick Health Check**
+```powershell
+# Verify all services are working
+curl.exe http://localhost:3001/health      # Backend health
+curl.exe http://localhost:3001/users       # API data
+curl.exe http://localhost:3000             # Frontend (in browser)
+redis-cli ping                             # Redis connection
+pnpm db:status                            # Database status
+```
+
+### 📞 **Need Help?**
+- Check the terminal logs for colored error messages
+- Verify your `.env` file matches the template above
+- Ensure all prerequisites are installed (Node.js 22+, pnpm 10+)
+- For Docker users: make sure Docker Desktop is running
