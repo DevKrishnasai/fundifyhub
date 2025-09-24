@@ -1,6 +1,13 @@
 import { Worker, Queue } from "bullmq";
 import { createLogger } from "@fundifyhub/logger";
 import { appConfig, validateConfig } from "@fundifyhub/utils";
+import { 
+  processPaymentJob, 
+  processNotificationJob, 
+  getJobStats,
+  type PaymentJobData,
+  type NotificationJobData 
+} from "./data-service";
 
 // Create simple logger instance
 const logger = createLogger({ serviceName: 'job-worker' });
@@ -17,26 +24,19 @@ const connection = {
 
 logger.info(`Connecting to Redis at ${connection.host}:${connection.port}`);
 
-// Create a queue for payment processing
+// Create queues
 const paymentQueue = new Queue("payment", { connection });
-logger.info('Payment queue created');
+const notificationQueue = new Queue("notification", { connection });
+logger.info('Payment and notification queues created');
 
-// Create a worker to process payment jobs
+// Create payment worker with real database operations
 const paymentWorker = new Worker(
   "payment",
   async (job: any) => {
-    logger.info(`Processing payment job ${job.id}`);
+    logger.info(`Processing payment job ${job.id} with data: ${JSON.stringify(job.data)}`);
     
     try {
-      // Simulate payment processing
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      
-      const result = { 
-        success: true, 
-        processedAt: new Date().toISOString(),
-        jobId: job.id 
-      };
-      
+      const result = await processPaymentJob(job);
       logger.info(`Payment job ${job.id} completed successfully`);
       return result;
     } catch (error) {
@@ -44,26 +44,74 @@ const paymentWorker = new Worker(
       throw error;
     }
   },
-  { connection }
+  { connection, concurrency: 5 }
 );
 
+// Create notification worker
+const notificationWorker = new Worker(
+  "notification", 
+  async (job: any) => {
+    logger.info(`Processing notification job ${job.id}`);
+    
+    try {
+      const result = await processNotificationJob(job);
+      logger.info(`Notification job ${job.id} completed successfully`);
+      return result;
+    } catch (error) {
+      logger.error(`Notification job ${job.id} failed`, error as Error);
+      throw error;
+    }
+  },
+  { connection, concurrency: 10 }
+);
+
+// Payment worker event handlers
 paymentWorker.on("completed", (job: any) => {
-  logger.info(`Job ${job.id} completed (duration: ${job.finishedOn - job.processedOn}ms)`);
+  logger.info(`Payment job ${job.id} completed (duration: ${job.finishedOn - job.processedOn}ms)`);
 });
 
 paymentWorker.on("failed", (job: any, err: any) => {
-  logger.error(`Job ${job?.id} failed (attempt ${job?.attemptsMade})`, err);
+  logger.error(`Payment job ${job?.id} failed (attempt ${job?.attemptsMade}): ${err?.message}`);
 });
 
 paymentWorker.on("error", (err: any) => {
-  logger.error('Worker encountered a critical error', err);
+  logger.error(`Payment worker error: ${err?.message}`);
 });
 
+// Notification worker event handlers
+notificationWorker.on("completed", (job: any) => {
+  logger.info(`Notification job ${job.id} completed (duration: ${job.finishedOn - job.processedOn}ms)`);
+});
+
+notificationWorker.on("failed", (job: any, err: any) => {
+  logger.error(`Notification job ${job?.id} failed (attempt ${job?.attemptsMade}): ${err?.message}`);
+});
+
+notificationWorker.on("error", (err: any) => {
+  logger.error(`Notification worker error: ${err?.message}`);
+});
+
+// Periodic job stats logging
+setInterval(async () => {
+  try {
+    const stats = await getJobStats();
+    if (stats.success) {
+      logger.info(`Job stats: ${JSON.stringify(stats.stats)}`);
+    }
+  } catch (error) {
+    logger.error(`Failed to get job stats: ${(error as Error).message}`);
+  }
+}, 60000); // Log stats every minute
+
 process.on('SIGINT', async () => {
-  logger.info('Gracefully shutting down job worker...');
-  await paymentWorker.close();
-  logger.info('Job worker shut down successfully');
+  logger.info('Gracefully shutting down job workers...');
+  await Promise.all([
+    paymentWorker.close(),
+    notificationWorker.close()
+  ]);
+  logger.info('Job workers shut down successfully');
   process.exit(0);
 });
 
-logger.info("Job worker started successfully, waiting for jobs...");
+logger.info("Job workers started successfully, waiting for jobs...");
+logger.info("Available job types: payment, notification");

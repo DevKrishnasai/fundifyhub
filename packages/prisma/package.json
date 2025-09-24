@@ -21,22 +21,25 @@
     "dev": "tsc --watch",
     "lint": "eslint .",
     "clean": "rimraf dist",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev",
-    "db:migrate:prod": "prisma migrate deploy",
-    "db:reset": "prisma migrate reset --force",
-    "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:generate": "npx dotenv -e ../../.env -- prisma generate",
+    "db:push": "npx dotenv -e ../../.env -- prisma db push",
+    "db:migrate": "npx dotenv -e ../../.env -- prisma migrate dev",
+    "db:migrate:prod": "npx dotenv -e ../../.env -- prisma migrate deploy",
+    "db:reset": "npx dotenv -e ../../.env -- prisma migrate reset --force",
+    "db:seed": "npx dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "db:studio": "npx dotenv -e ../../.env -- prisma studio",
+    "db:status": "npx dotenv -e ../../.env -- prisma migrate status"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
-    "@fundifyhub/logger": "workspace:*"
+    "@fundifyhub/logger": "workspace:*",
+    "@fundifyhub/utils": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^5.19.1",
     "typescript": "^5.9.2",
     "@types/node": "^24.5.2",
-    "tsx": "^4.20.5"
+    "tsx": "^4.20.5",
+    "dotenv-cli": "^7.4.2"
   }
 }

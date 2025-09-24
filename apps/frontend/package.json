@@ -12,7 +12,8 @@
     "next": "14.2.7",
     "react": "^18",
     "react-dom": "^18",
-    "@fundifyhub/logger": "workspace:*"
+    "@fundifyhub/logger": "workspace:*",
+    "@fundifyhub/prisma": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5",

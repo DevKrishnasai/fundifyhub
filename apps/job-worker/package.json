@@ -13,7 +13,8 @@
     "bullmq": "^5.13.0",
     "redis": "^4.7.0",
     "@fundifyhub/logger": "workspace:*",
-    "@fundifyhub/utils": "workspace:*"
+    "@fundifyhub/utils": "workspace:*",
+    "@fundifyhub/prisma": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.2",

@@ -5,11 +5,14 @@ declare global {
   var __prisma: PrismaClient | undefined;
 }
 
-// Create Prisma client instance with simple logging
+// Create Prisma client instance with minimal logging (only info and errors)
 export const prisma =
   globalThis.__prisma ||
   new PrismaClient({
-    log: ["query", "error", "info", "warn"],
+    log: [
+      { emit: "stdout", level: "info" },
+      { emit: "stdout", level: "error" },
+    ],
   });
 
 // Store the instance globally in development to prevent multiple instances
