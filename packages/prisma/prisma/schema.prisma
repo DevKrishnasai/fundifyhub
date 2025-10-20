@@ -3,7 +3,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -11,304 +10,263 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User model for authentication and profile
+// User model
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  firstName     String    @map("first_name")
-  lastName      String    @map("last_name")
-  passwordHash  String    @map("password_hash")
-  phone         String?   @unique
-  dateOfBirth   DateTime? @map("date_of_birth") @db.Date
-  address       String?
-  city          String?
-  state         String?
-  country       String?   @default("India")
-  pincode       String?
-  kycStatus     KycStatus @default(PENDING) @map("kyc_status")
-  emailVerified Boolean   @default(false) @map("email_verified")
-  phoneVerified Boolean   @default(false) @map("phone_verified")
-  isActive      Boolean   @default(true) @map("is_active")
-  role          UserRole  @default(USER)
-  lastLoginAt   DateTime? @map("last_login_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  phone           String?  @unique
+  role            String   @default("CUSTOMER")
+  district        String?
+  isActive        Boolean  @default(true)
+  emailVerified   Boolean  @default(false)
+  phoneVerified   Boolean  @default(false)
+  address         String?
+  city            String?
+  state           String?
+  pincode         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Relations
-  payments      Payment[]
-  wallets       Wallet[]
-  sessions      Session[]
-  kycDocuments  KycDocument[]
-  fundRequests  FundRequest[]
-  investments   Investment[]
-  notifications Notification[]
-  
+  requests        Request[] @relation("CustomerRequests")
+  assignedRequests Request[] @relation("AgentAssignments")
+  comments        Comment[]
+  inspections     Inspection[]
+
+  @@index([email])
+  @@index([role])
+  @@index([district])
   @@map("users")
 }
 
-// Payment model for transaction tracking
-model Payment {
-  id                String        @id @default(cuid())
-  userId            String        @map("user_id")
-  amount            Decimal       @db.Decimal(12, 2)
-  currency          String        @default("INR")
-  status            PaymentStatus @default(PENDING)
-  paymentMethod     String?       @map("payment_method") // UPI, CARD, NET_BANKING, etc.
-  razorpayPaymentId String?       @map("razorpay_payment_id")
-  razorpayOrderId   String?       @map("razorpay_order_id")
-  razorpaySignature String?       @map("razorpay_signature")
-  description       String?
-  purpose           String?       // WALLET_TOPUP, INVESTMENT, LOAN_PAYMENT, etc.
-  failureReason     String?       @map("failure_reason")
-  refundAmount      Decimal?      @db.Decimal(12, 2) @map("refund_amount")
-  refundedAt        DateTime?     @map("refunded_at")
-  metadata          Json?         @default("{}")
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
+// Main Request model (simplified)
+model Request {
+  id              String        @id @default(cuid())
+  customerId      String
+  requestedAmount Float
+  purpose         String?
+  district        String
+  currentStatus   String    @default("DRAFT")
+  
+  // Asset details (inline)
+  assetName       String?
+  assetType       String?
+  assetBrand      String?
+  assetModel      String?
+  assetCondition  String?
+  assetValue      Float?        // Customer's estimated value
+  
+  // Admin Offer Details
+  adminOfferedAmount Float?     // Amount offered by admin
+  adminTenureMonths  Int?       // Tenure offered by admin
+  adminInterestRate  Float?     // Interest rate offered by admin
+  offerMadeDate      DateTime?  // When admin made the offer
+  offerResponseDate  DateTime?  // When customer responded
+  
+  // Assignment Details
+  assignedAgentId    String?    // Agent assigned for inspection
+  
+  submittedDate   DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   // Relations
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paymentEvents   PaymentEvent[]
-  transactions    Transaction[]
+  customer        User          @relation("CustomerRequests", fields: [customerId], references: [id], onDelete: Cascade)
+  assignedAgent   User?         @relation("AgentAssignments", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  loan            Loan?
+  documents       Document[]
+  comments        Comment[]
+  inspections     Inspection[]
+  emiSchedules    EMISchedule[]
+  payments        Payment[]
+
+  @@index([customerId])
+  @@index([currentStatus])
+  @@index([district])
+  @@index([assignedAgentId])
+  @@map("requests")
+}
+
+// Enhanced Loan model for EMI-based fixed loans
+model Loan {
+  id              String     @id @default(cuid())
+  requestId       String     @unique
   
-  @@index([userId])
+  // Fixed Loan Terms (Set by Admin - Cannot be changed)
+  approvedAmount  Float      // Final approved amount (fixed)
+  interestRate    Float      // Annual interest rate % (fixed)
+  tenureMonths    Int        // Loan tenure in months (fixed)
+  emiAmount       Float      // Monthly EMI amount (fixed, calculated)
+  
+  // Calculated Totals (can be computed from above)
+  totalInterest   Float      // Total interest to be paid
+  totalAmount     Float      // Total amount to be repaid (principal + interest)
+  
+  // Loan Status & Dates
+  status          String   @default("PENDING")
+  approvedDate    DateTime?  // When loan was approved by agent
+  disbursedDate   DateTime?  // When amount was transferred to customer
+  firstEMIDate    DateTime?  // When first EMI is due
+  lastEMIDate     DateTime?  // When last EMI is due
+  
+  // Payment Tracking
+  totalPaidAmount Float      @default(0) // Total amount paid so far
+  remainingAmount Float?     // Remaining amount to be paid
+  paidEMIs        Int        @default(0) // Number of EMIs paid
+  remainingEMIs   Int?       // Number of EMIs remaining
+  overdueEMIs     Int        @default(0) // Number of overdue EMIs
+  
+  // Transfer Details (When loan is disbursed)
+  transferMethod    String?    // "BANK_TRANSFER", "UPI", "CASH", etc.
+  transferReference String?    // Transaction reference number
+  transferProof     String?    // Transfer receipt/proof document path
+  
+  // Closure Details
+  closedDate        DateTime?  // When loan was fully paid/closed
+  closureType       String?    // "NORMAL", "FORECLOSURE", "DEFAULT"
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  request         Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  emisSchedule    EMISchedule[]
+  payments        Payment[]
+
+  @@index([requestId])
   @@index([status])
-  @@index([createdAt])
-  @@index([razorpayPaymentId])
+  @@index([disbursedDate])
+  @@map("loans")
+}
+
+// EMI Schedule model - Fixed schedule for each loan
+model EMISchedule {
+  id              String    @id @default(cuid())
+  loanId          String
+  requestId       String
+  emiNumber       Int       // EMI number (1, 2, 3, ...)
+  dueDate         DateTime  // When this EMI is due
+  emiAmount       Float     // Fixed EMI amount
+  principalAmount Float     // Principal component of this EMI
+  interestAmount  Float     // Interest component of this EMI
+  status          String   @default("PENDING")
+  paidDate        DateTime? // When this EMI was paid
+  paidAmount      Float?    // Amount actually paid (could be partial)
+  lateFee         Float     @default(0) // Late fee if paid after due date
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  loan            Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  request         Request   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  payments        Payment[]
+
+  @@unique([loanId, emiNumber])
+  @@index([loanId])
+  @@index([requestId])
+  @@index([dueDate])
+  @@index([status])
+  @@map("emi_schedules")
+}
+
+// Payment model - Individual payments made
+model Payment {
+  id               String     @id @default(cuid())
+  loanId           String
+  requestId        String
+  emiScheduleId    String?    // Which EMI this payment is for (if EMI payment)
+  amount           Float      // Amount paid
+  paymentType      String     @default("EMI") // "EMI", "PARTIAL", "ADVANCE", "LATE_FEE"
+  paymentMethod    String     // "UPI", "BANK_TRANSFER", "CASH", "CARD"
+  paymentReference String?    // Transaction ID/reference
+  paidDate         DateTime   @default(now())
+  processedBy      String?    // User ID who processed/verified payment
+  remarks          String?    // Any remarks about the payment
+  receiptPath      String?    // Payment receipt/proof document path
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  // Relations
+  loan             Loan       @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  request          Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  emiSchedule      EMISchedule? @relation(fields: [emiScheduleId], references: [id], onDelete: SetNull)
+
+  @@index([loanId])
+  @@index([requestId])
+  @@index([emiScheduleId])
+  @@index([paidDate])
   @@map("payments")
 }
 
-// Payment status enum
-enum PaymentStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-  CANCELLED
-  REFUNDED
-
-  @@map("payment_status")
-}
-
-// Payment events for audit trail
-model PaymentEvent {
-  id        String   @id @default(cuid())
-  paymentId String   @map("payment_id")
-  eventType String   @map("event_type")
-  eventData Json?    @default("{}") @map("event_data")
-  createdAt DateTime @default(now()) @map("created_at")
+// Document model with categories
+model Document {
+  id               String           @id @default(cuid())
+  requestId        String
+  fileName         String
+  filePath         String
+  fileSize         Int?
+  mimeType         String?
+  documentType     String           // "asset_photo", "id_proof", "purchase_receipt", etc.
+  documentCategory String   @default("OTHER")
+  uploadedBy       String?          // User ID who uploaded
+  isVerified       Boolean          @default(false)
+  verifiedBy       String?          // Admin/Agent ID who verified
+  verifiedAt       DateTime?
+  description      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   // Relations
-  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  
-  @@index([paymentId])
-  @@index([createdAt])
-  @@map("payment_events")
+  request          Request          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([documentCategory])
+  @@map("documents")
 }
 
-// Wallet model for user balances
-model Wallet {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  balance   Decimal  @default(0) @db.Decimal(12, 2)
-  currency  String   @default("INR")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+// Comment model
+model Comment {
+  id          String   @id @default(cuid())
+  requestId   String
+  authorId    String
+  content     String
+  isInternal  Boolean  @default(false) // Internal comments not visible to customer
+  commentType String   @default("GENERAL") // "GENERAL", "ADMIN_REQUEST", "OFFER_DETAILS", "INSPECTION_NOTES"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-  
-  @@unique([userId, currency])
-  @@index([userId])
-  @@map("wallets")
+  request     Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([authorId])
+  @@index([commentType])
+  @@map("comments")
 }
 
-// Transaction model for wallet operations
-model Transaction {
-  id           String          @id @default(cuid())
-  walletId     String          @map("wallet_id")
-  paymentId    String?         @map("payment_id")
-  type         TransactionType
-  amount       Decimal         @db.Decimal(12, 2)
-  description  String?
-  balanceAfter Decimal         @db.Decimal(12, 2) @map("balance_after")
-  metadata     Json?           @default("{}")
-  createdAt    DateTime        @default(now()) @map("created_at")
+// Inspection model
+model Inspection {
+  id               String           @id @default(cuid())
+  requestId        String
+  agentId          String?
+  scheduledDate    DateTime?
+  completedDate    DateTime?
+  status           String   @default("PENDING")
+  assetCondition   String?
+  estimatedValue   Float?
+  notes            String?
+  recommendApprove Boolean?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   // Relations
-  wallet  Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  payment Payment? @relation(fields: [paymentId], references: [id])
-  
-  @@index([walletId])
-  @@index([createdAt])
-  @@map("transactions")
-}
+  request          Request          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  agent            User?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
-// Transaction type enum
-enum TransactionType {
-  CREDIT
-  DEBIT
-
-  @@map("transaction_type")
-}
-
-// User role enum
-enum UserRole {
-  USER
-  ADMIN
-  MODERATOR
-
-  @@map("user_role")
-}
-
-// KYC status enum
-enum KycStatus {
-  PENDING
-  UNDER_REVIEW
-  APPROVED
-  REJECTED
-
-  @@map("kyc_status")
-}
-
-// Fund request status enum
-enum FundRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-  DISBURSED
-
-  @@map("fund_request_status")
-}
-
-// Investment status enum
-enum InvestmentStatus {
-  ACTIVE
-  MATURED
-  CANCELLED
-  DEFAULTED
-
-  @@map("investment_status")
-}
-
-// Notification type enum
-enum NotificationType {
-  INFO
-  SUCCESS
-  WARNING
-  ERROR
-  PAYMENT
-  INVESTMENT
-  KYC
-  FUND_REQUEST
-
-  @@map("notification_type")
-}
-
-// Session model for user authentication
-model Session {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  token     String   @unique
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([token])
-  @@index([expiresAt])
-  @@map("sessions")
-}
-
-// KYC Document model
-model KycDocument {
-  id           String   @id @default(cuid())
-  userId       String   @map("user_id")
-  documentType String   @map("document_type")
-  documentUrl  String   @map("document_url")
-  status       String   @default("pending")
-  remarks      String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@map("kyc_documents")
-}
-
-// Fund Request model for loan applications
-model FundRequest {
-  id             String            @id @default(cuid())
-  userId         String            @map("user_id")
-  amount         Decimal           @db.Decimal(12, 2)
-  purpose        String
-  description    String?
-  status         FundRequestStatus @default(PENDING)
-  interestRate   Decimal?          @db.Decimal(5, 2) @map("interest_rate")
-  tenure         Int?              // in months
-  approvedAmount Decimal?          @db.Decimal(12, 2) @map("approved_amount")
-  approvedBy     String?           @map("approved_by")
-  approvedAt     DateTime?         @map("approved_at")
-  disbursedAt    DateTime?         @map("disbursed_at")
-  createdAt      DateTime          @default(now()) @map("created_at")
-  updatedAt      DateTime          @updatedAt @map("updated_at")
-
-  // Relations
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  investments Investment[]
-  
-  @@index([userId])
+  @@index([requestId])
+  @@index([agentId])
   @@index([status])
-  @@map("fund_requests")
-}
-
-// Investment model for people investing in fund requests
-model Investment {
-  id            String           @id @default(cuid())
-  userId        String           @map("user_id") // investor
-  fundRequestId String           @map("fund_request_id")
-  amount        Decimal          @db.Decimal(12, 2)
-  status        InvestmentStatus @default(ACTIVE)
-  expectedReturn Decimal?        @db.Decimal(12, 2) @map("expected_return")
-  actualReturn   Decimal?        @db.Decimal(12, 2) @map("actual_return")
-  maturityDate   DateTime?       @map("maturity_date")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-
-  // Relations
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fundRequest FundRequest @relation(fields: [fundRequestId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([fundRequestId])
-  @@index([status])
-  @@map("investments")
-}
-
-// Notification model for user notifications
-model Notification {
-  id        String           @id @default(cuid())
-  userId    String           @map("user_id")
-  title     String
-  message   String
-  type      NotificationType @default(INFO)
-  isRead    Boolean          @default(false) @map("is_read")
-  metadata  Json?            @default("{}")
-  createdAt DateTime         @default(now()) @map("created_at")
-  readAt    DateTime?        @map("read_at")
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([isRead])
-  @@index([createdAt])
-  @@map("notifications")
+  @@map("inspections")
 }

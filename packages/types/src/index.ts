@@ -59,3 +59,6 @@ export interface PaymentJob {
   amount: number;
   currency: string;
 }
+
+// Export all loan application enums and types
+export * from "./loan-enums";
