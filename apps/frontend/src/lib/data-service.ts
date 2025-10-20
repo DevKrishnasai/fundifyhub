@@ -3,19 +3,30 @@ import { prisma } from '@fundifyhub/prisma';
 
 export async function getDashboardStats() {
   try {
-    const [userCount, paymentCount, totalRevenue, recentPayments] = await Promise.all([
+    const [userCount, requestCount, totalPayments, recentPayments] = await Promise.all([
       prisma.user.count(),
-      prisma.payment.count(),
+      prisma.request.count(),
       prisma.payment.aggregate({
-        where: { status: 'COMPLETED' },
         _sum: { amount: true }
       }),
       prisma.payment.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },
         include: {
-          user: {
-            select: { firstName: true, lastName: true, email: true }
+          emiSchedule: {
+            include: {
+              loan: {
+                include: {
+                  request: {
+                    include: {
+                      customer: {
+                        select: { name: true, email: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       })
@@ -25,8 +36,8 @@ export async function getDashboardStats() {
       success: true,
       data: {
         userCount,
-        paymentCount,
-        totalRevenue: totalRevenue._sum.amount?.toNumber() || 0,
+        requestCount,
+        totalPayments: totalPayments._sum.amount || 0,
         recentPayments
       }
     };
@@ -47,17 +58,15 @@ export async function getUsers(limit: number = 10) {
       select: {
         id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        kycStatus: true,
-        emailVerified: true,
-        phoneVerified: true,
+        name: true,
+        role: true,
+        district: true,
         isActive: true,
         createdAt: true,
         _count: {
           select: {
-            payments: true,
-            wallets: true
+            requests: true,
+            comments: true
           }
         }
       }
@@ -82,8 +91,20 @@ export async function getPayments(limit: number = 20) {
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: {
-        user: {
-          select: { firstName: true, lastName: true, email: true }
+        emiSchedule: {
+          include: {
+            loan: {
+              include: {
+                request: {
+                  include: {
+                    customer: {
+                      select: { name: true, email: true }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     });
@@ -106,17 +127,22 @@ export async function getUserProfile(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
-        payments: {
+        requests: {
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            loan: true,
+            documents: true
+          }
+        },
+        comments: {
           take: 10,
           orderBy: { createdAt: 'desc' }
         },
-        wallets: true,
         _count: {
           select: {
-            payments: true,
-            wallets: true,
-            investments: true,
-            notifications: true
+            requests: true,
+            comments: true
           }
         }
       }
@@ -135,6 +161,34 @@ export async function getUserProfile(userId: string) {
     };
   } catch (error) {
     console.error('❌ Failed to fetch user profile:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+export async function getRequests(limit: number = 20) {
+  try {
+    const requests = await prisma.request.findMany({
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: {
+          select: { name: true, email: true }
+        },
+        loan: true,
+        documents: true,
+        comments: true
+      }
+    });
+
+    return {
+      success: true,
+      data: requests
+    };
+  } catch (error) {
+    console.error('❌ Failed to fetch requests:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

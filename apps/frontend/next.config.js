@@ -4,6 +4,9 @@ const nextConfig = {
   experimental: {
     externalDir: true,
   },
-};
+  // Enable src directory
+  pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'md', 'mdx'],
+  // Automatically detect and use src directory
+}
 
-export default nextConfig;
+export default nextConfig

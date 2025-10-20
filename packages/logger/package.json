@@ -33,7 +33,7 @@
   "packageManager": "pnpm@10.17.1",
   "dependencies": {},
   "devDependencies": {
-    "@types/node": "^24.5.2",
+    "@types/node": "^22.10.5",
     "rimraf": "^6.0.1",
     "typescript": "^5.9.2"
   },

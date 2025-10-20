@@ -10,34 +10,33 @@ export async function getDashboardStats(req: Request, res: Response) {
   try {
     logger.info('Fetching dashboard statistics...');
     
-    const [userStats, paymentStats, walletStats, recentActivity] = await Promise.all([
+    const [userStats, paymentStats, recentActivity] = await Promise.all([
       prisma.user.aggregate({
         _count: true,
         where: { isActive: true }
       }),
       prisma.payment.groupBy({
-        by: ['status'],
+        by: ['paymentType'],
         _count: true,
         _sum: { amount: true }
-      }),
-      prisma.wallet.aggregate({
-        _sum: { balance: true },
-        _count: true
       }),
       prisma.payment.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
         include: {
-          user: {
-            select: { firstName: true, lastName: true, email: true }
+          request: {
+            include: {
+              customer: {
+                select: { name: true, email: true }
+              }
+            }
           }
         }
       })
     ]);
     
     const totalRevenue = paymentStats
-      .filter((p: any) => p.status === 'COMPLETED')
-      .reduce((sum: number, p: any) => sum + (p._sum.amount?.toNumber() || 0), 0);
+      .reduce((sum: number, p: any) => sum + (p._sum.amount || 0), 0);
     
     const stats = {
       users: {
@@ -45,16 +44,12 @@ export async function getDashboardStats(req: Request, res: Response) {
         active: userStats._count
       },
       payments: {
-        byStatus: paymentStats.map((p: any) => ({
-          status: p.status,
+        byType: paymentStats.map((p: any) => ({
+          type: p.paymentType,
           count: p._count,
-          totalAmount: p._sum.amount?.toNumber() || 0
+          totalAmount: p._sum.amount || 0
         })),
         totalRevenue
-      },
-      wallets: {
-        count: walletStats._count,
-        totalBalance: walletStats._sum.balance?.toNumber() || 0
       },
       recentActivity
     };
@@ -80,8 +75,7 @@ export async function getUsers(req: Request, res: Response) {
     const whereClause = search ? {
       OR: [
         { email: { contains: String(search), mode: 'insensitive' as const } },
-        { firstName: { contains: String(search), mode: 'insensitive' as const } },
-        { lastName: { contains: String(search), mode: 'insensitive' as const } }
+        { name: { contains: String(search), mode: 'insensitive' as const } }
       ]
     } : {};
     
@@ -94,19 +88,12 @@ export async function getUsers(req: Request, res: Response) {
         select: {
           id: true,
           email: true,
-          firstName: true,
-          lastName: true,
-          kycStatus: true,
+          name: true,
+          role: true,
           emailVerified: true,
           phoneVerified: true,
           isActive: true,
-          createdAt: true,
-          _count: {
-            select: {
-              payments: true,
-              wallets: true
-            }
-          }
+          createdAt: true
         }
       }),
       prisma.user.count({ where: whereClause })
@@ -131,14 +118,14 @@ export async function getUsers(req: Request, res: Response) {
 
 export async function getPayments(req: Request, res: Response) {
   try {
-    const { page = 1, limit = 20, status, userId } = req.query;
+    const { page = 1, limit = 20, paymentType, requestId } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
     
-    logger.info(`Fetching payments - page: ${page}, limit: ${limit}, status: ${status}, userId: ${userId}`);
+    logger.info(`Fetching payments - page: ${page}, limit: ${limit}, paymentType: ${paymentType}, requestId: ${requestId}`);
     
     const whereClause: any = {};
-    if (status) whereClause.status = String(status);
-    if (userId) whereClause.userId = String(userId);
+    if (paymentType) whereClause.paymentType = String(paymentType);
+    if (requestId) whereClause.requestId = String(requestId);
     
     const [payments, totalCount] = await Promise.all([
       prisma.payment.findMany({
@@ -147,8 +134,12 @@ export async function getPayments(req: Request, res: Response) {
         where: whereClause,
         orderBy: { createdAt: 'desc' },
         include: {
-          user: {
-            select: { firstName: true, lastName: true, email: true }
+          request: {
+            include: {
+              customer: {
+                select: { name: true, email: true }
+              }
+            }
           }
         }
       }),
@@ -180,17 +171,14 @@ export async function getUserById(req: Request, res: Response) {
     const user = await prisma.user.findUnique({
       where: { id },
       include: {
-        payments: {
+        requests: {
           take: 20,
-          orderBy: { createdAt: 'desc' }
-        },
-        wallets: true,
-        _count: {
-          select: {
-            payments: true,
-            wallets: true,
-            investments: true,
-            notifications: true
+          orderBy: { createdAt: 'desc' },
+          include: {
+            payments: {
+              take: 5,
+              orderBy: { createdAt: 'desc' }
+            }
           }
         }
       }
@@ -214,11 +202,11 @@ export async function getDatabaseHealth(req: Request, res: Response) {
   try {
     logger.info('Checking database health...');
     
-    const [userCount, paymentCount, walletCount, transactionCount] = await Promise.all([
+    const [userCount, paymentCount, requestCount, loanCount] = await Promise.all([
       prisma.user.count(),
       prisma.payment.count(),
-      prisma.wallet.count(),
-      prisma.transaction.count()
+      prisma.request.count(),
+      prisma.loan.count()
     ]);
     
     const health = {
@@ -227,8 +215,8 @@ export async function getDatabaseHealth(req: Request, res: Response) {
       counts: {
         users: userCount,
         payments: paymentCount,
-        wallets: walletCount,
-        transactions: transactionCount
+        requests: requestCount,
+        loans: loanCount
       }
     };
     

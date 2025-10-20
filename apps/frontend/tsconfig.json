@@ -15,7 +15,15 @@
     "allowJs": true,
     "incremental": true,
     "noEmit": true,
-    "jsx": "preserve"
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@fundifyhub/types": ["../../packages/types/src"],
+      "@fundifyhub/utils": ["../../packages/utils/src"], 
+      "@fundifyhub/prisma": ["../../packages/prisma/src"],
+      "@fundifyhub/logger": ["../../packages/logger/src"]
+    }
   },
   "include": [
     "next-env.d.ts",

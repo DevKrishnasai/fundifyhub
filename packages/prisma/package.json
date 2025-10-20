@@ -31,14 +31,14 @@
     "db:status": "npx dotenv -e ../../.env -- prisma migrate status"
   },
   "dependencies": {
-    "@prisma/client": "^5.19.1",
+    "@prisma/client": "^5.22.0",
     "@fundifyhub/logger": "workspace:*",
     "@fundifyhub/utils": "workspace:*"
   },
   "devDependencies": {
-    "prisma": "^5.19.1",
+    "prisma": "^5.22.0",
     "typescript": "^5.9.2",
-    "@types/node": "^24.5.2",
+    "@types/node": "^22.10.5",
     "tsx": "^4.20.5",
     "dotenv-cli": "^7.4.2"
   }
