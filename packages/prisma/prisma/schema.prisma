@@ -10,7 +10,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User model
+// User model shd add username and Legal names as 2 diff columns instead of id and name to better identify.
+// Phone is mandatory to contact with the user.
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
@@ -26,17 +27,17 @@ model User {
   state           String?
   pincode         String?
   createdAt       DateTime @default(now())
+  createdBy       String
   updatedAt       DateTime @updatedAt
-
+  updatedBy       String 
+  
   // Relations
   requests        Request[] @relation("CustomerRequests")
   assignedRequests Request[] @relation("AgentAssignments")
   comments        Comment[]
   inspections     Inspection[]
 
-  @@index([email])
-  @@index([role])
-  @@index([district])
+  @@index([id])
   @@map("users")
 }
 
@@ -55,7 +56,7 @@ model Request {
   assetBrand      String?
   assetModel      String?
   assetCondition  String?
-  assetValue      Float?        // Customer's estimated value
+  assetValue      Float?        // Customer's requested value
   
   // Admin Offer Details
   adminOfferedAmount Float?     // Amount offered by admin
@@ -71,7 +72,8 @@ model Request {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  // Relations
+  // Relations. In case, Suppose the assigned agent has left the job the defualt roll back should be to the admin itself.
+
   customer        User          @relation("CustomerRequests", fields: [customerId], references: [id], onDelete: Cascade)
   assignedAgent   User?         @relation("AgentAssignments", fields: [assignedAgentId], references: [id], onDelete: SetNull)
   loan            Loan?
@@ -122,17 +124,21 @@ model Loan {
   transferReference String?    // Transaction reference number
   transferProof     String?    // Transfer receipt/proof document path
   
-  // Closure Details
+  // Closure Details What's the purpose?
   closedDate        DateTime?  // When loan was fully paid/closed
   closureType       String?    // "NORMAL", "FORECLOSURE", "DEFAULT"
   
   createdAt       DateTime   @default(now())
+  createdBy       String
   updatedAt       DateTime   @updatedAt
+  updatedBy       String
 
-  // Relations
+  // Relations Added created By and updated by relations as well.
   request         Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
   emisSchedule    EMISchedule[]
   payments        Payment[]
+  createdBy       User @relation(fields: [createdBy], references:[id], onDelete: Cascade)
+  updatedBy       User @relation(fields: [updatedBy], references:[id], onDelete: Cascade)
 
   @@index([requestId])
   @@index([status])
@@ -224,7 +230,7 @@ model Document {
   @@index([documentCategory])
   @@map("documents")
 }
-
+// Need a better understanding of the comments model.
 // Comment model
 model Comment {
   id          String   @id @default(cuid())
