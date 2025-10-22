@@ -26,87 +26,11 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { useSearchParams, useParams } from "next/navigation"
 
-// Mock data for demonstration
-const assetDetails = {
-  id: "LR001",
-  asset: "iPhone 14 Pro",
-  type: "phone",
-  requestedAmount: 45000,
-  approvedAmount: 42000,
-  status: "active", // Can be: pending, cancelled, rejected, active, closed
-  submittedDate: "2025-01-15",
-  approvedDate: "2025-01-18",
-  interestRate: 12,
-  tenure: 6,
-  nextEMI: "2025-02-15",
-  emiAmount: 7500,
-  description: "iPhone 14 Pro 128GB in excellent condition with original box and accessories",
-  condition: "Excellent",
-  purchaseDate: "2024-06-15",
-  originalPrice: 79900,
-  photos: ["/iphone-14-pro-front.jpg", "/iphone-14-pro-back.jpg"],
-  hasConditionalApproval: true, // Set to true to show conditional approval card
-  conditionalAmount: 40000,
-  adminMessage:
-    "Based on current market evaluation and asset condition, we can approve your loan for ₹40,000 instead of the requested ₹45,000. This amount reflects the current market value of your iPhone 14 Pro.",
-  timeline: [
-    {
-      date: "2025-01-15",
-      status: "submitted",
-      title: "Application Submitted",
-      description: "Loan request submitted with asset details and documents",
-    },
-    {
-      date: "2025-01-16",
-      status: "under_review",
-      title: "Under Review",
-      description: "District admin reviewing the application",
-    },
-    {
-      date: "2025-01-18",
-      status: "approved",
-      title: "Loan Approved",
-      description: "Loan approved for ₹42,000 at 12% interest rate",
-    },
-    {
-      date: "2025-01-20",
-      status: "inspection",
-      title: "Asset Inspection",
-      description: "Field agent inspected and verified the asset",
-    },
-    {
-      date: "2025-01-22",
-      status: "disbursed",
-      title: "Amount Disbursed",
-      description: "Loan amount transferred to borrower's account",
-    },
-  ],
-  comments: [
-    {
-      id: 1,
-      author: "District Admin",
-      role: "admin",
-      date: "2025-01-18",
-      message: "Asset condition verified. Approving loan for ₹42,000 based on current market value.",
-    },
-    {
-      id: 2,
-      author: "Field Agent",
-      role: "agent",
-      date: "2025-01-20",
-      message: "Physical inspection completed. Asset matches the photos and description provided.",
-    },
-  ],
-}
+// TODO: Replace with actual API call to fetch asset details
+const assetDetails: any = null
 
-const emiSchedule = [
-  { month: 1, date: "2025-02-15", amount: 7500, principal: 6000, interest: 1500, status: "upcoming" },
-  { month: 2, date: "2025-03-15", amount: 7500, principal: 6060, interest: 1440, status: "upcoming" },
-  { month: 3, date: "2025-04-15", amount: 7500, principal: 6121, interest: 1379, status: "upcoming" },
-  { month: 4, date: "2025-05-15", amount: 7500, principal: 6183, interest: 1317, status: "upcoming" },
-  { month: 5, date: "2025-06-15", amount: 7500, principal: 6245, interest: 1255, status: "upcoming" },
-  { month: 6, date: "2025-07-15", amount: 7500, principal: 6308, interest: 1192, status: "upcoming" },
-]
+// TODO: Replace with actual EMI schedule calculation
+const emiSchedule: any[] = []
 
 function getAssetIcon(type: string) {
   switch (type) {
@@ -168,31 +92,30 @@ export default function AssetDetailPage() {
   }
 
   const handleAcceptConditionalApproval = () => {
-    // Handle accept logic here
-    console.log("Accepted conditional approval")
+    // TODO: Handle accept logic here
   }
 
   const handleRejectConditionalApproval = () => {
     if (rejectionReason.trim()) {
       // Handle reject logic here
-      console.log("Rejected with reason:", rejectionReason)
+      // TODO: Handle rejection with reason
       setRejectionReason("")
     }
   }
 
   const handleAdminAccept = () => {
-    console.log("Admin accepted loan request")
+    // TODO: Handle admin acceptance
   }
 
   const handleAdminReject = () => {
     if (rejectionReason.trim()) {
-      console.log("Admin rejected with reason:", rejectionReason)
+      // TODO: Handle admin rejection with reason
       setRejectionReason("")
     }
   }
 
   const handleAdminNegotiate = () => {
-    console.log("Admin initiated negotiation")
+    // TODO: Handle admin negotiation
   }
 
   const showLoanDetails = !["pending", "cancelled", "rejected"].includes(assetDetails.status)
@@ -485,7 +408,7 @@ export default function AssetDetailPage() {
                 <div>
                   <p className="text-xs sm:text-sm text-muted-foreground mb-3">Asset Photos</p>
                   <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                    {assetDetails.photos.map((photo, index) => (
+                    {assetDetails.photos.map((photo: any, index: number) => (
                       <div
                         key={index}
                         className="relative aspect-square rounded-lg overflow-hidden bg-muted border border-border hover:border-primary/30 transition-colors"
@@ -611,7 +534,7 @@ export default function AssetDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 sm:space-y-4">
-                {assetDetails.comments.map((comment) => (
+                {assetDetails.comments.map((comment: any) => (
                   <div key={comment.id} className="p-3 sm:p-4 bg-muted/50 rounded-lg border border-border">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
@@ -655,7 +578,7 @@ export default function AssetDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 sm:space-y-4">
-                  {assetDetails.timeline.map((event, index) => (
+                  {assetDetails.timeline.map((event: any, index: number) => (
                     <div key={index} className="flex items-start gap-3">
                       <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
                         {getTimelineIcon(event.status)}

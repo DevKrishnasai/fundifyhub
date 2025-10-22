@@ -10,18 +10,20 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Checkbox } from "@/components/ui/checkbox"
+// Removed Checkbox import - no longer needed
 import { Spinner } from "@/components/ui/spinner"
 import { useToast } from "@/hooks/use-toast"
 import { Eye, EyeOff, ArrowLeft, Shield, CreditCard } from "lucide-react"
+import { useAuth } from "@/contexts/AuthContext"
 
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [rememberMe, setRememberMe] = useState(false)
+  // Removed rememberMe - simplified auth approach
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -45,44 +47,50 @@ export default function LoginPage() {
       return
     }
 
-    // Simulate API call
-    setTimeout(() => {
-      try {
-        // Mock authentication - redirect based on role
-        let redirectPath = "/dashboard"
-        let role = "customer"
-        
-        if (formData.email.includes("admin")) {
-          redirectPath = "/admin/dashboard"
-          role = "admin"
-        } else if (formData.email.includes("agent")) {
-          redirectPath = "/agent/dashboard"
-          role = "agent"
-        }
+    // API call to login endpoint
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+      const response = await fetch(`${apiUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        credentials: 'include', // Include cookies
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        const { user } = data.data
 
         toast({
           title: "Login successful!",
-          description: `Welcome back! You're being redirected to your ${role} dashboard.`,
+          description: `Welcome back, ${user.firstName}! You're being redirected to your dashboard.`,
         })
 
-        // Simulate storing auth token
-        if (rememberMe) {
-          localStorage.setItem("authToken", "mock-jwt-token")
-        }
-
-        setTimeout(() => {
-          router.push(redirectPath)
-        }, 1000)
-      } catch (error) {
-        setError("Login failed. Please check your credentials.")
+        // Update auth context - it will handle the redirect to /dashboard
+        login(user)
+      } else {
+        setError(data.message || "Login failed. Please check your credentials.")
         toast({
           variant: "destructive",
           title: "Login failed",
-          description: "Please check your credentials and try again.",
+          description: data.message || "Please check your credentials and try again.",
         })
       }
-      setIsLoading(false)
-    }, 1500)
+    } catch (error) {
+      setError("Network error. Please check your connection and try again.")
+      toast({
+        variant: "destructive",
+        title: "Network error",
+        description: "Unable to connect to server. Please try again.",
+      })
+    }
+    setIsLoading(false)
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -168,17 +176,7 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="remember" 
-                    checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                  />
-                  <Label htmlFor="remember" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Remember me
-                  </Label>
-                </div>
+              <div className="flex justify-end">
                 <Link href="/forgot-password" className="text-sm text-primary hover:underline font-medium">
                   Forgot password?
                 </Link>

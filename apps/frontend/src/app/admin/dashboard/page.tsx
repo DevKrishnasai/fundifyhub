@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -36,146 +38,37 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 
-const mockLoans = [
-  {
-    id: "LN001",
-    borrower: "Rajesh Kumar",
-    phone: "+91 98765 43210",
-    email: "rajesh.kumar@email.com",
-    asset: "iPhone 14 Pro",
-    loanAmount: 45000,
-    disbursedAmount: 45000,
-    outstandingAmount: 32000,
-    emiAmount: 4500,
-    nextEmiDate: "2024-01-15",
-    status: "active",
-    riskLevel: "low",
-    district: "Mumbai Central",
-    tenure: 12,
-    interestRate: 12,
-    disbursedDate: "2023-12-01",
-    lastPaymentDate: "2023-12-15",
-    overdueAmount: 0,
-    totalPaid: 13000,
-    paymentsCompleted: 3,
-    collectionAttempts: 0,
-  },
-  {
-    id: "LN002",
-    borrower: "Priya Sharma",
-    phone: "+91 87654 32109",
-    email: "priya.sharma@email.com",
-    asset: "MacBook Air M2",
-    loanAmount: 85000,
-    disbursedAmount: 85000,
-    outstandingAmount: 78000,
-    emiAmount: 8500,
-    nextEmiDate: "2024-01-10",
-    status: "overdue",
-    riskLevel: "high",
-    district: "Delhi South",
-    tenure: 12,
-    interestRate: 14,
-    disbursedDate: "2023-11-15",
-    lastPaymentDate: "2023-11-15",
-    overdueAmount: 17000,
-    totalPaid: 7000,
-    paymentsCompleted: 1,
-    collectionAttempts: 3,
-  },
-  {
-    id: "LN003",
-    borrower: "Amit Patel",
-    phone: "+91 76543 21098",
-    email: "amit.patel@email.com",
-    asset: "Honda City 2020",
-    loanAmount: 250000,
-    disbursedAmount: 250000,
-    outstandingAmount: 0,
-    emiAmount: 25000,
-    nextEmiDate: null,
-    status: "closed",
-    riskLevel: "low",
-    district: "Ahmedabad West",
-    tenure: 12,
-    interestRate: 10,
-    disbursedDate: "2023-01-01",
-    lastPaymentDate: "2023-12-01",
-    overdueAmount: 0,
-    totalPaid: 250000,
-    paymentsCompleted: 12,
-    collectionAttempts: 0,
-  },
-]
+// TODO: Replace with actual API call to fetch loans
+const mockLoans: any[] = []
 
-const pendingRequests = [
-  {
-    id: "LR001",
-    userId: "U001",
-    userName: "Rahul Kumar",
-    userPhone: "+91 9876543210",
-    asset: "iPhone 14 Pro",
-    assetType: "smartphone",
-    brand: "Apple",
-    model: "iPhone 14 Pro",
-    condition: "excellent",
-    requestedAmount: 45000,
-    estimatedValue: 50000,
-    submittedDate: "2025-01-20",
-    district: "Mumbai Central",
-    photos: ["/iphone-14-pro-front.jpg", "/iphone-14-pro-back.jpg"],
-    idProofs: ["/aadhaar-card.jpg"],
-    description: "Excellent condition iPhone 14 Pro with original box and accessories. No scratches or damage.",
-    purchaseYear: "2023",
-    status: "pending",
-  },
-  {
-    id: "LR002",
-    userId: "U002",
-    userName: "Priya Sharma",
-    userPhone: "+91 9876543211",
-    asset: "MacBook Air M2",
-    assetType: "laptop",
-    brand: "Apple",
-    model: "MacBook Air M2",
-    condition: "good",
-    requestedAmount: 65000,
-    estimatedValue: 75000,
-    submittedDate: "2025-01-19",
-    district: "Mumbai Central",
-    photos: ["/macbook-air-m2-open.jpg", "/macbook-air-m2-closed.jpg"],
-    idProofs: ["/pan-card.jpg"],
-    description: "MacBook Air M2 in good condition with minor usage marks. Includes original charger.",
-    purchaseYear: "2022",
-    status: "pending",
-  },
-]
+// TODO: Replace with actual API call to fetch loan requests
+const requests: any[] = []
 
 const getStatusColor = (status: string) => {
   switch (status) {
     case "active":
-      return "bg-green-100 text-green-800"
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
     case "overdue":
-      return "bg-red-100 text-red-800"
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
     case "closed":
-      return "bg-gray-100 text-gray-800"
+      return "bg-muted text-muted-foreground"
     case "defaulted":
-      return "bg-red-200 text-red-900"
+      return "bg-red-200 text-red-900 dark:bg-red-950 dark:text-red-300"
     default:
-      return "bg-gray-100 text-gray-800"
+      return "bg-muted text-muted-foreground"
   }
 }
 
 const getRiskColor = (risk: string) => {
   switch (risk) {
     case "low":
-      return "bg-green-100 text-green-800"
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
     case "medium":
-      return "bg-yellow-100 text-yellow-800"
+      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
     case "high":
-      return "bg-red-100 text-red-800"
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
     default:
-      return "bg-gray-100 text-gray-800"
+      return "bg-muted text-muted-foreground"
   }
 }
 
@@ -193,6 +86,9 @@ const getAssetIcon = (type: string) => {
 }
 
 export default function AdminDashboard() {
+  const router = useRouter()
+  const { user, isLoading } = useAuth()
+  
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [riskFilter, setRiskFilter] = useState("all")
@@ -200,13 +96,32 @@ export default function AdminDashboard() {
   const [collectionNote, setCollectionNote] = useState("")
   const [actionType, setActionType] = useState("")
   const [activeTab, setActiveTab] = useState("loans")
-  const [requests, setRequests] = useState(pendingRequests)
+  const [requests, setRequests] = useState<any[]>([])
   const [isCollectionDialogOpen, setIsCollectionDialogOpen] = useState(false)
   const [selectedLoanForCollection, setSelectedLoanForCollection] = useState<any>(null)
   const [collectionFormData, setCollectionFormData] = useState({
     agent: "",
     pickupDate: "",
   })
+
+  // Check if user is admin
+  useEffect(() => {
+    if (!isLoading && (!user || !user.roles?.some(r => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase())))) {
+      router.push('/admin/login')
+    }
+  }, [user, isLoading, router])
+
+  // Show loading while checking auth
+  if (isLoading || !user || !user.roles?.some(r => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase()))) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   const filteredLoans = mockLoans.filter((loan) => {
     const matchesSearch =
@@ -218,7 +133,7 @@ export default function AdminDashboard() {
     return matchesSearch && matchesStatus && matchesRisk
   })
 
-  const filteredRequests = requests.filter((request) => {
+  const filteredRequests = requests.filter((request: any) => {
     const matchesSearch =
       request.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       request.asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -233,8 +148,6 @@ export default function AdminDashboard() {
   }
 
   const submitCollectionAction = () => {
-    console.log(`Collection action: ${actionType} for loan ${selectedLoan?.id}`)
-    console.log(`Note: ${collectionNote}`)
     setSelectedLoan(null)
     setActionType("")
     setCollectionNote("")
@@ -247,23 +160,18 @@ export default function AdminDashboard() {
   }
 
   const submitCollectionAssignment = () => {
-    console.log("Collection assigned:", {
-      loanId: selectedLoanForCollection?.id,
-      agent: collectionFormData.agent,
-      pickupDate: collectionFormData.pickupDate,
-    })
     setIsCollectionDialogOpen(false)
     setSelectedLoanForCollection(null)
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p className="text-gray-600">Manage loans and review requests in your district</p>
+            <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
+            <p className="text-muted-foreground">Manage loans and review requests in your district</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm">
@@ -278,12 +186,12 @@ export default function AdminDashboard() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <DollarSign className="w-4 h-4 text-blue-600" />
+                <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900">
+                  <DollarSign className="w-4 h-4 text-blue-600 dark:text-blue-200" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Total Loans</p>
-                  <p className="text-lg font-semibold">{mockLoans.length}</p>
+                  <p className="text-sm text-muted-foreground">Total Loans</p>
+                  <p className="text-lg font-semibold">0</p>
                 </div>
               </div>
             </CardContent>
@@ -292,11 +200,11 @@ export default function AdminDashboard() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Clock className="w-4 h-4 text-orange-600" />
+                <div className="p-2 bg-orange-100 rounded-lg dark:bg-orange-900">
+                  <Clock className="w-4 h-4 text-orange-600 dark:text-orange-200" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Pending Reviews</p>
+                  <p className="text-sm text-muted-foreground">Pending Reviews</p>
                   <p className="text-lg font-semibold">{requests.length}</p>
                 </div>
               </div>
@@ -306,12 +214,12 @@ export default function AdminDashboard() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
+                <div className="p-2 bg-green-100 rounded-lg dark:bg-green-900">
+                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-200" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Active</p>
-                  <p className="text-lg font-semibold">{mockLoans.filter((l) => l.status === "active").length}</p>
+                  <p className="text-sm text-muted-foreground">Active</p>
+                  <p className="text-lg font-semibold">0</p>
                 </div>
               </div>
             </CardContent>
@@ -320,12 +228,12 @@ export default function AdminDashboard() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                <div className="p-2 bg-red-100 rounded-lg dark:bg-red-900">
+                  <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-200" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Overdue</p>
-                  <p className="text-lg font-semibold">{mockLoans.filter((l) => l.status === "overdue").length}</p>
+                  <p className="text-sm text-muted-foreground">Overdue</p>
+                  <p className="text-lg font-semibold">0</p>
                 </div>
               </div>
             </CardContent>
@@ -334,9 +242,9 @@ export default function AdminDashboard() {
           <Card>
             <CardContent className="p-4">
               <div>
-                <p className="text-sm text-gray-600">Total Disbursed</p>
+                <p className="text-sm text-muted-foreground">Total Disbursed</p>
                 <p className="text-lg font-semibold">
-                  ₹{(mockLoans.reduce((sum, l) => sum + l.disbursedAmount, 0) / 100000).toFixed(1)}L
+                  ₹0L
                 </p>
               </div>
             </CardContent>
@@ -345,9 +253,9 @@ export default function AdminDashboard() {
           <Card>
             <CardContent className="p-4">
               <div>
-                <p className="text-sm text-gray-600">Outstanding</p>
+                <p className="text-sm text-muted-foreground">Outstanding</p>
                 <p className="text-lg font-semibold">
-                  ₹{(mockLoans.reduce((sum, l) => sum + l.outstandingAmount, 0) / 100000).toFixed(1)}L
+                  ₹0L
                 </p>
               </div>
             </CardContent>
@@ -368,7 +276,7 @@ export default function AdminDashboard() {
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="flex-1">
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                       <Input
                         placeholder="Search by borrower name, loan ID, or asset..."
                         value={searchTerm}
@@ -518,7 +426,7 @@ export default function AdminDashboard() {
             </Card>
 
             <div className="space-y-4">
-              {filteredRequests.map((request) => (
+              {filteredRequests.map((request: any) => (
                 <Card key={request.id}>
                   <CardContent className="p-4 sm:p-6">
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 gap-3">

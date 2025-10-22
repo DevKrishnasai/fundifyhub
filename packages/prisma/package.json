@@ -4,6 +4,9 @@
   "description": "Shared Prisma database schema and client",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "prisma": {
+    "seed": "npx dotenv -e ../../.env -- tsx prisma/seed.ts"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -31,15 +34,18 @@
     "db:status": "npx dotenv -e ../../.env -- prisma migrate status"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
     "@fundifyhub/logger": "workspace:*",
-    "@fundifyhub/utils": "workspace:*"
+    "@fundifyhub/utils": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "@types/bcrypt": "^6.0.0",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.2.3"
   },
   "devDependencies": {
-    "prisma": "^5.22.0",
-    "typescript": "^5.9.2",
     "@types/node": "^22.10.5",
+    "dotenv-cli": "^7.4.2",
+    "prisma": "^5.22.0",
     "tsx": "^4.20.5",
-    "dotenv-cli": "^7.4.2"
+    "typescript": "^5.9.2"
   }
 }

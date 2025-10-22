@@ -56,4 +56,4 @@ export function sanitizeString(input: string): string {
 }
 
 // Export environment configuration
-export { appConfig, validateConfig, getEnv, type AppConfig } from "./env";
+export { appConfig, validateConfig, type AppConfig } from "./env";

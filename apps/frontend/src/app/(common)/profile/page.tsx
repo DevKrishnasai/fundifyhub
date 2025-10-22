@@ -36,16 +36,17 @@ export default function ProfilePage() {
   const [successMessage, setSuccessMessage] = useState("")
   const [error, setError] = useState("")
 
+  // TODO: Replace with actual API call to fetch user profile
   const [profileData, setProfileData] = useState({
-    firstName: "Rajesh",
-    lastName: "Kumar",
-    email: "rajesh.kumar@example.com",
-    phone: "+91 98765 43210",
-    district: "Mumbai",
-    address: "123 MG Road, Andheri West",
-    pincode: "400058",
-    aadhaar: "1234 5678 9012",
-    pan: "ABCDE1234F",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    district: "",
+    address: "",
+    pincode: "",
+    aadhaar: "",
+    pan: "",
   })
 
   const [passwordData, setPasswordData] = useState({

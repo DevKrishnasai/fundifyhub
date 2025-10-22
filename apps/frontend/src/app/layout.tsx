@@ -3,6 +3,7 @@ import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
+import { AuthProvider } from '@/contexts/AuthContext'
 import { Toaster } from 'sonner'
 import { Toaster as RadixToaster } from '@/components/ui/toaster'
 import './globals.css'
@@ -64,22 +65,24 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <Toaster 
-            position="top-right"
-            expand={false}
-            richColors
-            closeButton
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: 'hsl(var(--background))',
-                color: 'hsl(var(--foreground))',
-                border: '1px solid hsl(var(--border))',
-              },
-            }}
-          />
-          <RadixToaster />
+          <AuthProvider>
+            {children}
+            <Toaster 
+              position="top-right"
+              expand={false}
+              richColors
+              closeButton
+              toastOptions={{
+                duration: 4000,
+                style: {
+                  background: 'hsl(var(--background))',
+                  color: 'hsl(var(--foreground))',
+                  border: '1px solid hsl(var(--border))',
+                },
+              }}
+            />
+            <RadixToaster />
+          </AuthProvider>
         </ThemeProvider>
         <Analytics />
       </body>

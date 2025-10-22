@@ -20,7 +20,7 @@ export async function getDashboardStats() {
                   request: {
                     include: {
                       customer: {
-                        select: { name: true, email: true }
+                        select: { firstName: true, lastName: true, email: true }
                       }
                     }
                   }
@@ -42,7 +42,7 @@ export async function getDashboardStats() {
       }
     };
   } catch (error) {
-    console.error('❌ Failed to fetch dashboard stats:', error);
+
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -58,7 +58,8 @@ export async function getUsers(limit: number = 10) {
       select: {
         id: true,
         email: true,
-        name: true,
+        firstName: true,
+        lastName: true,
         role: true,
         district: true,
         isActive: true,
@@ -77,7 +78,7 @@ export async function getUsers(limit: number = 10) {
       data: users
     };
   } catch (error) {
-    console.error('❌ Failed to fetch users:', error);
+
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -98,7 +99,7 @@ export async function getPayments(limit: number = 20) {
                 request: {
                   include: {
                     customer: {
-                      select: { name: true, email: true }
+                      select: { firstName: true, lastName: true, email: true }
                     }
                   }
                 }
@@ -175,7 +176,7 @@ export async function getRequests(limit: number = 20) {
       orderBy: { createdAt: 'desc' },
       include: {
         customer: {
-          select: { name: true, email: true }
+          select: { firstName: true, lastName: true, email: true }
         },
         loan: true,
         documents: true,
