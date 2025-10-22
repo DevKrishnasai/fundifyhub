@@ -3,89 +3,27 @@ import { prisma } from '@fundifyhub/prisma';
 
 const logger = createLogger({ serviceName: 'config-manager' });
 
-export interface ServiceConfig {
-  serviceName: string;
-  isEnabled: boolean;
-  isActive: boolean;
-  config: any;
-}
-
 class ConfigManager {
-  private configs: Map<string, ServiceConfig> = new Map();
-  private lastFetch: Date | null = null;
-  private readonly CACHE_DURATION = 60000; // 60 seconds
-
   /**
-   * Fetch service configurations from database
-   */
-  async fetchConfigs(): Promise<ServiceConfig[]> {
-    try {
-      const dbConfigs = await prisma.serviceConfig.findMany({
-        where: { isEnabled: true }
-      });
-
-      const configs: ServiceConfig[] = dbConfigs.map(config => ({
-        serviceName: config.serviceName,
-        isEnabled: config.isEnabled,
-        isActive: config.isActive,
-        config: config.config
-      }));
-
-      // Update cache
-      this.configs.clear();
-      configs.forEach(config => {
-        this.configs.set(config.serviceName, config);
-      });
-      this.lastFetch = new Date();
-
-      logger.info(`Fetched ${configs.length} enabled service configurations`);
-      return configs;
-    } catch (error) {
-      logger.error('Error fetching service configs:', error as Error);
-      return [];
-    }
-  }
-
-  /**
-   * Get service configuration with caching
-   */
-  async getServiceConfig(serviceName: string): Promise<ServiceConfig | null> {
-    // Check if cache is valid
-    const now = new Date();
-    const cacheValid = this.lastFetch && 
-      (now.getTime() - this.lastFetch.getTime()) < this.CACHE_DURATION;
-
-    if (!cacheValid) {
-      await this.fetchConfigs();
-    }
-
-    return this.configs.get(serviceName.toUpperCase()) || null;
-  }
-
-  /**
-   * Check if service is enabled and get its config
-   */
-  async isServiceEnabled(serviceName: string): Promise<boolean> {
-    const config = await this.getServiceConfig(serviceName);
-    return config?.isEnabled || false;
-  }
-
-  /**
-   * Get WhatsApp configuration
+   * Get WhatsApp configuration directly from database
    */
   async getWhatsAppConfig(): Promise<{
     enabled: boolean;
     clientId?: string;
   }> {
-    const config = await this.getServiceConfig('WHATSAPP');
+    const config = await prisma.serviceConfig.findUnique({
+      where: { serviceName: 'WHATSAPP' }
+    });
+    
+    const configData = config?.config as any;
     return {
       enabled: config?.isEnabled || false,
-      clientId: config?.config?.clientId || 'fundifyhub-job-worker'
+      clientId: configData?.clientId || 'fundifyhub-job-worker'
     };
   }
 
   /**
-   * Get email configuration
+   * Get Email configuration directly from database
    */
   async getEmailConfig(): Promise<{
     enabled: boolean;
@@ -96,16 +34,42 @@ class ConfigManager {
     smtpPass?: string;
     smtpFrom?: string;
   }> {
-    const config = await this.getServiceConfig('EMAIL');
+    const config = await prisma.serviceConfig.findUnique({
+      where: { serviceName: 'EMAIL' }
+    });
+    
+    const configData = config?.config as any;
     return {
       enabled: config?.isEnabled || false,
-      smtpHost: config?.config?.smtpHost,
-      smtpPort: config?.config?.smtpPort || 587,
-      smtpSecure: config?.config?.smtpSecure || false,
-      smtpUser: config?.config?.smtpUser,
-      smtpPass: config?.config?.smtpPass,
-      smtpFrom: config?.config?.smtpFrom || 'noreply@fundifyhub.com'
+      smtpHost: configData?.smtpHost,
+      smtpPort: configData?.smtpPort || 587,
+      smtpSecure: configData?.smtpSecure || false,
+      smtpUser: configData?.smtpUser,
+      smtpPass: configData?.smtpPass,
+      smtpFrom: configData?.smtpFrom || 'noreply@fundifyhub.com'
     };
+  }
+
+  /**
+   * Check if WhatsApp should process jobs (both enabled AND active)
+   */
+  async canProcessWhatsAppJobs(): Promise<boolean> {
+    const config = await prisma.serviceConfig.findUnique({
+      where: { serviceName: 'WHATSAPP' }
+    });
+    
+    return (config?.isEnabled && config?.isActive) || false;
+  }
+
+  /**
+   * Check if Email should process jobs (both enabled AND active)
+   */
+  async canProcessEmailJobs(): Promise<boolean> {
+    const config = await prisma.serviceConfig.findUnique({
+      where: { serviceName: 'EMAIL' }
+    });
+    
+    return (config?.isEnabled && config?.isActive) || false;
   }
 
   /**
@@ -141,29 +105,10 @@ class ConfigManager {
         }
       });
 
-      // Update local cache
-      const existing = this.configs.get(serviceName.toUpperCase());
-      if (existing) {
-        existing.isActive = status.isActive;
-        this.configs.set(serviceName.toUpperCase(), existing);
-      }
-
-      logger.info(`Service status updated: ${serviceName} - ${status.connectionStatus}`);
+      logger.info(`✓ ${serviceName} status: ${status.connectionStatus}`);
     } catch (error) {
-      logger.error(`Error updating service status for ${serviceName}:`, error as Error);
+      logger.error(`Error updating ${serviceName} status:`, error as Error);
     }
-  }
-
-  /**
-   * Initialize with periodic config refresh
-   */
-  startPeriodicRefresh(): void {
-    // Fetch configs every 2 minutes
-    setInterval(async () => {
-      await this.fetchConfigs();
-    }, 2 * 60 * 1000);
-
-    logger.info('Config manager started with periodic refresh (2 minutes)');
   }
 }
 

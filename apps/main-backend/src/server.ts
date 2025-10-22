@@ -6,6 +6,7 @@ import { config } from './config';
 import apiRoutes from './api';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { startServer as startExpressServer, setupGracefulShutdown, requestLogger } from './utils/server';
+import { queueEventsService } from './services/queue-events';
 
 const logger = createLogger({ serviceName: 'main-server' });
 const app = express();
@@ -34,6 +35,10 @@ app.use((error: any, req: Request, res: Response, next: NextFunction) =>
  */
 async function initializeServer() {
   try {
+    // Queue events service is already initialized as singleton
+    // It will automatically listen to BullMQ queue events
+    logger.info('📡 Queue events service ready for real-time updates');
+
     const server = await startExpressServer(app, config.server.port, logger);
     setupGracefulShutdown(server, logger);
   } catch (error) {

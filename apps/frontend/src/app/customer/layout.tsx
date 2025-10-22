@@ -12,7 +12,7 @@ export default function CustomerLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ProtectedRoute requiredRole={["customer", "admin"]}>
+    <ProtectedRoute requiredRole={["customer", "admin", "super_admin"]}>
       <CustomerContent>{children}</CustomerContent>
     </ProtectedRoute>
   )

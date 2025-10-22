@@ -7,7 +7,8 @@
     "dev": "npx dotenv -e ../../.env -- tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "cleanup:whatsapp": "node scripts/cleanup-whatsapp-session.js"
   },
   "dependencies": {
     "@fundifyhub/logger": "workspace:*",

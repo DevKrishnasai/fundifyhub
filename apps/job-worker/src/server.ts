@@ -1,12 +1,13 @@
 import { createLogger } from '@fundifyhub/logger';
 import { validateConfig } from '@fundifyhub/utils';
-import { OTPWorker } from './workers/otp-worker';
+import { OTPWorker, ServiceControlWorker } from './workers';
 import { initializeServices } from './services';
 
 const logger = createLogger({ serviceName: 'job-worker-server' });
 
 class JobWorkerServer {
   private otpWorker: OTPWorker | null = null;
+  private serviceControlWorker: ServiceControlWorker | null = null;
 
   async start(): Promise<void> {
     try {
@@ -18,9 +19,13 @@ class JobWorkerServer {
       this.otpWorker = new OTPWorker();
       logger.info('OTP worker initialized');
 
-      // Initialize OTP services (WhatsApp, Email)
+      // Initialize Service Control worker (handles WhatsApp/Email init/destroy)
+      this.serviceControlWorker = new ServiceControlWorker();
+      logger.info('Service control worker initialized');
+
+      // Initialize OTP services (WhatsApp, Email) - read initial DB state
       await initializeServices();
-      logger.info('OTP services initialized');
+      logger.info('OTP services initialized from database configuration');
 
       logger.info('🚀 Job worker server started successfully');
     } catch (error) {
@@ -34,6 +39,10 @@ class JobWorkerServer {
       if (this.otpWorker) {
         await this.otpWorker.close();
         this.otpWorker = null;
+      }
+      if (this.serviceControlWorker) {
+        await this.serviceControlWorker.close();
+        this.serviceControlWorker = null;
       }
       logger.info('Job worker server stopped gracefully');
     } catch (error) {
@@ -61,11 +70,29 @@ process.on('SIGINT', async () => {
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught exception:', error);
+  
+  // For file lock errors on Windows, log but don't crash
+  if (error.message && error.message.includes('EBUSY')) {
+    logger.error('⚠️  File lock error detected - WhatsApp session files may be locked');
+    logger.error('💡 Run: npm run cleanup:whatsapp (in job-worker directory) to fix this');
+    return; // Don't exit, let the process continue
+  }
+  
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error(`Unhandled rejection at: ${promise}, reason: ${reason}`);
+  const errorMessage = String(reason);
+  logger.error(`Unhandled rejection at: ${promise}, reason: ${errorMessage}`);
+  
+  // For file lock errors on Windows, log but don't crash
+  if (errorMessage.includes('EBUSY') || errorMessage.includes('resource busy or locked')) {
+    logger.error('⚠️  File lock error detected in async operation');
+    logger.error('💡 Solution: cd apps/job-worker && npm run cleanup:whatsapp');
+    logger.error('💡 Then restart: turbo dev (from root)');
+    return; // Don't exit, let the process continue
+  }
+  
   process.exit(1);
 });
 

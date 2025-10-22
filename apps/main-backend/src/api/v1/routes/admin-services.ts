@@ -144,11 +144,11 @@ router.post('/config/:serviceName', requireAuth, requireAdmin, async (req: Reque
     // Handle toggle OFF - destroy service and set to disabled state
     if (!isEnabled) {
       // First destroy the service
-      const { eventService } = await import('../../../services/event-service');
+      const { serviceControlService } = await import('../../../services/service-control');
       if (serviceNameUpper === 'WHATSAPP') {
-        await eventService.triggerWhatsAppDestroy();
+        await serviceControlService.destroyWhatsApp();
       } else if (serviceNameUpper === 'EMAIL') {
-        await eventService.triggerEmailDestroy();
+        await serviceControlService.destroyEmail();
       }
 
       // Update configuration to disabled state
@@ -211,12 +211,12 @@ router.post('/config/:serviceName', requireAuth, requireAdmin, async (req: Reque
 
     if (configValid) {
       // Config is valid - try to initialize service and set to connected/connecting
-      const { eventService } = await import('../../../services/event-service');
+      const { serviceControlService } = await import('../../../services/service-control');
       if (serviceNameUpper === 'EMAIL') {
-        await eventService.triggerEmailInit();
+        await serviceControlService.initializeEmail(config);
         // Email should connect immediately if config is valid
       } else if (serviceNameUpper === 'WHATSAPP') {
-        await eventService.triggerWhatsAppInit();
+        await serviceControlService.initializeWhatsApp(config);
         // WhatsApp will go through QR flow
       }
     } else {
@@ -252,49 +252,90 @@ router.post('/config/:serviceName', requireAuth, requireAdmin, async (req: Reque
 /**
  * Get WhatsApp QR code for scanning (real-time SSE)
  * GET /api/v1/admin/services/whatsapp/qr
+ * Note: EventSource doesn't support custom headers or credentials in cross-origin,
+ * so we accept token as query parameter as fallback
  */
-router.get('/whatsapp/qr', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+router.get('/whatsapp/qr', async (req: Request, res: Response) => {
   try {
-    // Set up Server-Sent Events
+    // Manual authentication check (middleware doesn't work well with SSE)
+    const cookieToken = req.cookies?.accessToken;
+    const queryToken = req.query.token as string;
+    const token = cookieToken || queryToken;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+        code: 'TOKEN_MISSING'
+      });
+    }
+
+    // Verify token
+    const { verifyToken } = await import('../../../utils/jwt');
+    try {
+      const decoded = verifyToken(token);
+      
+      // Check if user has admin role
+      const userRoles = decoded.roles || [decoded.roles?.[0]];
+      const hasAdminRole = userRoles.some((role: string) => 
+        ['ADMIN', 'SUPER_ADMIN'].includes(role.toUpperCase())
+      );
+      
+      if (!hasAdminRole) {
+        return res.status(403).json({
+          success: false,
+          message: 'Admin access required',
+          code: 'INSUFFICIENT_PERMISSIONS'
+        });
+      }
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token',
+        code: 'TOKEN_INVALID'
+      });
+    }
+
+    // Set up Server-Sent Events with CORS for same-origin
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Cache-Control'
+      'X-Accel-Buffering': 'no', // Disable nginx buffering
     });
 
-    // Import event service
-    const { eventService } = await import('../../../services/event-service');
+    // Import dependencies
+    const { queueEventsService } = await import('../../../services/queue-events');
+    const { serviceConfigService } = await import('../../../services/service-config');
 
-    // Send initial status
-    const currentStatus = await eventService.getWhatsAppStatus();
-    if (currentStatus?.lastQrCode) {
+    // Add this connection to active connections
+    queueEventsService.addWhatsAppConnection(res);
+
+    // Send initial status from database
+    const statusResult = await serviceConfigService.getServiceConfig('WHATSAPP');
+    if (statusResult.success && statusResult.data) {
       res.write(`data: ${JSON.stringify({
-        type: 'QR_CODE',
-        qrCode: currentStatus.lastQrCode,
-        connectionStatus: currentStatus.connectionStatus,
-        timestamp: currentStatus.lastUpdate
+        type: 'STATUS',
+        data: {
+          message: `WhatsApp service status: ${statusResult.data.connectionStatus}`,
+          connectionStatus: statusResult.data.connectionStatus,
+          isActive: statusResult.data.isActive,
+          isEnabled: statusResult.data.isEnabled,
+          timestamp: new Date()
+        }
       })}\n\n`);
     } else {
       res.write(`data: ${JSON.stringify({
         type: 'STATUS',
-        message: 'Initializing WhatsApp connection...',
-        connectionStatus: 'INITIALIZING',
+        message: 'Connecting to WhatsApp service...',
+        connectionStatus: 'CONNECTING',
         timestamp: new Date()
       })}\n\n`);
     }
 
-    // Trigger WhatsApp initialization
-    await eventService.triggerWhatsAppInit();
-
-    // Subscribe to real-time events
-    eventService.subscribeToWhatsAppEvents((event) => {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-    });
-
     // Handle client disconnect
     req.on('close', () => {
+      queueEventsService.removeWhatsAppConnection(res);
       res.end();
     });
 
@@ -311,32 +352,6 @@ router.get('/whatsapp/qr', requireAuth, requireAdmin, async (req: Request, res: 
     res.status(500).json({
       success: false,
       message: 'Failed to stream WhatsApp QR code'
-    } as APIResponse);
-  }
-});
-
-/**
- * Trigger WhatsApp initialization
- * POST /api/v1/admin/services/whatsapp/init
- */
-router.post('/whatsapp/init', requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const { eventService } = await import('../../../services/event-service');
-    await eventService.triggerWhatsAppInit();
-    
-    res.json({
-      success: true,
-      message: 'WhatsApp initialization triggered. Check real-time status via SSE endpoint.',
-      data: {
-        sseEndpoint: '/api/v1/admin/services/whatsapp/qr',
-        statusEndpoint: '/api/v1/admin/services/whatsapp/status'
-      }
-    } as APIResponse);
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to trigger WhatsApp initialization'
     } as APIResponse);
   }
 });
@@ -426,6 +441,125 @@ router.get('/email/status', requireAuth, requireAdmin, async (req: Request, res:
     res.status(500).json({
       success: false,
       message: 'Failed to get email status'
+    } as APIResponse);
+  }
+});
+
+/**
+ * Test and connect Email service (simple REST API)
+ * POST /api/v1/admin/services/email/test-connect
+ */
+router.post('/email/test-connect', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { config } = req.body;
+
+    // Validate configuration
+    if (!config || !config.smtpHost || !config.smtpUser || !config.smtpPass) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required Email configuration fields (smtpHost, smtpUser, smtpPass)'
+      } as APIResponse);
+    }
+
+    // Update the Email config in database with isEnabled = true
+    const { serviceConfigService } = await import('../../../services/service-config');
+    
+    const updateResult = await serviceConfigService.updateServiceConfig('EMAIL', {
+      isEnabled: true,
+      config: {
+        smtpHost: config.smtpHost,
+        smtpPort: config.smtpPort || 587,
+        smtpSecure: config.smtpSecure || false,
+        smtpUser: config.smtpUser,
+        smtpPass: config.smtpPass,
+        smtpFrom: config.smtpFrom || config.smtpUser
+      }
+    }, req.user?.id || 'admin');
+
+    if (!updateResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to update Email configuration'
+      } as APIResponse);
+    }
+
+    // Initialize Email service via service control
+    const { serviceControlService } = await import('../../../services/service-control');
+    await serviceControlService.initializeEmail();
+
+    // Wait for initialization to complete with polling (max 15 seconds)
+    const maxAttempts = 30; // 30 attempts * 500ms = 15 seconds max
+    let attempts = 0;
+    let emailIsActive = false;
+
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms between checks
+      
+      const statusCheck = await serviceConfigService.getServiceConfig('EMAIL');
+      if (statusCheck.success && statusCheck.data?.isActive) {
+        emailIsActive = true;
+        break;
+      }
+      
+      // If there's an error, break early
+      if (statusCheck.success && statusCheck.data?.lastError) {
+        break;
+      }
+      
+      attempts++;
+    }
+
+    // Check final status
+    const statusResult = await serviceConfigService.getServiceConfig('EMAIL');
+
+    if (statusResult.success && statusResult.data?.isActive) {
+      res.json({
+        success: true,
+        message: 'Email service connected successfully and test email sent!',
+        data: {
+          isActive: true,
+          isEnabled: true,
+          connectionStatus: 'CONNECTED'
+        }
+      } as APIResponse);
+    } else {
+      // Failed to connect, disable the service
+      await serviceConfigService.updateServiceConfig('EMAIL', {
+        isEnabled: false
+      }, req.user?.id || 'admin');
+
+      const errorMessage = statusResult.data?.lastError || 'Failed to connect to Email service. Please check your SMTP credentials.';
+      
+      res.status(400).json({
+        success: false,
+        message: errorMessage,
+        data: {
+          isActive: false,
+          isEnabled: false,
+          connectionStatus: 'AUTH_FAILURE'
+        }
+      } as APIResponse);
+    }
+
+  } catch (error) {
+    console.error('❌ Error testing Email connection:', error);
+    
+    // Disable service on error
+    try {
+      const { serviceConfigService } = await import('../../../services/service-config');
+      await serviceConfigService.updateServiceConfig('EMAIL', {
+        isEnabled: false
+      }, req.user?.id || 'admin');
+    } catch (disableError) {
+      console.error('Failed to disable Email service after error:', disableError);
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test Email connection',
+      data: {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
     } as APIResponse);
   }
 });

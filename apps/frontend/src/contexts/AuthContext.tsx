@@ -72,15 +72,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const isAdmin = useCallback((): boolean => {
-    return hasRole('admin');
+    return hasRole(['admin', 'super_admin']);
   }, [hasRole]);
 
   const isAgent = useCallback((): boolean => {
-    return hasRole(['agent', 'admin']);
+    return hasRole(['agent', 'admin', 'super_admin']);
   }, [hasRole]);
 
   const isCustomer = useCallback((): boolean => {
-    return hasRole(['customer', 'admin']);
+    return hasRole(['customer', 'admin', 'super_admin']);
   }, [hasRole]);
 
   // Server-side authentication validation (when needed)

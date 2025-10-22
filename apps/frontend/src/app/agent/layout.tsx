@@ -12,7 +12,7 @@ export default function AgentLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ProtectedRoute requiredRole={["agent", "admin"]}>
+    <ProtectedRoute requiredRole={["agent", "admin", "super_admin"]}>
       <AgentContent>{children}</AgentContent>
     </ProtectedRoute>
   )
