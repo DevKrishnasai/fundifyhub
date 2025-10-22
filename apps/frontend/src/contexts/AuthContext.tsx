@@ -7,9 +7,6 @@ import {
   clearAuthData,
   logout as logoutUser
 } from '@/lib/auth';
-import { 
-  hasRole as checkRole
-} from '@/lib/jwt-client';
 
 interface AuthContextType {
   // User state
@@ -67,20 +64,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Client-side role checking (fast)
   const hasRole = useCallback((roles: string | string[]): boolean => {
-    if (!user) return false;
-    return checkRole(roles);
+    console.log('AuthContext.hasRole called with:', roles, 'user:', user);
+    if (!user) {
+      console.log('No user found in AuthContext');
+      return false;
+    }
+    
+    // Use capital case for all role comparisons
+    const toCapitalCase = (str: string) => str.trim().toUpperCase();
+    const userRoles = user.roles.map(toCapitalCase);
+    
+    const rolesToCheck = Array.isArray(roles)
+      ? roles.map(toCapitalCase)
+      : [toCapitalCase(roles)];
+    
+    // Check if user has ANY of the required roles
+    const hasAccess = rolesToCheck.some(role => userRoles.includes(role));
+    return hasAccess;
   }, [user]);
 
   const isAdmin = useCallback((): boolean => {
-    return hasRole(['admin', 'super_admin']);
+    return hasRole(['ADMIN']);
   }, [hasRole]);
 
   const isAgent = useCallback((): boolean => {
-    return hasRole(['agent', 'admin', 'super_admin']);
+    return hasRole(['AGENT']);
   }, [hasRole]);
 
   const isCustomer = useCallback((): boolean => {
-    return hasRole(['customer', 'admin', 'super_admin']);
+    return hasRole(['CUSTOMER']);
   }, [hasRole]);
 
   // Server-side authentication validation (when needed)
@@ -107,12 +119,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Server validation failed:', error);
       return null;
     }
-  };
-
-  // Removed refresh token functionality - using simplified single token approach
-  const refreshToken = async (): Promise<boolean> => {
-    // In simplified approach, if token expires, user needs to login again
-    return false;
   };
 
   // Initialize authentication state

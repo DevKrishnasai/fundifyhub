@@ -1,38 +1,49 @@
-"use client";
+'use client';
 
-import type React from "react"
-import Link from "next/link"
-import { useAuth } from "@/contexts/AuthContext"
+import type React from 'react';
+import Link from 'next/link';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  return <AdminContent>{children}</AdminContent>
+  return (
+  <ProtectedRoute requiredRole={['ADMIN']}>
+      <AdminContent>{children}</AdminContent>
+    </ProtectedRoute>
+  );
 }
 
 function AdminContent({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth()
-
-  // Check if user has admin role (case-insensitive)
-  const isAdmin = user && user.roles?.some(r => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase()))
-
+  const { user, logout } = useAuth();
   return (
     <div className="min-h-screen bg-background">
-      {isAdmin && (
         <nav className="bg-card border-b border-border px-4 py-3">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold text-red-600">FundifyHub Admin</h1>
+              <h1 className="text-xl font-bold text-red-600">
+                FundifyHub Admin
+              </h1>
               <div className="hidden md:flex gap-4">
-                <Link href="/admin/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link
+                  href="/admin/dashboard"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
                   Dashboard
                 </Link>
-                <Link href="/admin/workers" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link
+                  href="/admin/workers"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
                   Worker Config
                 </Link>
-                <Link href="/admin/settings" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link
+                  href="/admin/settings"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
                   Settings
                 </Link>
               </div>
@@ -55,8 +66,7 @@ function AdminContent({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </nav>
-      )}
       {children}
     </div>
-  )
+  );
 }

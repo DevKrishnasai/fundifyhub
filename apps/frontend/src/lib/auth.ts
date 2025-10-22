@@ -3,7 +3,7 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
-  roles: string[]; // Changed from role to roles array
+  roles: string[]; 
   emailVerified: boolean;
   phoneVerified: boolean;
   createdAt?: string;
