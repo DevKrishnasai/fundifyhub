@@ -1,6 +1,6 @@
 import { createLogger } from '@fundifyhub/logger';
 import { config } from '../config';
-import { QueueService, OTPJobData } from './queue';
+import { jobQueueService } from './job-queue';
 import { OTPData, SendOTPResponse, VerifyOTPResponse } from '../types';
 
 const logger = createLogger({ serviceName: 'otp-service' });
@@ -97,33 +97,19 @@ class OTPService {
       this.storeOTP(userId, otp, 'PHONE');
       
       // Queue WhatsApp job
-      const jobData: OTPJobData = {
-        userId,
+      await jobQueueService.addWhatsAppOTP({
         recipient: phoneNumber,
         otp,
         userName,
-        type: 'WHATSAPP',
         templateType
+      });
+      
+      logger.info(`✅ WhatsApp OTP queued for ${phoneNumber}`);
+      return {
+        success: true,
+        message: 'WhatsApp OTP queued successfully',
+        ...(config.env.isDevelopment && { otp })
       };
-      
-      const result = await QueueService.addOTPJob(jobData, { priority: 1 });
-      
-      if (result.success) {
-        logger.info(`✅ WhatsApp OTP queued for ${phoneNumber}, Job ID: ${result.jobId}`);
-        return {
-          success: true,
-          message: 'WhatsApp OTP queued successfully',
-          jobId: result.jobId,
-          ...(config.env.isDevelopment && { otp })
-        };
-      } else {
-        logger.error(`❌ Failed to queue WhatsApp OTP for ${phoneNumber}`);
-        return {
-          success: false,
-          message: 'Failed to queue WhatsApp OTP',
-          ...(config.env.isDevelopment && { otp })
-        };
-      }
       
     } catch (error) {
       logger.error('Error sending WhatsApp OTP:', error as Error);
@@ -167,33 +153,19 @@ class OTPService {
       this.storeOTP(userId, otp, 'EMAIL');
       
       // Queue Email job
-      const jobData: OTPJobData = {
-        userId,
+      await jobQueueService.addEmailOTP({
         recipient: email,
         otp,
         userName,
-        type: 'EMAIL',
         templateType
+      });
+      
+      logger.info(`✅ Email OTP queued for ${email}`);
+      return {
+        success: true,
+        message: 'Email OTP queued successfully',
+        ...(config.env.isDevelopment && { otp })
       };
-      
-      const result = await QueueService.addOTPJob(jobData, { priority: 1 });
-      
-      if (result.success) {
-        logger.info(`✅ Email OTP queued for ${email}, Job ID: ${result.jobId}`);
-        return {
-          success: true,
-          message: 'Email OTP queued successfully',
-          jobId: result.jobId,
-          ...(config.env.isDevelopment && { otp })
-        };
-      } else {
-        logger.error(`❌ Failed to queue Email OTP for ${email}`);
-        return {
-          success: false,
-          message: 'Failed to queue Email OTP',
-          ...(config.env.isDevelopment && { otp })
-        };
-      }
       
     } catch (error) {
       logger.error('Error sending Email OTP:', error as Error);
@@ -284,33 +256,17 @@ class OTPService {
     message: string;
   }> {
     try {
-      const stats = await QueueService.getQueueStats();
-      return stats;
+      const stats = await jobQueueService.getQueueStats();
+      return {
+        success: true,
+        stats,
+        message: 'Queue stats retrieved successfully'
+      };
     } catch (error) {
       logger.error('Error getting queue stats:', error as Error);
       return {
         success: false,
         message: 'Failed to get queue stats'
-      };
-    }
-  }
-
-  /**
-   * Get job details
-   */
-  async getJobDetails(jobId: string): Promise<{
-    success: boolean;
-    job?: any;
-    message: string;
-  }> {
-    try {
-      const result = await QueueService.getJobDetails('otp', jobId);
-      return result;
-    } catch (error) {
-      logger.error('Error getting job details:', error as Error);
-      return {
-        success: false,
-        message: 'Failed to get job details'
       };
     }
   }

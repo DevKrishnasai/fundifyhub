@@ -2,10 +2,10 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
 import { prisma } from '@fundifyhub/prisma';
-import { generateAccessToken, JWTPayload } from '../../../utils/jwt';
+import { generateAccessToken } from '../../../utils/jwt';
 import { createLogger } from '@fundifyhub/logger';
-import { eventService } from '../../../services/event-service';
 import { jobQueueService } from '../../../services/job-queue';
+
 const logger = createLogger({ serviceName: 'auth-routes' });
 
 const router: Router = Router();
@@ -24,24 +24,6 @@ const registerSchema = z.object({
   roles: z.array(z.enum(['CUSTOMER', 'ADMIN', 'AGENT', 'DISTRICT_ADMIN', 'SUPER_ADMIN'])).default(['CUSTOMER'])
 });
 
-const sendOtpSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  email: z.string().email(),
-  phoneNumber: z.string().min(10),
-  password: z.string().min(6)
-});
-
-const verifyOtpSchema = z.object({
-  email: z.string().email(),
-  emailOtp: z.string().length(6),
-  phoneOtp: z.string().length(6),
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  phoneNumber: z.string().min(10),
-  password: z.string().min(6)
-});
-
 const checkEmailSchema = z.object({
   email: z.string().email()
 });
@@ -49,15 +31,6 @@ const checkEmailSchema = z.object({
 const checkPhoneSchema = z.object({
   phoneNumber: z.string().min(10)
 });
-
-interface APIResponse {
-  success: boolean;
-  message?: string;
-  data?: any;
-  error?: any;
-}
-
-
 
 // Helper function to generate OTP
 const generateOTP = (): string => {
@@ -181,8 +154,6 @@ router.post('/send-otp', async (req: Request, res: Response) => {
           recipient: identifier,
           otp: code,
           userName,
-          firstName,
-          lastName,
           templateType: 'VERIFICATION'
         });
       } else {
@@ -190,8 +161,6 @@ router.post('/send-otp', async (req: Request, res: Response) => {
           recipient: identifier,
           otp: code,
           userName,
-          firstName,
-          lastName,
           templateType: 'VERIFICATION'
         });
       }
@@ -199,18 +168,11 @@ router.post('/send-otp', async (req: Request, res: Response) => {
       logger.info(`${type} OTP job queued for ${identifier}`);
     } catch (queueError) {
       logger.error(`Failed to queue ${type} OTP job:`, queueError as Error);
-      
-      // For development, still log the OTP
-      logger.info(`${type} OTP for ${identifier}: ${code}`);
     }
 
     res.json({
       success: true,
       message: `OTP sent successfully to your ${type.toLowerCase()}`,
-      data: {
-        // For development, include OTP (remove in production)
-        ...(process.env.NODE_ENV !== 'production' && { code })
-      }
     });
   } catch (error) {
     logger.error('Send OTP error:', error as Error);
@@ -478,7 +440,7 @@ router.post('/complete-registration', async (req: Request, res: Response) => {
       id: newUser.id,
       userId: newUser.id,
       email: newUser.email,
-      role: newUser.role,
+      roles: newUser.roles,
       firstName: newUser.firstName,
       lastName: newUser.lastName,
       emailVerified: newUser.emailVerified,

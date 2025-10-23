@@ -122,7 +122,9 @@ export default function AdminSettingsPage() {
             ...prev,
             isActive: whatsappData.data.isActive || false,
             connectionStatus: whatsappData.data.status || 'DISABLED',
-            lastConnected: whatsappData.data.lastConnected,
+            isConnecting: false,
+            isInitializing: false,
+            lastConnected: whatsappData.data.lastConnectedAt || whatsappData.data.lastConnected,
             lastError: whatsappData.data.lastError
           }))
         }
@@ -139,7 +141,8 @@ export default function AdminSettingsPage() {
             ...prev,
             isActive: emailData.data.isActive || false,
             connectionStatus: emailData.data.status || 'DISABLED',
-            lastConnected: emailData.data.lastConnected,
+            isConnecting: false,
+            lastConnected: emailData.data.lastConnectedAt || emailData.data.lastConnected,
             lastError: emailData.data.lastError,
             // Load config if available
             config: emailData.data.config ? {
@@ -282,6 +285,7 @@ export default function AdminSettingsPage() {
                         isActive: true,
                         connectionStatus: 'CONNECTED',
                         isInitializing: false,
+                        isConnecting: false,
                         qrCode: null,
                         lastConnected: new Date().toISOString(),
                         lastError: null
@@ -455,7 +459,7 @@ export default function AdminSettingsPage() {
           ...prev,
           isActive: data.data.isActive,
           connectionStatus: data.data.status,
-          lastConnected: data.data.lastConnected,
+          lastConnected: data.data.lastConnectedAt || data.data.lastConnected,
           lastError: data.data.lastError
         }))
       }
@@ -697,7 +701,7 @@ export default function AdminSettingsPage() {
           ...prev,
           isActive: data.data.isActive,
           connectionStatus: data.data.status,
-          lastConnected: data.data.lastConnected,
+          lastConnected: data.data.lastConnectedAt || data.data.lastConnected,
           lastError: data.data.lastError,
           // Load config if available
           config: data.data.config ? {
@@ -878,10 +882,11 @@ export default function AdminSettingsPage() {
                   <Alert className="bg-green-500/10 border-green-500/30 animate-in fade-in-50">
                     <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                     <AlertDescription className="text-green-700 dark:text-green-300">
-                      <div className="font-medium">WhatsApp is connected and operational</div>
+                      <div className="font-medium mb-1.5">WhatsApp is connected and operational</div>
                       {whatsappService.lastConnected && (
-                        <div className="text-xs mt-1.5 opacity-80">
-                          Last connected: {new Date(whatsappService.lastConnected).toLocaleString()}
+                        <div className="text-xs flex items-center gap-1.5 opacity-90">
+                          <Clock className="w-3 h-3" />
+                          <span>Last connected: {new Date(whatsappService.lastConnected).toLocaleString()}</span>
                         </div>
                       )}
                     </AlertDescription>
@@ -1012,10 +1017,11 @@ export default function AdminSettingsPage() {
                   <Alert className="bg-green-500/10 border-green-500/30 animate-in fade-in-50">
                     <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                     <AlertDescription className="text-green-700 dark:text-green-300">
-                      <div className="font-medium">Email service is connected and operational</div>
+                      <div className="font-medium mb-1.5">Email service is connected and operational</div>
                       {emailService.lastConnected && (
-                        <div className="text-xs mt-1.5 opacity-80">
-                          Last connected: {new Date(emailService.lastConnected).toLocaleString()}
+                        <div className="text-xs flex items-center gap-1.5 opacity-90">
+                          <Clock className="w-3 h-3" />
+                          <span>Last connected: {new Date(emailService.lastConnected).toLocaleString()}</span>
                         </div>
                       )}
                     </AlertDescription>

@@ -90,7 +90,7 @@ router.get('/validate', requireAuth, async (req, res) => {
         email: true,
         firstName: true,
         lastName: true,
-        roles: true, // Changed from role to roles
+        roles: true,
         emailVerified: true,
         phoneVerified: true,
         isActive: true
@@ -122,6 +122,58 @@ router.get('/validate', requireAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Authentication validation failed'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/user/debug-auth
+ * Debug authentication - shows token data vs database data (development only)
+ */
+router.get('/debug-auth', requireAuth, async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ success: false, message: 'Not found' });
+  }
+
+  try {
+    const tokenData = req.user;
+    
+    const dbUser = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        roles: true,
+        emailVerified: true,
+        phoneVerified: true
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        tokenData: {
+          ...tokenData,
+          rolesType: Array.isArray(tokenData?.roles) ? 'array' : typeof tokenData?.roles
+        },
+        databaseData: {
+          ...dbUser,
+          rolesType: Array.isArray(dbUser?.roles) ? 'array' : typeof dbUser?.roles
+        },
+        comparison: {
+          rolesMatch: JSON.stringify(tokenData?.roles) === JSON.stringify(dbUser?.roles),
+          tokenRoles: tokenData?.roles,
+          dbRoles: dbUser?.roles
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Debug auth error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Debug failed'
     });
   }
 });
