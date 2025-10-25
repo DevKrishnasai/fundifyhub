@@ -342,6 +342,7 @@ model ServiceConfig {
   lastErrorAt     DateTime?
   lastError       String?
   connectionStatus String  @default("DISCONNECTED") // "CONNECTED", "DISCONNECTED", "ERROR", "INITIALIZING"
+  qrCode          String?  @db.Text // Base64 QR code for WhatsApp (large text)
   
   // Admin tracking
   configuredBy    String?  // Admin user ID who configured

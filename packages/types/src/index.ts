@@ -65,3 +65,4 @@ export * from "./loan-enums";
 
 // Export all queue job types
 export * from "./queue-types";
+export { SUPPORTED_SERVICES } from "./queue-types";

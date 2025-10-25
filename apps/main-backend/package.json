@@ -5,7 +5,6 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "npx dotenv -e ../../.env -- tsx src/server.ts",
-    "dev:auth": "npx dotenv -e ../../.env -- tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/src/server.js",
     "lint": "eslint ."

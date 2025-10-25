@@ -28,7 +28,7 @@ async function main() {
     select: {
       id: true,
       email: true,
-      role: true,
+        roles: true,
       firstName: true,
       lastName: true,
     },
@@ -36,7 +36,7 @@ async function main() {
 
   console.log("\n📋 Available test users:");
   users.forEach(user => {
-    console.log(`- ${user.email} (${user.role}) - ${user.firstName} ${user.lastName}`);
+  console.log(`- ${user.email} (${user.roles}) - ${user.firstName} ${user.lastName}`);
   });
 
   console.log(`\n🔑 Default password for all users: "${defaultPassword}"`);

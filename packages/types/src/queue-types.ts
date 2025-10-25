@@ -1,4 +1,16 @@
 /**
+ * Shared Supported Services List
+ * Use this constant across backend, job-worker, and frontend
+ */
+// ...existing code...
+// ...existing code...
+export enum ServiceName {
+  WHATSAPP = 'WHATSAPP',
+  EMAIL = 'EMAIL',
+}
+
+export const SUPPORTED_SERVICES: ServiceName[] = [ServiceName.EMAIL, ServiceName.WHATSAPP];
+/**
  * Shared Queue Job Types and Interfaces
  * Used across backend, job-worker, and frontend
  * These types define the contract for all job queues
@@ -53,13 +65,8 @@ export interface OTPQueueStats {
 // Service Control Queue Types
 // ============================================
 
-export enum ServiceName {
-  WHATSAPP = 'WHATSAPP',
-  EMAIL = 'EMAIL',
-}
-
 export interface ServiceControlJobData {
-  action: 'START' | 'STOP' | 'RESTART';
+  action: 'START' | 'STOP' | 'RESTART' | 'DISCONNECT';
   serviceName: ServiceName | 'WHATSAPP' | 'EMAIL';
   reason?: string;
   triggeredBy?: string; // admin user id

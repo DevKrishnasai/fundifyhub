@@ -60,7 +60,7 @@ export async function getUsers(limit: number = 10) {
         email: true,
         firstName: true,
         lastName: true,
-        role: true,
+  roles: true,
         district: true,
         isActive: true,
         createdAt: true,

@@ -1,43 +1,43 @@
 import { Router, type Router as ExpressRouter } from 'express';
 import { requireAuth, requireAdmin } from '../auth';
 import {
-  getAllConfigController,
-  getConfigController,
-  updateConfigController,
-  testConfigController,
-  initializeConfigController,
+  getAllServicesController,
+  enableServiceController,
+  disableServiceController,
+  disconnectServiceController,
+  configureServiceController,
 } from './controllers';
 
 const router: ExpressRouter = Router();
 
 /**
- * GET /admin/config
- * Get all service configurations
+ * GET /admin/services
+ * Get all service configurations (auto-create if missing)
  */
-router.get('/config', requireAuth, requireAdmin, getAllConfigController);
+router.get('/services', requireAuth, getAllServicesController);
 
 /**
- * GET /admin/config/:serviceName
- * Get specific service configuration
+ * POST /admin/service/:serviceName/enable
+ * Enable a service
  */
-router.get('/config/:serviceName', requireAuth, requireAdmin, getConfigController);
+router.post('/service/:serviceName/enable', requireAuth, enableServiceController);
 
 /**
- * POST /admin/config/:serviceName
- * Update service configuration (enable/disable)
+ * POST /admin/service/:serviceName/disable
+ * Disable a service
  */
-router.post('/config/:serviceName', requireAuth, requireAdmin, updateConfigController);
+router.post('/service/:serviceName/disable', requireAuth, disableServiceController);
 
 /**
- * POST /admin/config/:serviceName/test
- * Test a service configuration (SMTP validation or WhatsApp test)
+ * POST /admin/service/:serviceName/disconnect
+ * Disconnect and cleanup a service
  */
-router.post('/config/:serviceName/test', requireAuth, requireAdmin, testConfigController);
+router.post('/service/:serviceName/disconnect', requireAuth, disconnectServiceController);
 
 /**
- * POST /admin/init
- * Initialize default service configurations
+ * POST /admin/service/:serviceName/configure
+ * Update service configuration (e.g., email SMTP settings)
  */
-router.post('/init', requireAuth, requireAdmin, initializeConfigController);
+router.post('/service/:serviceName/configure', requireAuth, configureServiceController);
 
 export default router;

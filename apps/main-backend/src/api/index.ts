@@ -1,3 +1,17 @@
+/**
+ * Main API Router
+ *
+ * This file defines the main API routing structure for FundifyHub.
+ * All API endpoints are prefixed with /api/v1 and organized by feature:
+ *
+ * - /auth - User authentication (login, register, OTP verification)
+ * - /admin - Administrative operations
+ * - /user - User profile and operations
+ * - /health - Health check endpoint
+ *
+ * TODO: Add service routes for loan applications and other features
+ */
+
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
 // import serviceRoutes from './service/routes';

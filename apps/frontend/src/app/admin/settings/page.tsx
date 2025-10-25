@@ -3,1186 +3,802 @@
 import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label" 
-import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
-  Settings,
   Mail,
   MessageSquare,
   CheckCircle2,
   XCircle,
-  RefreshCw,
-  QrCode,
   Loader2,
   AlertCircle,
-  Info,
-  ExternalLink,
+  QrCode,
+  RefreshCw,
+  Save,
+  Edit,
+  Trash2,
   Clock,
-  Power,
+  Server,
   Zap,
+  Shield,
+  Info,
+  Settings,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { apiUrl, API_CONFIG } from "@/lib/utils"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import Image from "next/image"
+
+// Service status type
+type ServiceStatus = {
+  serviceName: string
+  status: string
+  isEnabled: boolean
+  isActive: boolean
+  connectionStatus: string
+  lastConnectedAt?: string
+  lastError?: string
+  config?: any
+  qrCode?: string
+}
+
+// Email configuration type
+type EmailConfig = {
+  host: string
+  port: number
+  user: string
+  password: string
+  from: string
+}
 
 export default function AdminSettingsPage() {
   const { toast } = useToast()
   
-  // WhatsApp service state
-  const [whatsappService, setWhatsappService] = useState({
-    isActive: false,
-    connectionStatus: 'DISABLED',
-    isConnecting: false,
-    isInitializing: false,
-    qrCode: null as string | null,
-    lastConnected: null as string | null,
-    lastError: null as string | null,
-    clientId: 'fundifyhub-admin-frontend'
-  })
+  const [services, setServices] = useState<ServiceStatus[]>([])
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState<{ [key: string]: boolean }>({})
   
-  // Email service state
-  const [emailService, setEmailService] = useState({
-    isActive: false,
-    connectionStatus: 'DISABLED',
-    isConnecting: false,
-    isTesting: false,
-    lastConnected: null as string | null,
-    lastError: null as string | null,
-    config: {
-      smtpHost: '',
-      smtpPort: 587,
-      smtpSecure: false,
-      smtpUser: '',
-      smtpPass: '',
-      smtpFrom: 'noreply@fundifyhub.com'
-    }
+  // Email Config State (inline editing)
+  const [emailConfigMode, setEmailConfigMode] = useState(false)
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>({
+    host: "",
+    port: 587,
+    user: "",
+    password: "",
+    from: "",
   })
-  
-  const [abortController, setAbortController] = useState<AbortController | null>(null)
 
-  // Service status configuration
-  const getServiceStatus = (service: typeof whatsappService | typeof emailService) => {
-    const isConnecting = 'isInitializing' in service 
-      ? (service.isConnecting || service.isInitializing)
-      : service.isConnecting
-      
-    if (isConnecting) {
-      return { 
-        icon: Loader2, 
-        text: 'Connecting...', 
-        color: 'text-blue-500',
-        bgColor: 'bg-blue-500/10',
-        borderColor: 'border-blue-500/20'
-      }
-    }
-    if (service.isActive) {
-      return { 
-        icon: CheckCircle2, 
-        text: 'Active', 
-        color: 'text-green-500',
-        bgColor: 'bg-green-500/10',
-        borderColor: 'border-green-500/20'
-      }
-    }
-    if (service.lastError) {
-      return { 
-        icon: XCircle, 
-        text: 'Error', 
-        color: 'text-red-500',
-        bgColor: 'bg-red-500/10',
-        borderColor: 'border-red-500/20'
-      }
-    }
-    return { 
-      icon: Power, 
-      text: 'Disabled', 
-      color: 'text-gray-500',
-      bgColor: 'bg-gray-500/10',
-      borderColor: 'border-gray-500/20'
-    }
-  }
-
-  // Load initial service status on mount
+  // Load existing config into form when entering edit mode
   useEffect(() => {
-    const loadInitialStatus = async () => {
-      try {
-        // Load WhatsApp status
-        const whatsappResponse = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.WHATSAPP_STATUS), {
-          credentials: 'include',
-        })
-        const whatsappData = await whatsappResponse.json()
-        
-        if (whatsappData.success && whatsappData.data) {
-          console.log('📊 Initial WhatsApp status:', whatsappData.data)
-          setWhatsappService(prev => ({
-            ...prev,
-            isActive: whatsappData.data.isActive || false,
-            connectionStatus: whatsappData.data.status || 'DISABLED',
-            isConnecting: false,
-            isInitializing: false,
-            lastConnected: whatsappData.data.lastConnectedAt || whatsappData.data.lastConnected,
-            lastError: whatsappData.data.lastError
-          }))
-        }
-
-        // Load Email status
-        const emailResponse = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.EMAIL_STATUS), {
-          credentials: 'include',
-        })
-        const emailData = await emailResponse.json()
-        
-        if (emailData.success && emailData.data) {
-          console.log('📊 Initial Email status:', emailData.data)
-          setEmailService(prev => ({
-            ...prev,
-            isActive: emailData.data.isActive || false,
-            connectionStatus: emailData.data.status || 'DISABLED',
-            isConnecting: false,
-            lastConnected: emailData.data.lastConnectedAt || emailData.data.lastConnected,
-            lastError: emailData.data.lastError,
-            // Load config if available
-            config: emailData.data.config ? {
-              smtpHost: emailData.data.config.smtpHost || prev.config.smtpHost,
-              smtpPort: emailData.data.config.smtpPort || prev.config.smtpPort,
-              smtpSecure: emailData.data.config.smtpSecure ?? prev.config.smtpSecure,
-              smtpUser: emailData.data.config.smtpUser || prev.config.smtpUser,
-              smtpPass: emailData.data.config.smtpPass || prev.config.smtpPass,
-              smtpFrom: emailData.data.config.smtpFrom || prev.config.smtpFrom,
-            } : prev.config
-          }))
-        }
-      } catch (error) {
-        console.error('❌ Failed to load initial status:', error)
+    if (emailConfigMode) {
+      const emailService = services.find(s => s.serviceName === 'EMAIL')
+      if (emailService?.config && Object.keys(emailService.config).length > 0) {
+        setEmailConfig(emailService.config)
       }
     }
+  }, [emailConfigMode, services])
 
-    loadInitialStatus()
-  }, [])
-
-  // WhatsApp Functions
-  const connectWhatsApp = async () => {
+  // Load services from API
+  const loadServices = async () => {
     try {
-      setWhatsappService(prev => ({ 
-        ...prev, 
-        isInitializing: true,
-        isConnecting: true,
-        lastError: null 
-      }))
-
-      toast({
-        title: "🔄 Initializing WhatsApp...",
-        description: "Please wait while we connect to WhatsApp service",
-      })
-
-      // First, enable the service in backend
-      const configResponse = await fetch(apiUrl(`${API_CONFIG.ENDPOINTS.ADMIN.SERVICES_CONFIG}/WHATSAPP`), {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isEnabled: true })
-      })
-
-      if (!configResponse.ok) {
-        const errorData = await configResponse.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `HTTP ${configResponse.status}: ${configResponse.statusText}`
-        throw new Error(errorMessage)
-      }
-
-      const configData = await configResponse.json()
-      if (!configData.success) {
-        throw new Error(configData.error || configData.message || 'Failed to enable WhatsApp service')
-      }
-
-      // Then connect and get QR code
-      const controller = new AbortController()
-      setAbortController(controller)
-
-      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.WHATSAPP_QR), {
-        credentials: 'include',
-        headers: {
-          'Accept': 'text/event-stream',
-        },
-        signal: controller.signal,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `Failed to initialize: ${response.status} ${response.statusText}`
-        throw new Error(errorMessage)
-      }
-
-      if (!response.body) {
-        throw new Error('No response body')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-
-      const processStream = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            const chunk = decoder.decode(value, { stream: true })
-            const lines = chunk.split('\n\n')
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const rawData = line.slice(6)
-                  console.log('📨 SSE Raw data:', rawData)
-                  const message = JSON.parse(rawData)
-                  console.log('📨 SSE Parsed message:', message)
-                  
-                  // Handle both old flat format and new nested format
-                  const eventType = message.type || message.status
-                  const eventData = message.data || message
-                  const status = eventData.connectionStatus || eventType
-                  
-                  console.log('📊 Extracted status:', status, 'Event type:', eventType)
-                  
-                  switch (status) {
-                    case 'INITIALIZING':
-                      console.log('✅ Setting state: INITIALIZING')
-                      setWhatsappService(prev => ({ 
-                        ...prev, 
-                        connectionStatus: 'INITIALIZING',
-                        isInitializing: true,
-                        lastError: null
-                      }))
-                      break
-                    
-                    case 'WAITING_FOR_QR_SCAN':
-                      console.log('✅ Setting state: WAITING_FOR_QR_SCAN with QR code:', !!eventData.qrCode)
-                      setWhatsappService(prev => ({
-                        ...prev,
-                        qrCode: eventData.qrCode,
-                        connectionStatus: 'WAITING_FOR_QR_SCAN',
-                        isInitializing: false,
-                        lastError: null
-                      }))
-                      break
-                    
-                    case 'AUTHENTICATED':
-                      console.log('✅ Setting state: AUTHENTICATED')
-                      setWhatsappService(prev => ({ 
-                        ...prev, 
-                        connectionStatus: 'AUTHENTICATED',
-                        lastError: null
-                      }))
-                      break
-                    
-                    case 'CONNECTED':
-                    case 'READY':
-                      console.log('✅ Setting state: CONNECTED')
-                      setWhatsappService(prev => ({
-                        ...prev,
-                        isActive: true,
-                        connectionStatus: 'CONNECTED',
-                        isInitializing: false,
-                        isConnecting: false,
-                        qrCode: null,
-                        lastConnected: new Date().toISOString(),
-                        lastError: null
-                      }))
-                      toast({
-                        title: "✅ WhatsApp Connected",
-                        description: "WhatsApp service is now active and ready to send OTPs",
-                      })
-                      break
-                    
-                    case 'DISCONNECTED':
-                    case 'DISABLED':
-                      console.log('✅ Setting state:', status)
-                      setWhatsappService(prev => ({
-                        ...prev,
-                        isActive: false,
-                        connectionStatus: status,
-                        qrCode: null,
-                        isInitializing: false
-                      }))
-                      break
-                    
-                    case 'AUTH_FAILURE':
-                      console.log('❌ Setting state: AUTH_FAILURE')
-                      const errorMsg = eventData.message || eventData.error || 'Authentication failed'
-                      setWhatsappService(prev => ({
-                        ...prev,
-                        isActive: false,
-                        connectionStatus: 'AUTH_FAILURE',
-                        lastError: errorMsg,
-                        qrCode: null,
-                        isInitializing: false
-                      }))
-                      toast({
-                        variant: "destructive",
-                        title: "❌ Authentication Failed",
-                        description: errorMsg,
-                      })
-                      break
-
-                    case 'TIMEOUT':
-                      console.log('⏱️ Setting state: TIMEOUT')
-                      setWhatsappService(prev => ({
-                        ...prev,
-                        isActive: false,
-                        connectionStatus: 'TIMEOUT',
-                        lastError: 'QR code expired after 3 minutes',
-                        qrCode: null,
-                        isInitializing: false
-                      }))
-                      toast({
-                        variant: "destructive",
-                        title: "⏱️ QR Code Expired",
-                        description: "The QR code expired. Please try connecting again.",
-                      })
-                      break
-                      
-                    default:
-                      console.log('⚠️ Unknown status:', status)
-                  }
-                } catch (e) {
-                  console.error('❌ Error parsing SSE data:', e, 'Raw line:', line)
-                }
-              }
-            }
-          }
-        } catch (error: any) {
-          if (error.name !== 'AbortError') {
-            console.error('❌ Stream error:', error)
-          }
-        }
-      }
-
-      await processStream()
-
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        console.error('❌ WhatsApp connection error:', error)
-        const errorMessage = error.message || 'Failed to connect to WhatsApp'
-        setWhatsappService(prev => ({
-          ...prev,
-          isInitializing: false,
-          isConnecting: false,
-          lastError: errorMessage
-        }))
-        toast({
-          variant: "destructive",
-          title: "❌ Connection Failed",
-          description: errorMessage,
-        })
-      }
-    }
-  }
-
-  const disconnectWhatsApp = async () => {
-    try {
-      if (abortController) {
-        abortController.abort()
-        setAbortController(null)
-      }
-
-      setWhatsappService(prev => ({ ...prev, isConnecting: true, lastError: null }))
-
-      const response = await fetch(apiUrl(`${API_CONFIG.ENDPOINTS.ADMIN.SERVICES_CONFIG}/WHATSAPP`), {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isEnabled: false })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`
-        throw new Error(errorMessage)
-      }
-
-      const data = await response.json()
-      if (!data.success) {
-        throw new Error(data.error || data.message || 'Failed to disconnect WhatsApp')
-      }
-
-      setWhatsappService(prev => ({
-        ...prev,
-        isActive: false,
-        connectionStatus: 'DISABLED',
-        qrCode: null,
-        isConnecting: false,
-        isInitializing: false,
-        lastError: null
-      }))
-
-      toast({
-        title: "✅ WhatsApp Disconnected",
-        description: "WhatsApp service has been disabled",
-      })
-    } catch (error: any) {
-      const errorMessage = error.message || 'Failed to disconnect WhatsApp'
-      setWhatsappService(prev => ({ 
-        ...prev, 
-        isConnecting: false,
-        lastError: errorMessage
-      }))
-      toast({
-        variant: "destructive",
-        title: "❌ Disconnect Failed",
-        description: errorMessage,
-      })
-    }
-  }
-
-  const checkWhatsAppStatus = async () => {
-    try {
-      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.WHATSAPP_STATUS), {
+      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICES), {
         credentials: 'include',
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`
-        throw new Error(errorMessage)
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
 
       const data = await response.json()
       
-      if (!data.success) {
-        throw new Error(data.error || data.message || 'Failed to fetch WhatsApp status')
-      }
-      
-      if (data.data) {
-        setWhatsappService(prev => ({
-          ...prev,
-          isActive: data.data.isActive,
-          connectionStatus: data.data.status,
-          lastConnected: data.data.lastConnectedAt || data.data.lastConnected,
-          lastError: data.data.lastError
-        }))
-      }
-      
-      toast({
-        title: "✅ Status Updated",
-        description: `WhatsApp is ${data.data.isActive ? 'active' : 'inactive'}`,
-      })
-    } catch (error: any) {
-      const errorMessage = error.message || 'Failed to check WhatsApp status'
-      toast({
-        variant: "destructive",
-        title: "❌ Status Check Failed",
-        description: errorMessage,
-      })
-    }
-  }
-
-  // Email Functions
-  const testEmailConnection = async () => {
-    try {
-      setEmailService(prev => ({ ...prev, isConnecting: true, lastError: null }))
-
-      // First, fetch current config from backend if we don't have it locally
-      let configToUse = emailService.config
-      
-      if (!emailService.config.smtpHost || !emailService.config.smtpUser || !emailService.config.smtpPass) {
-        // Load config from backend
-        const statusResponse = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.EMAIL_STATUS), {
-          credentials: 'include',
-        })
-        const statusData = await statusResponse.json()
-        
-        if (statusData.success && statusData.data?.config) {
-          configToUse = statusData.data.config
-          // Update local state with backend config
-          setEmailService(prev => ({
-            ...prev,
-            config: statusData.data.config
-          }))
-        } else {
-          throw new Error('No email configuration found. Please configure email settings first.')
-        }
-      }
-
-      // Enable the service with config
-      const response = await fetch(apiUrl(`${API_CONFIG.ENDPOINTS.ADMIN.SERVICES_CONFIG}/EMAIL`), {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          isEnabled: true,
-          config: configToUse
-        })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`
-        throw new Error(errorMessage)
-      }
-
-      const data = await response.json()
-      
-      if (!data.success) {
-        throw new Error(data.error || data.message || 'Failed to enable email service')
-      }
-
-      // Test the connection with config
-      const testResponse = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.EMAIL_TEST_CONNECT), {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: configToUse })
-      })
-
-      if (!testResponse.ok) {
-        const errorData = await testResponse.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `Test failed: HTTP ${testResponse.status}`
-        throw new Error(errorMessage)
-      }
-
-      const testData = await testResponse.json()
-
-      if (!testData.success) {
-        throw new Error(testData.error || testData.message || testData.data?.lastError || 'Failed to test email connection')
-      }
-
-      // The backend polls internally, but if we get here, it's successful
-      if (testData.data && testData.data.isActive) {
-        setEmailService(prev => ({
-          ...prev,
-          isActive: true,
-          connectionStatus: 'CONNECTED',
-          isConnecting: false,
-          lastConnected: new Date().toISOString(),
-          lastError: null
-        }))
-
-        toast({
-          title: "✅ Email Connected",
-          description: "Email service is now active. Test email sent!",
-        })
-      } else {
-        // If not active yet, poll for status (fallback)
-        toast({
-          title: "⏳ Connecting...",
-          description: "Testing email connection, please wait...",
-        })
-        
-        // Poll for status updates
-        let attempts = 0
-        const maxAttempts = 20 // 20 attempts * 1 second = 20 seconds max
-        
-        const pollStatus = async () => {
-          attempts++
-          
-          const statusResponse = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.EMAIL_STATUS), {
-            credentials: 'include',
-          })
-          const statusData = await statusResponse.json()
-          
-          if (statusData.success && statusData.data) {
-            if (statusData.data.isActive && statusData.data.status === 'CONNECTED') {
-              setEmailService(prev => ({
-                ...prev,
-                isActive: true,
-                connectionStatus: 'CONNECTED',
-                isConnecting: false,
-                lastConnected: new Date().toISOString(),
-                lastError: null
-              }))
-              
-              toast({
-                title: "✅ Email Connected",
-                description: "Email service is now active. Test email sent!",
-              })
-              return
-            }
-            
-            if (statusData.data.lastError) {
-              throw new Error(statusData.data.lastError)
-            }
-          }
-          
-          if (attempts < maxAttempts) {
-            setTimeout(pollStatus, 1000)
-          } else {
-            throw new Error('Connection timeout - please check email status')
-          }
-        }
-        
-        await pollStatus()
+      if (data.success && data.data) {
+        setServices(data.data)
       }
     } catch (error: any) {
-      const errorMessage = error.message || 'Failed to connect email service'
-      setEmailService(prev => ({
-        ...prev,
-        isConnecting: false,
-        lastError: errorMessage
-      }))
+      console.error('Load services error:', error)
       toast({
         variant: "destructive",
-        title: "❌ Connection Failed",
-        description: errorMessage,
-      })
-    }
-  }
-
-  const disconnectEmail = async () => {
-    try {
-      setEmailService(prev => ({ ...prev, isConnecting: true, lastError: null }))
-
-      const response = await fetch(apiUrl(`${API_CONFIG.ENDPOINTS.ADMIN.SERVICES_CONFIG}/EMAIL`), {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isEnabled: false })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`
-        throw new Error(errorMessage)
-      }
-
-      const data = await response.json()
-      if (!data.success) {
-        throw new Error(data.error || data.message || 'Failed to disconnect email service')
-      }
-
-      setEmailService(prev => ({
-        ...prev,
-        isActive: false,
-        connectionStatus: 'DISABLED',
-        isConnecting: false,
-        lastError: null
-      }))
-
-      toast({
-        title: "✅ Email Disconnected",
-        description: "Email service has been disabled",
-      })
-    } catch (error: any) {
-      const errorMessage = error.message || 'Failed to disconnect email service'
-      setEmailService(prev => ({ 
-        ...prev, 
-        isConnecting: false,
-        lastError: errorMessage
-      }))
-      toast({
-        variant: "destructive",
-        title: "❌ Disconnect Failed",
-        description: errorMessage,
-      })
-    }
-  }
-
-  const checkEmailStatus = async () => {
-    try {
-      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.EMAIL_STATUS), {
-        credentials: 'include',
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`
-        throw new Error(errorMessage)
-      }
-
-      const data = await response.json()
-      
-      if (!data.success) {
-        throw new Error(data.error || data.message || 'Failed to fetch email status')
-      }
-      
-      if (data.data) {
-        setEmailService(prev => ({
-          ...prev,
-          isActive: data.data.isActive,
-          connectionStatus: data.data.status,
-          lastConnected: data.data.lastConnectedAt || data.data.lastConnected,
-          lastError: data.data.lastError,
-          // Load config if available
-          config: data.data.config ? {
-            smtpHost: data.data.config.smtpHost || prev.config.smtpHost,
-            smtpPort: data.data.config.smtpPort || prev.config.smtpPort,
-            smtpSecure: data.data.config.smtpSecure ?? prev.config.smtpSecure,
-            smtpUser: data.data.config.smtpUser || prev.config.smtpUser,
-            smtpPass: data.data.config.smtpPass || prev.config.smtpPass,
-            smtpFrom: data.data.config.smtpFrom || prev.config.smtpFrom,
-          } : prev.config
-        }))
-      }
-      
-      toast({
-        title: "✅ Status Updated",
-        description: `Email is ${data.data.isActive ? 'active' : 'inactive'}`,
-      })
-    } catch (error: any) {
-      const errorMessage = error.message || 'Failed to check email status'
-      toast({
-        variant: "destructive",
-        title: "❌ Status Check Failed",
-        description: errorMessage,
-      })
-    }
-  }
-
-  const testEmailConfiguration = async () => {
-    try {
-      setEmailService(prev => ({ ...prev, isTesting: true }))
-
-      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.EMAIL_TEST), {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          to: emailService.config.smtpUser 
-        })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`
-        throw new Error(errorMessage)
-      }
-
-      const data = await response.json()
-      
-      if (!data.success) {
-        throw new Error(data.error || data.message || 'Failed to send test email')
-      }
-
-      toast({
-        title: "✅ Test Email Sent",
-        description: "Check your inbox for the test email",
-      })
-    } catch (error: any) {
-      const errorMessage = error.message || 'Failed to test email configuration'
-      toast({
-        variant: "destructive",
-        title: "❌ Test Failed",
-        description: errorMessage,
+        title: "❌ Failed to load services",
+        description: error.message || 'An error occurred',
       })
     } finally {
-      setEmailService(prev => ({ ...prev, isTesting: false }))
+      setLoading(false)
     }
   }
 
-  const whatsappStatus = getServiceStatus(whatsappService)
-  const emailStatus = getServiceStatus(emailService)
+  // Polling effect - simple 5 second interval
+  useEffect(() => {
+    // Initial load
+    loadServices()
 
-  return (
-    <div className="container mx-auto py-8 px-4 max-w-7xl">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Settings className="w-6 h-6 text-primary" />
+    // Set up polling interval
+    const pollInterval = setInterval(() => {
+      loadServices()
+    }, 5000) // Poll every 5 seconds
+
+    // Cleanup on unmount
+    return () => clearInterval(pollInterval)
+  }, []) // Empty dependency array - run once on mount
+
+  // Manual refresh
+  const handleRefresh = async () => {
+    setLoading(true)
+    await loadServices()
+  }
+
+  // Enable service
+  const handleEnable = async (serviceName: string) => {
+    const service = services.find(s => s.serviceName === serviceName)
+    
+    // For email, check if config exists
+    if (serviceName === 'EMAIL') {
+      if (!service?.config || Object.keys(service.config).length === 0) {
+        toast({
+          variant: "destructive",
+          title: "⚠️ Configuration Required",
+          description: "Please configure email settings before enabling",
+        })
+        setEmailConfigMode(true)
+        return
+      }
+    }
+
+    setActionLoading({ ...actionLoading, [`${serviceName}-enable`]: true })
+    
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_ENABLE(serviceName)), {
+        method: 'POST',
+        credentials: 'include',
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "✅ Service Enabled",
+          description: `${serviceName} has been enabled`,
+        })
+        await loadServices()
+      } else {
+        throw new Error(data.message)
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "❌ Enable Failed",
+        description: error.message || 'An error occurred',
+      })
+    } finally {
+      setActionLoading({ ...actionLoading, [`${serviceName}-enable`]: false })
+    }
+  }
+
+  // Disable service (deletes everything)
+  const handleDisable = async (serviceName: string) => {
+    if (!confirm(`Are you sure you want to disable ${serviceName}? This will delete all configuration and data.`)) {
+      return
+    }
+
+    setActionLoading({ ...actionLoading, [`${serviceName}-disable`]: true })
+    
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_DISABLE(serviceName)), {
+        method: 'POST',
+        credentials: 'include',
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "✅ Service Disabled",
+          description: `${serviceName} has been disabled and deleted`,
+        })
+        setEmailConfigMode(false) // Reset email config mode
+        await loadServices()
+      } else {
+        throw new Error(data.message)
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "❌ Disable Failed",
+        description: error.message || 'An error occurred',
+      })
+    } finally {
+      setActionLoading({ ...actionLoading, [`${serviceName}-disable`]: false })
+    }
+  }
+
+  // Save email configuration
+  const handleSaveEmailConfig = async () => {
+    if (!emailConfig.host || !emailConfig.user || !emailConfig.password || !emailConfig.from) {
+      toast({
+        variant: "destructive",
+        title: "⚠️ Validation Error",
+        description: "Please fill in all required fields",
+      })
+      return
+    }
+
+    setActionLoading({ ...actionLoading, 'email-config': true })
+    
+    // Show testing toast
+    toast({
+      title: "🔄 Testing Configuration",
+      description: "Connecting to SMTP server and sending test email...",
+    })
+    
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_CONFIGURE('email')), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailConfig),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "✅ Configuration Saved & Tested",
+          description: "Test email sent successfully! Check your inbox to confirm.",
+        })
+        setEmailConfigMode(false)
+        await loadServices()
+      } else {
+        throw new Error(data.message)
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "❌ Configuration Test Failed",
+        description: error.message || 'Failed to connect to SMTP server. Please check your settings.',
+      })
+    } finally {
+      setActionLoading({ ...actionLoading, 'email-config': false })
+    }
+  }
+
+  // Get status badge with theme support
+  const getStatusBadge = (status: string) => {
+    switch (status.toUpperCase()) {
+      case 'CONNECTED':
+      case 'AUTHENTICATED':
+        return (
+          <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20 hover:bg-green-500/20">
+            <CheckCircle2 className="w-3 h-3 mr-1" /> 
+            Connected
+          </Badge>
+        )
+      case 'DISCONNECTED':
+      case 'DISABLED':
+        return (
+          <Badge variant="secondary" className="bg-secondary/50">
+            <XCircle className="w-3 h-3 mr-1" /> 
+            Disconnected
+          </Badge>
+        )
+      case 'INITIALIZING':
+      case 'CONNECTING':
+        return (
+          <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" /> 
+            Connecting
+          </Badge>
+        )
+      case 'WAITING_FOR_QR_SCAN':
+        return (
+          <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20">
+            <QrCode className="w-3 h-3 mr-1" /> 
+            Scan QR
+          </Badge>
+        )
+      case 'ERROR':
+      case 'TIMEOUT':
+      case 'AUTH_FAILURE':
+        return (
+          <Badge variant="destructive" className="bg-destructive/10 text-destructive border-destructive/20">
+            <AlertCircle className="w-3 h-3 mr-1" /> 
+            Error
+          </Badge>
+        )
+      default:
+        return (
+          <Badge variant="outline">
+            {status}
+          </Badge>
+        )
+    }
+  }
+
+  // Render WhatsApp card
+  const renderWhatsAppCard = (service: ServiceStatus) => {
+    return (
+      <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200">
+        <CardHeader className="border-b bg-muted/30 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-green-500/10 rounded-lg">
+                <MessageSquare className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <CardTitle className="text-lg sm:text-xl">WhatsApp Business</CardTitle>
+                <CardDescription className="text-sm mt-0.5">
+                  Automated messaging and notifications
+                </CardDescription>
+              </div>
+            </div>
+            {getStatusBadge(service.connectionStatus)}
           </div>
-          <div>
-            <h1 className="text-3xl font-bold">Settings</h1>
-            <p className="text-muted-foreground">Manage OTP services and system configuration</p>
+        </CardHeader>
+
+        <CardContent className="pt-6 space-y-6">
+          {/* Status Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Zap className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Status</span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold">
+                {service.isEnabled ? 'Enabled' : 'Disabled'}
+              </p>
+            </div>
+
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Server className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Active</span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold">
+                {service.isActive ? 'Yes' : 'No'}
+              </p>
+            </div>
+
+            {service.lastConnectedAt && (
+              <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2 sm:col-span-1">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Clock className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">Last Connected</span>
+                </div>
+                <p className="text-xs sm:text-sm font-semibold">
+                  {new Date(service.lastConnectedAt).toLocaleString('en-US', {
+                    dateStyle: 'short',
+                    timeStyle: 'short'
+                  })}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Error Display */}
+          {service.lastError && (
+            <Alert variant="destructive" className="bg-destructive/5">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{service.lastError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* QR Code Display */}
+          {service.qrCode && (
+            <div className="border-2 border-primary rounded-lg p-4 sm:p-6 bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2">
+                <QrCode className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-base sm:text-lg">Scan QR Code to Connect</h3>
+              </div>
+              
+              <div className="bg-background p-4 rounded-lg border-2">
+                <div className="flex justify-center">
+                  <Image
+                    src={service.qrCode}
+                    alt="WhatsApp QR Code"
+                    width={256}
+                    height={256}
+                    className="rounded-md"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2 text-xs sm:text-sm text-muted-foreground">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                  <p>Open WhatsApp on your phone → Settings → Linked Devices → Link a Device</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                  <p>Point your camera at the QR code above to connect</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+
+        <CardFooter className="bg-muted/30 border-t flex gap-2 p-4">
+          {!service.isEnabled ? (
+            <Button
+              onClick={() => handleEnable('WHATSAPP')}
+              disabled={actionLoading['WHATSAPP-enable']}
+              className="w-full h-10"
+            >
+              {actionLoading['WHATSAPP-enable'] ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enabling...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Enable WhatsApp
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => handleDisable('WHATSAPP')}
+              disabled={actionLoading['WHATSAPP-disable']}
+              variant="destructive"
+              className="w-full h-10"
+            >
+              {actionLoading['WHATSAPP-disable'] ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Disabling...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Disable & Delete
+                </>
+              )}
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+    )
+  }
+
+  // Render Email card
+  const renderEmailCard = (service: ServiceStatus) => {
+    const hasConfig = service.config && Object.keys(service.config).length > 0
+    const showConfigForm = emailConfigMode || (!hasConfig && !service.isEnabled)
+
+    return (
+      <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200">
+        <CardHeader className="border-b bg-muted/30 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-500/10 rounded-lg">
+                <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <CardTitle className="text-lg sm:text-xl">Email Service</CardTitle>
+                <CardDescription className="text-sm mt-0.5">
+                  SMTP email notifications and alerts
+                </CardDescription>
+              </div>
+            </div>
+            {getStatusBadge(service.connectionStatus)}
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-6 space-y-6">
+          {/* Status Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Zap className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Status</span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold">
+                {service.isEnabled ? 'Enabled' : 'Disabled'}
+              </p>
+            </div>
+
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Server className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Config</span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold">
+                {hasConfig ? 'Set' : 'Not Set'}
+              </p>
+            </div>
+
+            {hasConfig && !showConfigForm && (
+              <>
+                <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Server className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-medium text-muted-foreground">SMTP Host</span>
+                  </div>
+                  <p className="text-sm font-semibold truncate">{service.config.host}</p>
+                </div>
+                <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Mail className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-medium text-muted-foreground">Email Address</span>
+                  </div>
+                  <p className="text-sm font-semibold truncate">{service.config.user}</p>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Error Display */}
+          {service.lastError && (
+            <Alert variant="destructive" className="bg-destructive/5">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{service.lastError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Configuration Required Alert */}
+          {!hasConfig && !showConfigForm && (
+            <Alert className="border-primary/20 bg-primary/5">
+              <AlertCircle className="h-4 w-4 text-primary" />
+              <AlertDescription className="text-sm">
+                Configuration required before enabling this service
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Configuration Form */}
+          {showConfigForm && (
+            <div className="border-2 border-primary/20 rounded-lg p-4 sm:p-6 bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Edit className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-base sm:text-lg">SMTP Configuration</h3>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="host" className="text-sm font-medium">SMTP Host *</Label>
+                    <Input
+                      id="host"
+                      placeholder="smtp.gmail.com"
+                      value={emailConfig.host}
+                      onChange={(e) => setEmailConfig({ ...emailConfig, host: e.target.value })}
+                      className="h-10"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="port" className="text-sm font-medium">SMTP Port *</Label>
+                    <Input
+                      id="port"
+                      type="number"
+                      placeholder="587"
+                      value={emailConfig.port}
+                      onChange={(e) => setEmailConfig({ ...emailConfig, port: parseInt(e.target.value) })}
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="user" className="text-sm font-medium">Email Address *</Label>
+                  <Input
+                    id="user"
+                    type="email"
+                    placeholder="your-email@gmail.com"
+                    value={emailConfig.user}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, user: e.target.value })}
+                    className="h-10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm font-medium">Password / App Password *</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={emailConfig.password}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, password: e.target.value })}
+                    className="h-10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="from" className="text-sm font-medium">From Email *</Label>
+                  <Input
+                    id="from"
+                    type="email"
+                    placeholder="noreply@fundifyhub.com"
+                    value={emailConfig.from}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, from: e.target.value })}
+                    className="h-10"
+                  />
+                </div>
+
+                {/* Info Alert */}
+                <Alert className="border-primary/20 bg-primary/5">
+                  <AlertCircle className="h-4 w-4 text-primary" />
+                  <AlertDescription className="text-xs sm:text-sm">
+                    <strong>Test Email:</strong> We'll send a test email to verify configuration before saving.
+                    {emailConfig.host.toLowerCase().includes('gmail') && (
+                      <span className="block mt-1.5">
+                        <strong>Gmail Users:</strong> Use an App Password instead of your regular password. 
+                        <a 
+                          href="https://myaccount.google.com/apppasswords" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="underline ml-1 text-primary hover:text-primary/80"
+                        >
+                          Generate one here
+                        </a>
+                      </span>
+                    )}
+                  </AlertDescription>
+                </Alert>
+
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
+                  <Button
+                    onClick={handleSaveEmailConfig}
+                    disabled={actionLoading['email-config']}
+                    className="flex-1 h-10"
+                  >
+                    {actionLoading['email-config'] ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Testing & Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Test & Save
+                      </>
+                    )}
+                  </Button>
+                  {hasConfig && (
+                    <Button
+                      onClick={() => setEmailConfigMode(false)}
+                      variant="outline"
+                      className="h-10"
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+
+        <CardFooter className="bg-muted/30 border-t flex flex-col sm:flex-row gap-2 sm:gap-3 p-4">
+          {!service.isEnabled ? (
+            <>
+              {hasConfig && !showConfigForm && (
+                <Button
+                  onClick={() => setEmailConfigMode(true)}
+                  variant="outline"
+                  className="w-full sm:flex-1 h-10"
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Configuration
+                </Button>
+              )}
+              <Button
+                onClick={() => handleEnable('EMAIL')}
+                disabled={actionLoading['EMAIL-enable'] || !hasConfig}
+                className="w-full sm:flex-1 h-10"
+              >
+                {actionLoading['EMAIL-enable'] ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enabling...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Enable Service
+                  </>
+                )}
+              </Button>
+            </>
+          ) : (
+            <Button
+              onClick={() => handleDisable('EMAIL')}
+              disabled={actionLoading['EMAIL-disable']}
+              variant="destructive"
+              className="w-full h-10"
+            >
+              {actionLoading['EMAIL-disable'] ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Disabling...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Disable & Delete
+                </>
+              )}
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+    )
+  }
+
+  if (loading && services.length === 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+              <p className="text-muted-foreground text-sm">Loading services...</p>
+            </div>
           </div>
         </div>
       </div>
+    )
+  }
 
-      <Tabs defaultValue="otp-services" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="otp-services" className="gap-2">
-            <Zap className="w-4 h-4" />
-            OTP Services
-          </TabsTrigger>
-          <TabsTrigger value="general" className="gap-2">
-            <Settings className="w-4 h-4" />
-            General
-          </TabsTrigger>
-        </TabsList>
-
-        {/* OTP Services Tab */}
-        <TabsContent value="otp-services" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            
-            {/* WhatsApp Service Card */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-green-500/10">
-                      <MessageSquare className="w-5 h-5 text-green-600 dark:text-green-400" />
-                    </div>
-                    <div>
-                      <CardTitle>WhatsApp OTP</CardTitle>
-                      <CardDescription>Send OTPs via WhatsApp</CardDescription>
-                    </div>
-                  </div>
-                  <Badge 
-                    variant="outline" 
-                    className={`${whatsappStatus.bgColor} ${whatsappStatus.borderColor} ${whatsappStatus.color}`}
-                  >
-                    <whatsappStatus.icon className={`w-3 h-3 mr-1 ${(whatsappService.isConnecting || whatsappService.isInitializing) ? 'animate-spin' : ''}`} />
-                    {whatsappStatus.text}
-                  </Badge>
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        {/* Header Section */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-primary/10 rounded-lg">
+                  <Settings className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
                 </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                {/* Error Alert */}
-                {whatsappService.lastError && (
-                  <Alert variant="destructive" className="animate-in fade-in-50">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="font-medium">
-                      {whatsappService.lastError}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* QR Code Section */}
-                {whatsappService.qrCode && (
-                  <div className="p-6 rounded-lg bg-linear-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-2 border-green-200 dark:border-green-800">
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                        <QrCode className="w-5 h-5" />
-                        <span className="font-semibold">Scan QR Code</span>
-                        <Badge variant="outline" className="ml-2 bg-orange-500/10 border-orange-500/20 text-orange-600 dark:text-orange-400">
-                          <Clock className="w-3 h-3 mr-1" />
-                          3 min
-                        </Badge>
-                      </div>
-                      
-                      <div className="p-4 bg-white dark:bg-gray-900 rounded-lg shadow-lg">
-                        <img 
-                          src={whatsappService.qrCode} 
-                          alt="WhatsApp QR Code" 
-                          className="w-48 h-48"
-                        />
-                      </div>
-
-                      <div className="text-center space-y-2 max-w-sm">
-                        <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
-                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500/20 text-xs font-bold">1</div>
-                          <span>Open WhatsApp on your phone</span>
-                        </div>
-                        <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
-                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500/20 text-xs font-bold">2</div>
-                          <span>Go to Settings → Linked Devices</span>
-                        </div>
-                        <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
-                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500/20 text-xs font-bold">3</div>
-                          <span>Scan this QR code</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Connected Status */}
-                {whatsappService.isActive && !whatsappService.qrCode && (
-                  <Alert className="bg-green-500/10 border-green-500/30 animate-in fade-in-50">
-                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <AlertDescription className="text-green-700 dark:text-green-300">
-                      <div className="font-medium mb-1.5">WhatsApp is connected and operational</div>
-                      {whatsappService.lastConnected && (
-                        <div className="text-xs flex items-center gap-1.5 opacity-90">
-                          <Clock className="w-3 h-3" />
-                          <span>Last connected: {new Date(whatsappService.lastConnected).toLocaleString()}</span>
-                        </div>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Initializing State */}
-                {whatsappService.isInitializing && !whatsappService.qrCode && (
-                  <Alert className="bg-blue-500/10 border-blue-500/30 animate-in fade-in-50">
-                    <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                    <AlertDescription className="text-blue-700 dark:text-blue-300 font-medium">
-                      Initializing WhatsApp connection, please wait...
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-
-              <CardFooter className="flex gap-2 pt-4">
-                {!whatsappService.isActive ? (
-                  <Button 
-                    onClick={connectWhatsApp}
-                    disabled={whatsappService.isConnecting || whatsappService.isInitializing}
-                    className="flex-1 h-10"
-                    size="default"
-                  >
-                    {(whatsappService.isInitializing || whatsappService.isConnecting) ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Connecting...
-                      </>
-                    ) : (
-                      <>
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Connect WhatsApp
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <>
-                    <Button 
-                      variant="outline" 
-                      onClick={checkWhatsAppStatus}
-                      className="flex-1 h-10"
-                      size="default"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Refresh
-                    </Button>
-                    <Button 
-                      variant="destructive" 
-                      onClick={disconnectWhatsApp}
-                      disabled={whatsappService.isConnecting}
-                      className="h-10"
-                      size="default"
-                    >
-                      <Power className="w-4 h-4 mr-2" />
-                      Disconnect
-                    </Button>
-                  </>
-                )}
-              </CardFooter>
-            </Card>
-
-            {/* Email Service Card */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-500/10">
-                      <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                      <CardTitle>Email OTP</CardTitle>
-                      <CardDescription>Send OTPs via Email</CardDescription>
-                    </div>
-                  </div>
-                  <Badge 
-                    variant="outline" 
-                    className={`${emailStatus.bgColor} ${emailStatus.borderColor} ${emailStatus.color}`}
-                  >
-                    <emailStatus.icon className={`w-3 h-3 mr-1 ${emailService.isConnecting ? 'animate-spin' : ''}`} />
-                    {emailStatus.text}
-                  </Badge>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                {/* Error Alert */}
-                {emailService.lastError && (
-                  <Alert variant="destructive" className="animate-in fade-in-50">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="font-medium">
-                      {emailService.lastError}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Gmail Helper */}
-                {emailService.config.smtpHost.includes('gmail') && !emailService.isActive && (
-                  <Alert className="bg-blue-500/10 border-blue-500/30 animate-in fade-in-50">
-                    <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <AlertDescription className="text-blue-700 dark:text-blue-300">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium">Gmail requires an App Password (not your regular password)</span>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          asChild
-                          className="h-auto p-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-500/10 shrink-0"
-                        >
-                          <a 
-                            href="https://myaccount.google.com/apppasswords" 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1"
-                          >
-                            Get Password
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </Button>
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Connected Status */}
-                {emailService.isActive && (
-                  <Alert className="bg-green-500/10 border-green-500/30 animate-in fade-in-50">
-                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <AlertDescription className="text-green-700 dark:text-green-300">
-                      <div className="font-medium mb-1.5">Email service is connected and operational</div>
-                      {emailService.lastConnected && (
-                        <div className="text-xs flex items-center gap-1.5 opacity-90">
-                          <Clock className="w-3 h-3" />
-                          <span>Last connected: {new Date(emailService.lastConnected).toLocaleString()}</span>
-                        </div>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Configuration Form */}
-                {!emailService.isActive && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="smtpHost">SMTP Host</Label>
-                        <Input
-                          id="smtpHost"
-                          value={emailService.config.smtpHost}
-                          onChange={(e) => setEmailService(prev => ({
-                            ...prev,
-                            config: { ...prev.config, smtpHost: e.target.value }
-                          }))}
-                          placeholder="smtp.gmail.com"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="smtpPort">Port</Label>
-                        <Input
-                          id="smtpPort"
-                          type="number"
-                          value={emailService.config.smtpPort}
-                          onChange={(e) => setEmailService(prev => ({
-                            ...prev,
-                            config: { ...prev.config, smtpPort: parseInt(e.target.value) }
-                          }))}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="smtpUser">Email Address</Label>
-                      <Input
-                        id="smtpUser"
-                        type="email"
-                        value={emailService.config.smtpUser}
-                        onChange={(e) => setEmailService(prev => ({
-                          ...prev,
-                          config: { ...prev.config, smtpUser: e.target.value }
-                        }))}
-                        placeholder="your-email@gmail.com"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="smtpPass">Password / App Password</Label>
-                      <Input
-                        id="smtpPass"
-                        type="password"
-                        value={emailService.config.smtpPass}
-                        onChange={(e) => setEmailService(prev => ({
-                          ...prev,
-                          config: { ...prev.config, smtpPass: e.target.value }
-                        }))}
-                        placeholder="••••••••••••••••"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        For Gmail, use an App Password instead of your account password
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="smtpSecure"
-                        checked={emailService.config.smtpSecure}
-                        onCheckedChange={(checked) => setEmailService(prev => ({
-                          ...prev,
-                          config: { ...prev.config, smtpSecure: checked }
-                        }))}
-                      />
-                      <Label htmlFor="smtpSecure" className="text-sm font-normal">
-                        Use SSL/TLS
-                      </Label>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-
-              <CardFooter className="flex gap-2 pt-4">
-                {!emailService.isActive ? (
-                  <Button 
-                    onClick={testEmailConnection}
-                    disabled={emailService.isConnecting || !emailService.config.smtpHost || !emailService.config.smtpUser || !emailService.config.smtpPass}
-                    className="flex-1 h-10"
-                    size="default"
-                  >
-                    {emailService.isConnecting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Testing...
-                      </>
-                    ) : (
-                      <>
-                        <Mail className="w-4 h-4 mr-2" />
-                        Test & Connect
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <>
-                    <Button 
-                      variant="outline" 
-                      onClick={checkEmailStatus}
-                      className="flex-1 h-10"
-                      size="default"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Refresh
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={testEmailConfiguration}
-                      disabled={emailService.isTesting}
-                      className="h-10"
-                      size="default"
-                    >
-                      {emailService.isTesting ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Mail className="w-4 h-4 mr-2" />
-                      )}
-                      Test
-                    </Button>
-                    <Button 
-                      variant="destructive" 
-                      onClick={disconnectEmail}
-                      disabled={emailService.isConnecting}
-                      className="h-10"
-                      size="default"
-                    >
-                      <Power className="w-4 h-4 mr-2" />
-                      Disconnect
-                    </Button>
-                  </>
-                )}
-              </CardFooter>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* General Settings Tab */}
-        <TabsContent value="general" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>General Settings</CardTitle>
-              <CardDescription>Coming soon - platform configuration</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                General settings will be available in the next update.
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">
+                  Service Configuration
+                </h1>
+              </div>
+              <p className="text-sm sm:text-base text-muted-foreground ml-[52px]">
+                Manage communication services for notifications and messaging
               </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </div>
+            <Button 
+              onClick={handleRefresh} 
+              variant="outline" 
+              disabled={loading}
+              size="default"
+              className="self-start sm:self-auto"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+          
+          {/* Info Banner */}
+          <Alert className="border-primary/20 bg-primary/5">
+            <Info className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              <strong>Live Status:</strong> This page automatically refreshes every 5 seconds to show real-time service status.
+            </AlertDescription>
+          </Alert>
+        </div>
+
+        {/* Service Cards */}
+        <div className="grid gap-6 lg:gap-8">
+          {services.map((service) => {
+            if (service.serviceName === 'EMAIL') {
+              return <div key={service.serviceName}>{renderEmailCard(service)}</div>
+            }
+            if (service.serviceName === 'WHATSAPP') {
+              return <div key={service.serviceName}>{renderWhatsAppCard(service)}</div>
+            }
+            return null
+          })}
+        </div>
+
+        {/* Footer Note */}
+        <div className="mt-8 pt-6 border-t">
+          <p className="text-xs text-center text-muted-foreground">
+            Services are monitored in real-time. Configuration changes take effect immediately.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

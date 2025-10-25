@@ -1,15 +1,41 @@
+// Shared service actions for queue jobs
+export const SERVICE_ACTIONS = {
+  START: 'START',
+  STOP: 'STOP',
+  RESTART: 'RESTART',
+  DISCONNECT: 'DISCONNECT',
+} as const;
+
 // Shared queue and job name constants so all services use the same names
 export const QUEUE_NAMES = {
   OTP: 'otp',
   EMAIL: 'email',
-  DEFAULT: 'default',
-  // Add more queues here (e.g., 'notifications', 'reports')
+  SERVICE_CONTROL: 'service-control',
+  NOTIFICATIONS: 'notifications',
+  // Add more queues here (e.g., 'reports', 'analytics')
 } as const;
 
 export const JOB_NAMES = {
   SEND_OTP: 'send-otp',
   WELCOME_EMAIL: 'welcome',
-  // Add more job names here
+  SERVICE_CONTROL: 'service-control',
+  EMAIL_CONFIG_UPDATED: 'email-config-updated',
+  WHATSAPP_CONFIG_UPDATED: 'whatsapp-config-updated',
+  SERVICE_STATUS_UPDATED: 'service-status-updated',
+  // Add more job/event names here as needed
+} as const;
+
+// Shared connection status constants
+export const CONNECTION_STATUS = {
+  CONNECTED: 'CONNECTED',
+  DISCONNECTED: 'DISCONNECTED',
+  INITIALIZING: 'INITIALIZING',
+  WAITING_FOR_QR_SCAN: 'WAITING_FOR_QR_SCAN',
+  AUTHENTICATED: 'AUTHENTICATED',
+  AUTH_FAILURE: 'AUTH_FAILURE',
+  TIMEOUT: 'TIMEOUT',
+  DISABLED: 'DISABLED',
+  ERROR: 'ERROR',
 } as const;
 
 export const DEFAULT_JOB_OPTIONS = {

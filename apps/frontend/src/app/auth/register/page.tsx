@@ -43,6 +43,8 @@ export default function RegisterPage() {
     phoneNumber: "",
     emailOTP: "",
     phoneOTP: "",
+    emailSessionId: "", // Store sessionId from send-otp
+    phoneSessionId: "", // Store sessionId from send-otp
   })
   
   // Validation states
@@ -108,7 +110,7 @@ export default function RegisterPage() {
     
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/check-email`, {
+      const response = await fetch(`${apiUrl}/api/v1/auth/check-availability`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -138,10 +140,10 @@ export default function RegisterPage() {
     
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/check-phone`, {
+      const response = await fetch(`${apiUrl}/api/v1/auth/check-availability`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber: phone })
+        body: JSON.stringify({ phone })
       })
       
       const data = await response.json()
@@ -166,12 +168,7 @@ export default function RegisterPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          type: 'EMAIL',
-          firstName: step1Data.firstName,
-          lastName: step1Data.lastName,
-          email: step2Data.email,
-          phoneNumber: step2Data.phoneNumber,
-          password: step1Data.password
+          email: step2Data.email
         })
       })
       
@@ -179,6 +176,8 @@ export default function RegisterPage() {
       
       if (response.ok && data.success) {
         setEmailOTPSent(true)
+        // Store sessionId for verification
+        setStep2Data(prev => ({ ...prev, emailSessionId: data.data.sessionId }))
         toast({
           title: "Email OTP sent!",
           description: "Verification code sent to your email",
@@ -211,12 +210,7 @@ export default function RegisterPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          type: 'PHONE',
-          firstName: step1Data.firstName,
-          lastName: step1Data.lastName,
-          email: step2Data.email,
-          phoneNumber: step2Data.phoneNumber,
-          password: step1Data.password
+          phone: step2Data.phoneNumber
         })
       })
       
@@ -224,6 +218,8 @@ export default function RegisterPage() {
       
       if (response.ok && data.success) {
         setPhoneOTPSent(true)
+        // Store sessionId for verification
+        setStep2Data(prev => ({ ...prev, phoneSessionId: data.data.sessionId }))
         toast({
           title: "Phone OTP sent!",
           description: "Verification code sent to your phone",
@@ -249,7 +245,16 @@ export default function RegisterPage() {
   // Verify individual OTP
   const verifyOTP = async (type: 'EMAIL' | 'PHONE') => {
     const otp = type === 'EMAIL' ? step2Data.emailOTP : step2Data.phoneOTP;
-    const identifier = type === 'EMAIL' ? step2Data.email : step2Data.phoneNumber;
+    const sessionId = type === 'EMAIL' ? step2Data.emailSessionId : step2Data.phoneSessionId;
+    
+    if (!sessionId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please send OTP first",
+      })
+      return
+    }
     
     if (otp.length !== 6) {
       toast({
@@ -271,10 +276,8 @@ export default function RegisterPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          type,
-          otp,
-          email: step2Data.email,
-          phoneNumber: step2Data.phoneNumber
+          sessionId,
+          otp
         })
       })
       
@@ -312,7 +315,7 @@ export default function RegisterPage() {
     }
   }
 
-  // Resend OTP
+  // Resend OTP (reuses send-otp endpoint)
   const resendOTP = async (type: 'EMAIL' | 'PHONE') => {
     setResendLoading(prev => ({ 
       ...prev, 
@@ -321,29 +324,29 @@ export default function RegisterPage() {
     
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/resend-otp`, {
+      const response = await fetch(`${apiUrl}/api/v1/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          type,
-          email: step2Data.email,
-          phoneNumber: step2Data.phoneNumber
-        })
+        body: JSON.stringify(
+          type === 'EMAIL' 
+            ? { email: step2Data.email }
+            : { phone: step2Data.phoneNumber }
+        )
       })
       
       const data = await response.json()
       
       if (response.ok && data.success) {
-        // Clear the OTP input
+        // Clear the OTP input and store new sessionId
         if (type === 'EMAIL') {
-          setStep2Data(prev => ({ ...prev, emailOTP: '' }))
+          setStep2Data(prev => ({ ...prev, emailOTP: '', emailSessionId: data.data.sessionId }))
         } else {
-          setStep2Data(prev => ({ ...prev, phoneOTP: '' }))
+          setStep2Data(prev => ({ ...prev, phoneOTP: '', phoneSessionId: data.data.sessionId }))
         }
         
         toast({
           title: "OTP resent!",
-          description: data.message,
+          description: `Verification code sent to your ${type.toLowerCase()}`,
         })
       } else {
         toast({
@@ -381,14 +384,15 @@ export default function RegisterPage() {
     
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/complete-registration`, {
+      // Use the verified contact methods for registration
+      const response = await fetch(`${apiUrl}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          firstName: step1Data.firstName,
-          lastName: step1Data.lastName,
           email: step2Data.email,
           phoneNumber: step2Data.phoneNumber,
+          firstName: step1Data.firstName,
+          lastName: step1Data.lastName,
           password: step1Data.password
         })
       })

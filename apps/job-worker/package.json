@@ -2,11 +2,11 @@
   "name": "job-worker",
   "version": "1.0.0",
   "description": "Job Worker for Finance Application",
-  "main": "dist/server.js",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "npx dotenv -e ../../.env -- tsx src/server.ts",
+    "dev": "npx dotenv -e ../../.env -- tsx src/index.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/index.js",
     "lint": "eslint .",
     "cleanup:whatsapp": "node scripts/cleanup-whatsapp-session.js"
   },

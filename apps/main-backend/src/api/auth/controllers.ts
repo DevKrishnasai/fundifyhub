@@ -15,21 +15,33 @@ import {
 import type { OTPJobData } from '@fundifyhub/types';
 import { OTPType, OTPTemplateType, ServiceName } from '@fundifyhub/types';
 
-/*
- TODOs / Future Improvements (high-level):
- - RATE LIMITING: Add per-endpoint and per-identifier/IP rate limits to prevent abuse and enumeration.
- - OTP: Use crypto-secure OTP generation, enforce cooldowns and daily limits per identifier, add audit logs and cleanup jobs.
- - TRANSACTIONS: Wrap user creation and OTP marking in a DB transaction to avoid races.
- - AUTH: Issue/rotate refresh tokens, store them (hashed), and revoke on logout.
- - LOCKOUT: Track failed login attempts and implement temporary lockout/backoff.
- - VALIDATION: Add strong request validation (zod/joi) and a password policy.
- - MONITORING: Emit metrics and alerts for OTP sends, queue failures, login spikes.
-*/
+/**
+ * Authentication Controllers
+ *
+ * This module handles user authentication including:
+ * - Email/Phone availability checking
+ * - OTP generation and sending
+ * - OTP verification
+ * - User registration with dual verification
+ * - User login/logout
+ *
+ * Security Features:
+ * - OTP-based verification for both email and phone
+ * - Password hashing with bcrypt
+ * - JWT token-based authentication
+ * - Rate limiting considerations (TODO)
+ * - Input validation (TODO)
+ */
 
 /**
- * Check if email/phone is available
- * Needs: { email?, phone? }
- * Returns: { success, available }
+ * Check if email/phone is available for registration
+ *
+ * POST /api/v1/auth/check-availability
+ * Body: { email?: string, phone?: string }
+ * Response: { success: boolean, message: string, data: { available: boolean } }
+ *
+ * Checks if the provided email or phone number is already registered.
+ * At least one of email or phone must be provided.
  */
 export async function checkAvailabilityController(
   req: Request,
@@ -37,8 +49,6 @@ export async function checkAvailabilityController(
 ): Promise<any> {
   try {
     const { email, phone } = req.body;
-    // TODO: Add request validation (e.g. zod/joi). Also apply rate-limiting middleware to this endpoint
-    // to prevent enumeration (throttle by IP and by identifier).
 
     if (!email && !phone) {
       res
@@ -99,9 +109,15 @@ export async function checkAvailabilityController(
 }
 
 /**
- * Send OTP to email or phone
- * Needs: { email?, phone? }
- * Returns: { success, sessionId }
+ * Send OTP to email or phone for verification
+ *
+ * POST /api/v1/auth/send-otp
+ * Body: { email?: string, phone?: string }
+ * Response: { success: boolean, message: string, data: { sessionId: string } }
+ *
+ * Generates a 6-digit OTP, stores it in the database with 10-minute expiry,
+ * and enqueues a job to send it via email or WhatsApp.
+ * Returns a sessionId for OTP verification.
  */
 export async function sendOTPController(
   req: Request,
@@ -120,14 +136,12 @@ export async function sendOTPController(
       return;
     }
 
-  // TODO: Replace Math.random with a crypto-secure generator (e.g. crypto.randomInt)
-  // and consider using longer or HMAC-based OTPs depending on security requirements.
-  // Also: enforce per-identifier cooldown (e.g. max 1 OTP / 60s) and daily caps.
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate 6-digit OTP (TODO: Use crypto-secure random generation)
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const identifier = email?.toLowerCase() || phone;
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store OTP
+    // Store OTP in database
     const otpRecord = await prisma.oTPVerification.create({
       data: {
         identifier,
@@ -137,28 +151,18 @@ export async function sendOTPController(
       },
     });
 
-    // Enqueue OTP delivery (best-effort)
+    // Enqueue OTP delivery job
     try {
-      // Note: queue/job names and payload shape may change over time — keep the
-      // central `packages/utils/src/queue-names.ts` and `packages/utils/src/templates.ts`
-      // in sync with job-worker adapters. We attach the chosen template body here
-      // (from shared utils) so it's easy to review/change later.
-      const jobPayload = {
+      const jobPayload: OTPJobData = {
         recipient: identifier,
         otp,
         userName: identifier,
         type: email ? OTPType.EMAIL : OTPType.WHATSAPP,
         serviceType: email ? ServiceName.EMAIL : ServiceName.WHATSAPP,
         templateType: OTPTemplateType.VERIFICATION,
-        // Include the template object for review/inspection by job-workers; the worker
-        // may ignore this and look up templates by name instead. Central source of
-        // truth is `packages/utils/src/templates.ts`.
-        template: email ? EMAIL_TEMPLATES.VERIFICATION : WHATSAPP_TEMPLATES.VERIFICATION,
-      } as any;
+      };
       await enqueue(QUEUE_NAMES.OTP, JOB_NAMES.SEND_OTP, jobPayload, DEFAULT_JOB_OPTIONS);
     } catch (err) {
-      // TODO: Track enqueue failures with metrics and consider retry/backoff outside the queue
-      // (e.g. fallback channels). Avoid logging OTP values.
       logger.error('OTP enqueue error:', err as Error);
     }
 
@@ -179,8 +183,14 @@ export async function sendOTPController(
 
 /**
  * Verify OTP code
- * Needs: { sessionId, otp }
- * Returns: { success, verified }
+ *
+ * POST /api/v1/auth/verify-otp
+ * Body: { sessionId: string, otp: string }
+ * Response: { success: boolean, message: string, data: { verified: boolean } }
+ *
+ * Validates the OTP code against the stored record.
+ * Marks the OTP as verified if correct and not expired.
+ * Tracks failed attempts and enforces max attempts limit.
  */
 export async function verifyOTPController(
   req: Request,
@@ -219,8 +229,6 @@ export async function verifyOTPController(
           message: 'Maximum OTP attempts exceeded',
         } as APIResponse);
 
-    // TODO: Consider adding an exponential backoff or temporary lock on repeated failures
-    // and emitting metrics/alerts when max attempts are reached.
     if (otpRecord.code !== otp) {
       await prisma.oTPVerification.update({
         where: { id: sessionId },
@@ -235,8 +243,7 @@ export async function verifyOTPController(
       where: { id: sessionId },
       data: { isVerified: true },
     });
-    // TODO: Consider marking the OTP as used or scheduling its deletion. Add an audit record
-    // for verification events (successful/failed) for security investigations.
+
     return res
       .status(200)
       .json({
@@ -254,7 +261,7 @@ export async function verifyOTPController(
 
 /**
  * Complete user registration
- * Needs: { sessionId, firstName, lastName, password }
+ * Needs: { email, phoneNumber, firstName, lastName, password }
  * Returns: { success, user }
  */
 export async function registerController(
@@ -262,36 +269,47 @@ export async function registerController(
   res: Response
 ): Promise<any> {
   try {
-    const { sessionId, firstName, lastName, password } = req.body;
-    if (!sessionId || !firstName || !lastName || !password)
+    const { email, phoneNumber, firstName, lastName, password } = req.body;
+    if (!email || !phoneNumber || !firstName || !lastName || !password)
       return res
         .status(400)
         .json({
           success: false,
-          message: 'Missing required fields',
+          message: 'Missing required fields: email, phoneNumber, firstName, lastName, password',
         } as APIResponse);
 
     // TODO: Validate password strength and user inputs. Consider using a schema validator
     // and provide structured validation errors.
 
-    const otpRecord = await prisma.oTPVerification.findUnique({
-      where: { id: sessionId },
+    // Check for verified OTP records for both email and phone
+    const emailOtpRecord = await prisma.oTPVerification.findFirst({
+      where: {
+        identifier: email.toLowerCase(),
+        type: 'EMAIL',
+        isVerified: true,
+        isUsed: false,
+      },
     });
-    if (!otpRecord || !otpRecord.isVerified)
+
+    const phoneOtpRecord = await prisma.oTPVerification.findFirst({
+      where: {
+        identifier: phoneNumber,
+        type: 'PHONE',
+        isVerified: true,
+        isUsed: false,
+      },
+    });
+
+    if (!emailOtpRecord || !phoneOtpRecord)
       return res
         .status(400)
-        .json({ success: false, message: 'OTP not verified' } as APIResponse);
-
-    const identifier = otpRecord.identifier.trim();
-    const isEmail = otpRecord.type === 'EMAIL';
-    const emailToUse = isEmail ? identifier.toLowerCase() : undefined;
-    const phoneToUse = !isEmail ? identifier : undefined;
+        .json({ success: false, message: 'Both email and phone must be verified with OTP before registration' } as APIResponse);
 
     const existing = await prisma.user.findFirst({
       where: {
         OR: [
-          ...(emailToUse ? [{ email: emailToUse }] : []),
-          ...(phoneToUse ? [{ phoneNumber: phoneToUse }] : []),
+          { email: email.toLowerCase() },
+          { phoneNumber: phoneNumber },
         ],
       },
     });
@@ -306,31 +324,34 @@ export async function registerController(
     const hashedPassword = await bcrypt.hash(password, 10);
     // TODO: Make bcrypt salt rounds configurable via env (e.g. BCRYPT_ROUNDS). Consider
     // using a transaction here so user creation and OTP marking are atomic.
-    const placeholderEmail = phoneToUse
-      ? `phone+${phoneToUse.replace(/[^0-9]/g, '')}@no-reply.fundifyhub.local`
-      : undefined;
 
     try {
-      // TODO: Use prisma.$transaction to create user and mark OTP as used atomically.
+      // TODO: Use prisma.$transaction to create user and mark OTPs as used atomically.
       const user = await prisma.user.create({
         data: {
-          email: emailToUse ?? placeholderEmail!,
-          phoneNumber: phoneToUse ?? undefined,
+          email: email.toLowerCase(),
+          phoneNumber: phoneNumber,
           firstName,
           lastName,
           password: hashedPassword,
           roles: ['CUSTOMER'],
-          emailVerified: !!emailToUse,
-          phoneVerified: !!phoneToUse,
+          emailVerified: true,
+          phoneVerified: true,
         },
       });
 
-      await prisma.oTPVerification.update({
-        where: { id: sessionId },
+      // Mark OTP records as used
+      await prisma.oTPVerification.updateMany({
+        where: {
+          OR: [
+            { id: emailOtpRecord.id },
+            { id: phoneOtpRecord.id },
+          ],
+        },
         data: { isUsed: true, userId: user.id },
       });
 
-      if (emailToUse) {
+      if (email.toLowerCase()) {
         try {
           // Use central EMAIL_TEMPLATES for the welcome email content. If the
           // job-worker expects only a template key (e.g. 'WELCOME'), it can use
@@ -357,6 +378,7 @@ export async function registerController(
             user: {
               id: user.id,
               email: user.email,
+              phoneNumber: user.phoneNumber,
               firstName: user.firstName,
               lastName: user.lastName,
             },
@@ -384,10 +406,15 @@ export async function registerController(
 }
 
 /**
- * Login user
- * Needs: { email, password }
- * Returns: { success, user }
+ * User login with email and password
+ *
+ * POST /api/v1/auth/login
+ * Body: { email: string, password: string }
+ * Response: { success: boolean, message: string, data: { user: User } }
  * Sets: httpOnly accessToken cookie
+ *
+ * Authenticates user credentials and issues JWT access token.
+ * Updates last login timestamp on successful authentication.
  */
 export async function loginController(
   req: Request,
@@ -402,9 +429,6 @@ export async function loginController(
           success: false,
           message: 'Email and password required',
         } as APIResponse);
-
-    // TODO: Apply rate-limiting and failed-attempt tracking (per account and per IP).
-    // Consider adding captcha or progressive delays after repeated failures.
 
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
@@ -450,9 +474,6 @@ export async function loginController(
       path: '/',
     });
 
-    // TODO: Issue and persist a refresh token (hashed) to support session rotation and revocation.
-    // Also consider setting SameSite=None + secure for cross-site clients if needed.
-
     return res
       .status(200)
       .json({
@@ -476,10 +497,15 @@ export async function loginController(
 }
 
 /**
- * Logout user
- * Needs: {} (empty)
- * Returns: { success }
+ * User logout
+ *
+ * POST /api/v1/auth/logout
+ * Body: {} (empty)
+ * Response: { success: boolean, message: string }
  * Clears: accessToken cookie
+ *
+ * Clears the access token cookie and optionally invalidates refresh tokens.
+ * Requires authentication middleware to populate req.user.
  */
 export async function logoutController(
   req: Request,
@@ -493,8 +519,6 @@ export async function logoutController(
         data: { refreshToken: null },
       });
       logger.info(`User logged out: ${userId}`);
-      // TODO: Revoke all active sessions for the user if requested. Consider device/session
-      // management so users can see and revoke sessions.
     }
     res.clearCookie('accessToken', {
       httpOnly: true,

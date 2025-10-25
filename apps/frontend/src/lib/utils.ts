@@ -9,13 +9,19 @@ export function cn(...inputs: ClassValue[]) {
 export const API_CONFIG = {
   BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
   ENDPOINTS: {
+    AUTH: {
+      REGISTER: '/api/v1/auth/register',
+      LOGIN: '/api/v1/auth/login',
+      LOGOUT: '/api/v1/auth/logout',
+      VERIFY_OTP: '/api/v1/auth/verify-otp',
+      RESEND_OTP: '/api/v1/auth/resend-otp',
+    },
     ADMIN: {
-      SERVICES_CONFIG: '/api/v1/admin/services/config',
-      WHATSAPP_QR: '/api/v1/admin/services/whatsapp/qr',
-      WHATSAPP_STATUS: '/api/v1/admin/services/whatsapp/status',
-      EMAIL_STATUS: '/api/v1/admin/services/email/status',
-      EMAIL_TEST: '/api/v1/admin/services/email/test',
-      EMAIL_TEST_CONNECT: '/api/v1/admin/services/email/test-connect',
+      SERVICES: '/api/v1/admin/services',
+      SERVICE_ENABLE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/enable`,
+      SERVICE_DISABLE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disable`,
+      SERVICE_DISCONNECT: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disconnect`,
+      SERVICE_CONFIGURE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/configure`,
     }
   }
 }
