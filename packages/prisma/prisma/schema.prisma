@@ -15,9 +15,11 @@ datasource db {
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
-  name            String
-  phone           String?  @unique
-  role            String   @default("CUSTOMER")
+  firstName       String
+  lastName        String
+  phoneNumber     String?  @unique
+  password        String?  // Hashed password for email/password login
+  roles           String[] @default(["CUSTOMER"]) // Array of roles: CUSTOMER, AGENT, ADMIN
   district        String?
   isActive        Boolean  @default(true)
   emailVerified   Boolean  @default(false)
@@ -26,18 +28,34 @@ model User {
   city            String?
   state           String?
   pincode         String?
+  
+  // Auth related fields
+  lastLoginAt     DateTime?
+  resetToken      String?  // For password reset
+  resetTokenExpiry DateTime?
+  refreshToken    String?  // For JWT refresh
+  
   createdAt       DateTime @default(now())
-  createdBy       String
+  createdById    String?
   updatedAt       DateTime @updatedAt
-  updatedBy       String 
+  updatedById    String? 
   
   // Relations
   requests        Request[] @relation("CustomerRequests")
   assignedRequests Request[] @relation("AgentAssignments")
   comments        Comment[]
   inspections     Inspection[]
+  otpVerifications OTPVerification[]
+  loansCreated     Loan[] @relation("LoanCreatedBy")
+  loansUpdated     Loan[] @relation("LoanUpdatedBy")
+  createdBy        User? @relation("UserCreatedBy", fields: [createdById], references: [id])
+  updatedBy        User? @relation("UserUpdatedBy", fields: [updatedById], references: [id])
+  usersCreated     User[] @relation("UserCreatedBy")
+  usersUpdated     User[] @relation("UserUpdatedBy")
 
-  @@index([id])
+  @@index([email])
+  @@index([roles])
+  @@index([district])
   @@map("users")
 }
 
@@ -129,16 +147,16 @@ model Loan {
   closureType       String?    // "NORMAL", "FORECLOSURE", "DEFAULT"
   
   createdAt       DateTime   @default(now())
-  createdBy       String
+  createdById    String
   updatedAt       DateTime   @updatedAt
-  updatedBy       String
+  updatedById    String
 
   // Relations Added created By and updated by relations as well.
   request         Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
   emisSchedule    EMISchedule[]
   payments        Payment[]
-  createdBy       User @relation(fields: [createdBy], references:[id], onDelete: Cascade)
-  updatedBy       User @relation(fields: [updatedBy], references:[id], onDelete: Cascade)
+  createdBy       User @relation("LoanCreatedBy", fields: [createdById], references:[id], onDelete: Cascade)
+  updatedBy       User @relation("LoanUpdatedBy", fields: [updatedById], references:[id], onDelete: Cascade)
 
   @@index([requestId])
   @@index([status])
@@ -275,4 +293,80 @@ model Inspection {
   @@index([agentId])
   @@index([status])
   @@map("inspections")
+}
+
+// OTP Verification model for email and phone verification
+model OTPVerification {
+  id              String   @id @default(cuid())
+  userId          String?  // Optional for temporary registration OTPs
+  identifier      String   // email or phone number
+  type            String   // "EMAIL" or "PHONE"
+  code            String   // 6-digit OTP code
+  expiresAt       DateTime // OTP expiry time
+  isUsed          Boolean  @default(false)
+  isVerified      Boolean  @default(false)
+  attempts        Int      @default(0) // Track failed attempts
+  maxAttempts     Int      @default(3) // Maximum allowed attempts
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations (optional for temporary OTPs during registration)
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([identifier])
+  @@index([type])
+  @@index([expiresAt])
+  @@map("otp_verifications")
+}
+
+// Verification Session model for multi-step registration
+model VerificationSession {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique // Unique session identifier
+  email           String
+  phoneNumber     String
+  emailOTP        String
+  phoneOTP        String
+  emailVerified   Boolean  @default(false)
+  phoneVerified   Boolean  @default(false)
+  expiresAt       DateTime // Session expiry time
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([email])
+  @@index([phoneNumber])
+  @@index([expiresAt])
+  @@map("verification_sessions")
+}
+
+// Service Configuration model for admin-configurable services
+model ServiceConfig {
+  id              String   @id @default(cuid())
+  serviceName     String   @unique // "WHATSAPP", "EMAIL", "SMS", etc.
+  isEnabled       Boolean  @default(false)
+  isActive        Boolean  @default(false) // If service is currently active/connected
+  
+  // Configuration JSON - flexible for different service types
+  config          Json?    // Service-specific configuration
+  
+  // Status tracking
+  lastConnectedAt DateTime?
+  lastErrorAt     DateTime?
+  lastError       String?
+  connectionStatus String  @default("DISCONNECTED") // "CONNECTED", "DISCONNECTED", "ERROR", "INITIALIZING"
+  qrCode          String?  @db.Text // Base64 QR code for WhatsApp (large text)
+  
+  // Admin tracking
+  configuredBy    String?  // Admin user ID who configured
+  configuredAt    DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([serviceName])
+  @@index([isEnabled])
+  @@index([isActive])
+  @@map("service_configs")
 }

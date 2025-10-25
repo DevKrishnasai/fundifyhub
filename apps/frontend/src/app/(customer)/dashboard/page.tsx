@@ -30,106 +30,11 @@ import {
 import Link from "next/link"
 import { useState } from "react"
 
-// Mock data for demonstration
-const loanRequests = [
-  {
-    id: "LR001",
-    asset: "iPhone 14 Pro",
-    type: "phone",
-    amount: 45000,
-    status: "active",
-    submittedDate: "2025-01-15",
-    approvedAmount: 42000,
-    interestRate: 12,
-    tenure: 6,
-    nextEMI: "2025-02-15",
-    emiAmount: 7500,
-    remainingAmount: 28000,
-    paidEmis: 2,
-    totalEmis: 6,
-    overdueAmount: 0,
-  },
-  {
-    id: "LR002",
-    asset: "MacBook Air M2",
-    type: "laptop",
-    amount: 65000,
-    status: "pending",
-    submittedDate: "2025-01-20",
-    approvedAmount: null,
-    interestRate: null,
-    tenure: null,
-    nextEMI: null,
-    emiAmount: null,
-    remainingAmount: null,
-    paidEmis: null,
-    totalEmis: null,
-    overdueAmount: null,
-  },
-  {
-    id: "LR003",
-    asset: "Honda City 2020",
-    type: "vehicle",
-    amount: 150000,
-    status: "rejected",
-    submittedDate: "2025-01-10",
-    rejectionReason: "Asset condition not suitable for loan",
-    approvedAmount: null,
-    interestRate: null,
-    tenure: null,
-    nextEMI: null,
-    emiAmount: null,
-    remainingAmount: null,
-    paidEmis: null,
-    totalEmis: null,
-    overdueAmount: null,
-  },
-  {
-    id: "LR004",
-    asset: "Samsung Galaxy S23",
-    type: "phone",
-    amount: 35000,
-    status: "closed",
-    submittedDate: "2024-12-01",
-    approvedAmount: 32000,
-    interestRate: 12,
-    tenure: 4,
-    closedDate: "2025-01-10",
-    nextEMI: null,
-    emiAmount: null,
-    remainingAmount: 0,
-    paidEmis: 4,
-    totalEmis: 4,
-    overdueAmount: null,
-  },
-]
+// TODO: Replace with actual API call to fetch loan requests
+const loanRequests: any[] = []
 
-const notifications = [
-  {
-    id: 1,
-    type: "emi_due",
-    title: "EMI Due Tomorrow",
-    message: "Your EMI of ₹7,500 for iPhone 14 Pro is due tomorrow",
-    time: "2 hours ago",
-    urgent: true,
-  },
-  {
-    id: 2,
-    type: "approval",
-    title: "Loan Request Approved",
-    message: "Your MacBook Air loan request has been approved for ₹60,000",
-    time: "1 day ago",
-    urgent: false,
-  },
-  {
-    id: 3,
-    type: "reminder",
-    title: "Document Upload Reminder",
-    message: "Please upload your Aadhaar card for loan request LR005",
-    time: "3 days ago",
-    urgent: false,
-  },
-]
+// TODO: Replace with actual API call to fetch notifications
+const notifications: any[] = []
 
 function getAssetIcon(type: string) {
   switch (type) {
@@ -180,8 +85,8 @@ function PaymentDialog({ loan, onPaymentSuccess }: PaymentDialogProps) {
     // In real implementation, this would redirect to Razorpay/Stripe/PayU
     const paymentGatewayUrl = `https://checkout.razorpay.com/v1/checkout.js?key_id=rzp_test_123&amount=${(loan.remainingAmount || 0) * 100}&currency=INR&name=AssetLend&description=EMI Payment for ${loan.asset}&order_id=order_${Date.now()}&callback_url=${window.location.origin}/payment-callback`
 
-    // For demo purposes, simulate success
-    const paymentSuccess = Math.random() > 0.1 // 90% success rate for demo
+    // TODO: Integrate with actual payment gateway
+    const paymentSuccess = false // Replace with actual payment processing
 
     if (paymentSuccess) {
       onPaymentSuccess(loan.id, Number.parseInt(paymentAmount))
@@ -201,7 +106,7 @@ function PaymentDialog({ loan, onPaymentSuccess }: PaymentDialogProps) {
     <Dialog>
       <DialogTrigger asChild>
         <Button size="sm" className="relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-accent/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute inset-0 bg-linear-to-r from-primary/20 to-accent/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           <IndianRupee className="w-4 h-4 mr-2 relative z-10" />
           <span className="relative z-10">Pay Now</span>
         </Button>
@@ -212,7 +117,7 @@ function PaymentDialog({ loan, onPaymentSuccess }: PaymentDialogProps) {
         </DialogHeader>
 
         <div className="space-y-6">
-          <div className="relative bg-gradient-to-br from-primary/10 via-primary/5 to-accent/10 rounded-xl p-6 border border-primary/20">
+          <div className="relative bg-linear-to-br from-primary/10 via-primary/5 to-accent/10 rounded-xl p-6 border border-primary/20">
             <div className="absolute top-4 right-4">
               {loan.overdueAmount && loan.overdueAmount > 0 && (
                 <Badge className="bg-destructive/10 text-destructive hover:bg-destructive/20">
@@ -394,7 +299,7 @@ function PaymentDialog({ loan, onPaymentSuccess }: PaymentDialogProps) {
               className="w-full h-14 text-lg font-semibold relative overflow-hidden group"
               size="lg"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+              <div className="absolute inset-0 bg-linear-to-r from-primary to-accent opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
               {isProcessing ? (
                 <div className="flex items-center gap-2">
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -502,7 +407,7 @@ export default function UserDashboard() {
                     >
                       <div className="flex items-start gap-3">
                         <div
-                          className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                            className={`w-2 h-2 rounded-full mt-2 shrink-0 ${
                             notification.urgent ? "bg-destructive" : "bg-primary"
                           }`}
                         ></div>

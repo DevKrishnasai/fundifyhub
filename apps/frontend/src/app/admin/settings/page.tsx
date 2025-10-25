@@ -1,497 +1,803 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label" 
-import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
-  Settings,
-  Save,
-  Bell,
-  Shield,
-  DollarSign,
-  Users,
-  Globe,
-  Database,
   Mail,
-  Smartphone,
+  MessageSquare,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  AlertCircle,
+  QrCode,
+  RefreshCw,
+  Save,
+  Edit,
+  Trash2,
+  Clock,
+  Server,
+  Zap,
+  Shield,
+  Info,
+  Settings,
 } from "lucide-react"
-import { toast } from "sonner"
+import { useToast } from "@/hooks/use-toast"
+import { apiUrl, API_CONFIG } from "@/lib/utils"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import Image from "next/image"
+
+// Service status type
+type ServiceStatus = {
+  serviceName: string
+  status: string
+  isEnabled: boolean
+  isActive: boolean
+  connectionStatus: string
+  lastConnectedAt?: string
+  lastError?: string
+  config?: any
+  qrCode?: string
+}
+
+// Email configuration type
+type EmailConfig = {
+  host: string
+  port: number
+  user: string
+  password: string
+  from: string
+}
 
 export default function AdminSettingsPage() {
-  const [generalSettings, setGeneralSettings] = useState({
-    platformName: "AssetLend",
-    platformDescription: "Digital asset-backed lending platform",
-    supportEmail: "support@assetlend.com",
-    supportPhone: "+91 80000 12345",
-    businessHours: "9:00 AM - 6:00 PM",
-    timezone: "Asia/Kolkata",
+  const { toast } = useToast()
+  
+  const [services, setServices] = useState<ServiceStatus[]>([])
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState<{ [key: string]: boolean }>({})
+  
+  // Email Config State (inline editing)
+  const [emailConfigMode, setEmailConfigMode] = useState(false)
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>({
+    host: "",
+    port: 587,
+    user: "",
+    password: "",
+    from: "",
   })
 
-  const [loanSettings, setLoanSettings] = useState({
-    minLoanAmount: 5000,
-    maxLoanAmount: 500000,
-    defaultInterestRate: 12,
-    minInterestRate: 8,
-    maxInterestRate: 24,
-    maxTenureMonths: 12,
-    processingFeePercent: 2,
-    platformFeePercent: 1,
-    autoApprovalLimit: 25000,
-  })
+  // Load existing config into form when entering edit mode
+  useEffect(() => {
+    if (emailConfigMode) {
+      const emailService = services.find(s => s.serviceName === 'EMAIL')
+      if (emailService?.config && Object.keys(emailService.config).length > 0) {
+        setEmailConfig(emailService.config)
+      }
+    }
+  }, [emailConfigMode, services])
 
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailNotifications: true,
-    smsNotifications: true,
-    pushNotifications: true,
-    reminderDays: 3,
-    overdueNotifications: true,
-    paymentConfirmations: true,
-    systemAlerts: true,
-  })
+  // Load services from API
+  const loadServices = async () => {
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICES), {
+        credentials: 'include',
+      })
 
-  const [securitySettings, setSecuritySettings] = useState({
-    twoFactorRequired: false,
-    sessionTimeout: 30,
-    passwordComplexity: true,
-    loginAttempts: 3,
-    accountLockoutMinutes: 15,
-    dataEncryption: true,
-  })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
 
-  const handleSaveGeneral = () => {
-    // Save general settings logic
-    toast.success("General settings saved successfully!")
+      const data = await response.json()
+      
+      if (data.success && data.data) {
+        setServices(data.data)
+      }
+    } catch (error: any) {
+      console.error('Load services error:', error)
+      toast({
+        variant: "destructive",
+        title: "❌ Failed to load services",
+        description: error.message || 'An error occurred',
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleSaveLoans = () => {
-    // Save loan settings logic  
-    toast.success("Loan settings saved successfully!")
+  // Polling effect - simple 5 second interval
+  useEffect(() => {
+    // Initial load
+    loadServices()
+
+    // Set up polling interval
+    const pollInterval = setInterval(() => {
+      loadServices()
+    }, 5000) // Poll every 5 seconds
+
+    // Cleanup on unmount
+    return () => clearInterval(pollInterval)
+  }, []) // Empty dependency array - run once on mount
+
+  // Manual refresh
+  const handleRefresh = async () => {
+    setLoading(true)
+    await loadServices()
   }
 
-  const handleSaveNotifications = () => {
-    // Save notification settings logic
-    toast.success("Notification settings saved successfully!")
+  // Enable service
+  const handleEnable = async (serviceName: string) => {
+    const service = services.find(s => s.serviceName === serviceName)
+    
+    // For email, check if config exists
+    if (serviceName === 'EMAIL') {
+      if (!service?.config || Object.keys(service.config).length === 0) {
+        toast({
+          variant: "destructive",
+          title: "⚠️ Configuration Required",
+          description: "Please configure email settings before enabling",
+        })
+        setEmailConfigMode(true)
+        return
+      }
+    }
+
+    setActionLoading({ ...actionLoading, [`${serviceName}-enable`]: true })
+    
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_ENABLE(serviceName)), {
+        method: 'POST',
+        credentials: 'include',
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "✅ Service Enabled",
+          description: `${serviceName} has been enabled`,
+        })
+        await loadServices()
+      } else {
+        throw new Error(data.message)
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "❌ Enable Failed",
+        description: error.message || 'An error occurred',
+      })
+    } finally {
+      setActionLoading({ ...actionLoading, [`${serviceName}-enable`]: false })
+    }
   }
 
-  const handleSaveSecurity = () => {
-    // Save security settings logic
-    toast.success("Security settings saved successfully!")
+  // Disable service (deletes everything)
+  const handleDisable = async (serviceName: string) => {
+    if (!confirm(`Are you sure you want to disable ${serviceName}? This will delete all configuration and data.`)) {
+      return
+    }
+
+    setActionLoading({ ...actionLoading, [`${serviceName}-disable`]: true })
+    
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_DISABLE(serviceName)), {
+        method: 'POST',
+        credentials: 'include',
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "✅ Service Disabled",
+          description: `${serviceName} has been disabled and deleted`,
+        })
+        setEmailConfigMode(false) // Reset email config mode
+        await loadServices()
+      } else {
+        throw new Error(data.message)
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "❌ Disable Failed",
+        description: error.message || 'An error occurred',
+      })
+    } finally {
+      setActionLoading({ ...actionLoading, [`${serviceName}-disable`]: false })
+    }
+  }
+
+  // Save email configuration
+  const handleSaveEmailConfig = async () => {
+    if (!emailConfig.host || !emailConfig.user || !emailConfig.password || !emailConfig.from) {
+      toast({
+        variant: "destructive",
+        title: "⚠️ Validation Error",
+        description: "Please fill in all required fields",
+      })
+      return
+    }
+
+    setActionLoading({ ...actionLoading, 'email-config': true })
+    
+    // Show testing toast
+    toast({
+      title: "🔄 Testing Configuration",
+      description: "Connecting to SMTP server and sending test email...",
+    })
+    
+    try {
+      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_CONFIGURE('email')), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailConfig),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "✅ Configuration Saved & Tested",
+          description: "Test email sent successfully! Check your inbox to confirm.",
+        })
+        setEmailConfigMode(false)
+        await loadServices()
+      } else {
+        throw new Error(data.message)
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "❌ Configuration Test Failed",
+        description: error.message || 'Failed to connect to SMTP server. Please check your settings.',
+      })
+    } finally {
+      setActionLoading({ ...actionLoading, 'email-config': false })
+    }
+  }
+
+  // Get status badge with theme support
+  const getStatusBadge = (status: string) => {
+    switch (status.toUpperCase()) {
+      case 'CONNECTED':
+      case 'AUTHENTICATED':
+        return (
+          <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20 hover:bg-green-500/20">
+            <CheckCircle2 className="w-3 h-3 mr-1" /> 
+            Connected
+          </Badge>
+        )
+      case 'DISCONNECTED':
+      case 'DISABLED':
+        return (
+          <Badge variant="secondary" className="bg-secondary/50">
+            <XCircle className="w-3 h-3 mr-1" /> 
+            Disconnected
+          </Badge>
+        )
+      case 'INITIALIZING':
+      case 'CONNECTING':
+        return (
+          <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" /> 
+            Connecting
+          </Badge>
+        )
+      case 'WAITING_FOR_QR_SCAN':
+        return (
+          <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20">
+            <QrCode className="w-3 h-3 mr-1" /> 
+            Scan QR
+          </Badge>
+        )
+      case 'ERROR':
+      case 'TIMEOUT':
+      case 'AUTH_FAILURE':
+        return (
+          <Badge variant="destructive" className="bg-destructive/10 text-destructive border-destructive/20">
+            <AlertCircle className="w-3 h-3 mr-1" /> 
+            Error
+          </Badge>
+        )
+      default:
+        return (
+          <Badge variant="outline">
+            {status}
+          </Badge>
+        )
+    }
+  }
+
+  // Render WhatsApp card
+  const renderWhatsAppCard = (service: ServiceStatus) => {
+    return (
+      <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200">
+        <CardHeader className="border-b bg-muted/30 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-green-500/10 rounded-lg">
+                <MessageSquare className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <CardTitle className="text-lg sm:text-xl">WhatsApp Business</CardTitle>
+                <CardDescription className="text-sm mt-0.5">
+                  Automated messaging and notifications
+                </CardDescription>
+              </div>
+            </div>
+            {getStatusBadge(service.connectionStatus)}
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-6 space-y-6">
+          {/* Status Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Zap className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Status</span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold">
+                {service.isEnabled ? 'Enabled' : 'Disabled'}
+              </p>
+            </div>
+
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Server className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Active</span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold">
+                {service.isActive ? 'Yes' : 'No'}
+              </p>
+            </div>
+
+            {service.lastConnectedAt && (
+              <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2 sm:col-span-1">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Clock className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">Last Connected</span>
+                </div>
+                <p className="text-xs sm:text-sm font-semibold">
+                  {new Date(service.lastConnectedAt).toLocaleString('en-US', {
+                    dateStyle: 'short',
+                    timeStyle: 'short'
+                  })}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Error Display */}
+          {service.lastError && (
+            <Alert variant="destructive" className="bg-destructive/5">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{service.lastError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* QR Code Display */}
+          {service.qrCode && (
+            <div className="border-2 border-primary rounded-lg p-4 sm:p-6 bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2">
+                <QrCode className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-base sm:text-lg">Scan QR Code to Connect</h3>
+              </div>
+              
+              <div className="bg-background p-4 rounded-lg border-2">
+                <div className="flex justify-center">
+                  <Image
+                    src={service.qrCode}
+                    alt="WhatsApp QR Code"
+                    width={256}
+                    height={256}
+                    className="rounded-md"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2 text-xs sm:text-sm text-muted-foreground">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                  <p>Open WhatsApp on your phone → Settings → Linked Devices → Link a Device</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                  <p>Point your camera at the QR code above to connect</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+
+        <CardFooter className="bg-muted/30 border-t flex gap-2 p-4">
+          {!service.isEnabled ? (
+            <Button
+              onClick={() => handleEnable('WHATSAPP')}
+              disabled={actionLoading['WHATSAPP-enable']}
+              className="w-full h-10"
+            >
+              {actionLoading['WHATSAPP-enable'] ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enabling...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Enable WhatsApp
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => handleDisable('WHATSAPP')}
+              disabled={actionLoading['WHATSAPP-disable']}
+              variant="destructive"
+              className="w-full h-10"
+            >
+              {actionLoading['WHATSAPP-disable'] ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Disabling...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Disable & Delete
+                </>
+              )}
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+    )
+  }
+
+  // Render Email card
+  const renderEmailCard = (service: ServiceStatus) => {
+    const hasConfig = service.config && Object.keys(service.config).length > 0
+    const showConfigForm = emailConfigMode || (!hasConfig && !service.isEnabled)
+
+    return (
+      <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200">
+        <CardHeader className="border-b bg-muted/30 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-500/10 rounded-lg">
+                <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <CardTitle className="text-lg sm:text-xl">Email Service</CardTitle>
+                <CardDescription className="text-sm mt-0.5">
+                  SMTP email notifications and alerts
+                </CardDescription>
+              </div>
+            </div>
+            {getStatusBadge(service.connectionStatus)}
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-6 space-y-6">
+          {/* Status Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Zap className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Status</span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold">
+                {service.isEnabled ? 'Enabled' : 'Disabled'}
+              </p>
+            </div>
+
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Server className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Config</span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold">
+                {hasConfig ? 'Set' : 'Not Set'}
+              </p>
+            </div>
+
+            {hasConfig && !showConfigForm && (
+              <>
+                <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Server className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-medium text-muted-foreground">SMTP Host</span>
+                  </div>
+                  <p className="text-sm font-semibold truncate">{service.config.host}</p>
+                </div>
+                <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Mail className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-medium text-muted-foreground">Email Address</span>
+                  </div>
+                  <p className="text-sm font-semibold truncate">{service.config.user}</p>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Error Display */}
+          {service.lastError && (
+            <Alert variant="destructive" className="bg-destructive/5">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{service.lastError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Configuration Required Alert */}
+          {!hasConfig && !showConfigForm && (
+            <Alert className="border-primary/20 bg-primary/5">
+              <AlertCircle className="h-4 w-4 text-primary" />
+              <AlertDescription className="text-sm">
+                Configuration required before enabling this service
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Configuration Form */}
+          {showConfigForm && (
+            <div className="border-2 border-primary/20 rounded-lg p-4 sm:p-6 bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Edit className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-base sm:text-lg">SMTP Configuration</h3>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="host" className="text-sm font-medium">SMTP Host *</Label>
+                    <Input
+                      id="host"
+                      placeholder="smtp.gmail.com"
+                      value={emailConfig.host}
+                      onChange={(e) => setEmailConfig({ ...emailConfig, host: e.target.value })}
+                      className="h-10"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="port" className="text-sm font-medium">SMTP Port *</Label>
+                    <Input
+                      id="port"
+                      type="number"
+                      placeholder="587"
+                      value={emailConfig.port}
+                      onChange={(e) => setEmailConfig({ ...emailConfig, port: parseInt(e.target.value) })}
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="user" className="text-sm font-medium">Email Address *</Label>
+                  <Input
+                    id="user"
+                    type="email"
+                    placeholder="your-email@gmail.com"
+                    value={emailConfig.user}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, user: e.target.value })}
+                    className="h-10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm font-medium">Password / App Password *</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={emailConfig.password}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, password: e.target.value })}
+                    className="h-10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="from" className="text-sm font-medium">From Email *</Label>
+                  <Input
+                    id="from"
+                    type="email"
+                    placeholder="noreply@fundifyhub.com"
+                    value={emailConfig.from}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, from: e.target.value })}
+                    className="h-10"
+                  />
+                </div>
+
+                {/* Info Alert */}
+                <Alert className="border-primary/20 bg-primary/5">
+                  <AlertCircle className="h-4 w-4 text-primary" />
+                  <AlertDescription className="text-xs sm:text-sm">
+                    <strong>Test Email:</strong> We'll send a test email to verify configuration before saving.
+                    {emailConfig.host.toLowerCase().includes('gmail') && (
+                      <span className="block mt-1.5">
+                        <strong>Gmail Users:</strong> Use an App Password instead of your regular password. 
+                        <a 
+                          href="https://myaccount.google.com/apppasswords" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="underline ml-1 text-primary hover:text-primary/80"
+                        >
+                          Generate one here
+                        </a>
+                      </span>
+                    )}
+                  </AlertDescription>
+                </Alert>
+
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
+                  <Button
+                    onClick={handleSaveEmailConfig}
+                    disabled={actionLoading['email-config']}
+                    className="flex-1 h-10"
+                  >
+                    {actionLoading['email-config'] ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Testing & Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Test & Save
+                      </>
+                    )}
+                  </Button>
+                  {hasConfig && (
+                    <Button
+                      onClick={() => setEmailConfigMode(false)}
+                      variant="outline"
+                      className="h-10"
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+
+        <CardFooter className="bg-muted/30 border-t flex flex-col sm:flex-row gap-2 sm:gap-3 p-4">
+          {!service.isEnabled ? (
+            <>
+              {hasConfig && !showConfigForm && (
+                <Button
+                  onClick={() => setEmailConfigMode(true)}
+                  variant="outline"
+                  className="w-full sm:flex-1 h-10"
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Configuration
+                </Button>
+              )}
+              <Button
+                onClick={() => handleEnable('EMAIL')}
+                disabled={actionLoading['EMAIL-enable'] || !hasConfig}
+                className="w-full sm:flex-1 h-10"
+              >
+                {actionLoading['EMAIL-enable'] ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enabling...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Enable Service
+                  </>
+                )}
+              </Button>
+            </>
+          ) : (
+            <Button
+              onClick={() => handleDisable('EMAIL')}
+              disabled={actionLoading['EMAIL-disable']}
+              variant="destructive"
+              className="w-full h-10"
+            >
+              {actionLoading['EMAIL-disable'] ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Disabling...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Disable & Delete
+                </>
+              )}
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+    )
+  }
+
+  if (loading && services.length === 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+              <p className="text-muted-foreground text-sm">Loading services...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Settings className="w-8 h-8 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">System Settings</h1>
-            <p className="text-gray-600">Configure platform settings and preferences</p>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        {/* Header Section */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-primary/10 rounded-lg">
+                  <Settings className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
+                </div>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">
+                  Service Configuration
+                </h1>
+              </div>
+              <p className="text-sm sm:text-base text-muted-foreground ml-[52px]">
+                Manage communication services for notifications and messaging
+              </p>
+            </div>
+            <Button 
+              onClick={handleRefresh} 
+              variant="outline" 
+              disabled={loading}
+              size="default"
+              className="self-start sm:self-auto"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
           </div>
+          
+          {/* Info Banner */}
+          <Alert className="border-primary/20 bg-primary/5">
+            <Info className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              <strong>Live Status:</strong> This page automatically refreshes every 5 seconds to show real-time service status.
+            </AlertDescription>
+          </Alert>
         </div>
 
-        <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="general" className="text-xs sm:text-sm">General</TabsTrigger>
-            <TabsTrigger value="loans" className="text-xs sm:text-sm">Loans</TabsTrigger>
-            <TabsTrigger value="notifications" className="text-xs sm:text-sm">Notifications</TabsTrigger>
-            <TabsTrigger value="security" className="text-xs sm:text-sm">Security</TabsTrigger>
-          </TabsList>
+        {/* Service Cards */}
+        <div className="grid gap-6 lg:gap-8">
+          {services.map((service) => {
+            if (service.serviceName === 'EMAIL') {
+              return <div key={service.serviceName}>{renderEmailCard(service)}</div>
+            }
+            if (service.serviceName === 'WHATSAPP') {
+              return <div key={service.serviceName}>{renderWhatsAppCard(service)}</div>
+            }
+            return null
+          })}
+        </div>
 
-          {/* General Settings */}
-          <TabsContent value="general">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="w-5 h-5" />
-                  General Platform Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="platformName">Platform Name</Label>
-                    <Input
-                      id="platformName"
-                      value={generalSettings.platformName}
-                      onChange={(e) => setGeneralSettings({...generalSettings, platformName: e.target.value})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <Select 
-                      value={generalSettings.timezone} 
-                      onValueChange={(value) => setGeneralSettings({...generalSettings, timezone: value})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Asia/Kolkata">Asia/Kolkata (IST)</SelectItem>
-                        <SelectItem value="Asia/Dubai">Asia/Dubai (GST)</SelectItem>
-                        <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="platformDescription">Platform Description</Label>
-                  <Textarea
-                    id="platformDescription"
-                    value={generalSettings.platformDescription}
-                    onChange={(e) => setGeneralSettings({...generalSettings, platformDescription: e.target.value})}
-                    rows={3}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="supportEmail">Support Email</Label>
-                    <Input
-                      id="supportEmail"
-                      type="email"
-                      value={generalSettings.supportEmail}
-                      onChange={(e) => setGeneralSettings({...generalSettings, supportEmail: e.target.value})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="supportPhone">Support Phone</Label>
-                    <Input
-                      id="supportPhone"
-                      value={generalSettings.supportPhone}
-                      onChange={(e) => setGeneralSettings({...generalSettings, supportPhone: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="businessHours">Business Hours</Label>
-                  <Input
-                    id="businessHours"
-                    value={generalSettings.businessHours}
-                    onChange={(e) => setGeneralSettings({...generalSettings, businessHours: e.target.value})}
-                  />
-                </div>
-
-                <Button onClick={handleSaveGeneral} className="w-full sm:w-auto">
-                  <Save className="w-4 h-4 mr-2" />
-                  Save General Settings
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Loan Settings */}
-          <TabsContent value="loans">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5" />
-                  Loan Configuration
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="minLoanAmount">Minimum Loan Amount (₹)</Label>
-                    <Input
-                      id="minLoanAmount"
-                      type="number"
-                      value={loanSettings.minLoanAmount}
-                      onChange={(e) => setLoanSettings({...loanSettings, minLoanAmount: parseInt(e.target.value)})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="maxLoanAmount">Maximum Loan Amount (₹)</Label>
-                    <Input
-                      id="maxLoanAmount"
-                      type="number"
-                      value={loanSettings.maxLoanAmount}
-                      onChange={(e) => setLoanSettings({...loanSettings, maxLoanAmount: parseInt(e.target.value)})}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="defaultInterestRate">Default Interest Rate (%)</Label>
-                    <Input
-                      id="defaultInterestRate"
-                      type="number"
-                      step="0.1"
-                      value={loanSettings.defaultInterestRate}
-                      onChange={(e) => setLoanSettings({...loanSettings, defaultInterestRate: parseFloat(e.target.value)})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="minInterestRate">Min Interest Rate (%)</Label>
-                    <Input
-                      id="minInterestRate"
-                      type="number"
-                      step="0.1"
-                      value={loanSettings.minInterestRate}
-                      onChange={(e) => setLoanSettings({...loanSettings, minInterestRate: parseFloat(e.target.value)})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="maxInterestRate">Max Interest Rate (%)</Label>
-                    <Input
-                      id="maxInterestRate"
-                      type="number"
-                      step="0.1"
-                      value={loanSettings.maxInterestRate}
-                      onChange={(e) => setLoanSettings({...loanSettings, maxInterestRate: parseFloat(e.target.value)})}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="maxTenureMonths">Max Tenure (Months)</Label>
-                    <Input
-                      id="maxTenureMonths"
-                      type="number"
-                      value={loanSettings.maxTenureMonths}
-                      onChange={(e) => setLoanSettings({...loanSettings, maxTenureMonths: parseInt(e.target.value)})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="processingFeePercent">Processing Fee (%)</Label>
-                    <Input
-                      id="processingFeePercent"
-                      type="number"
-                      step="0.1"
-                      value={loanSettings.processingFeePercent}
-                      onChange={(e) => setLoanSettings({...loanSettings, processingFeePercent: parseFloat(e.target.value)})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="platformFeePercent">Platform Fee (%)</Label>
-                    <Input
-                      id="platformFeePercent"
-                      type="number"
-                      step="0.1"
-                      value={loanSettings.platformFeePercent}
-                      onChange={(e) => setLoanSettings({...loanSettings, platformFeePercent: parseFloat(e.target.value)})}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="autoApprovalLimit">Auto-Approval Limit (₹)</Label>
-                  <Input
-                    id="autoApprovalLimit"
-                    type="number"
-                    value={loanSettings.autoApprovalLimit}
-                    onChange={(e) => setLoanSettings({...loanSettings, autoApprovalLimit: parseInt(e.target.value)})}
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Loans below this amount will be auto-approved if criteria are met
-                  </p>
-                </div>
-
-                <Button onClick={handleSaveLoans} className="w-full sm:w-auto">
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Loan Settings
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Notification Settings */}
-          <TabsContent value="notifications">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bell className="w-5 h-5" />
-                  Notification Preferences
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Mail className="w-5 h-5 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">Email Notifications</p>
-                        <p className="text-sm text-muted-foreground">Send notifications via email</p>
-                      </div>
-                    </div>
-                    <Switch 
-                      checked={notificationSettings.emailNotifications}
-                      onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, emailNotifications: checked})}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Smartphone className="w-5 h-5 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">SMS Notifications</p>
-                        <p className="text-sm text-muted-foreground">Send notifications via SMS</p>
-                      </div>
-                    </div>
-                    <Switch 
-                      checked={notificationSettings.smsNotifications}
-                      onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, smsNotifications: checked})}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Bell className="w-5 h-5 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">Push Notifications</p>
-                        <p className="text-sm text-muted-foreground">Send push notifications to mobile app</p>
-                      </div>
-                    </div>
-                    <Switch 
-                      checked={notificationSettings.pushNotifications}
-                      onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, pushNotifications: checked})}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="reminderDays">Payment Reminder (Days Before Due)</Label>
-                  <Input
-                    id="reminderDays"
-                    type="number"
-                    value={notificationSettings.reminderDays}
-                    onChange={(e) => setNotificationSettings({...notificationSettings, reminderDays: parseInt(e.target.value)})}
-                    className="w-24"
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="font-medium">Notification Types</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Overdue Notifications</span>
-                      <Switch 
-                        checked={notificationSettings.overdueNotifications}
-                        onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, overdueNotifications: checked})}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Payment Confirmations</span>
-                      <Switch 
-                        checked={notificationSettings.paymentConfirmations}
-                        onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, paymentConfirmations: checked})}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">System Alerts</span>
-                      <Switch 
-                        checked={notificationSettings.systemAlerts}
-                        onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, systemAlerts: checked})}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <Button onClick={handleSaveNotifications} className="w-full sm:w-auto">
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Notification Settings
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Security Settings */}
-          <TabsContent value="security">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5" />
-                  Security & Access Control
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Two-Factor Authentication</p>
-                      <p className="text-sm text-muted-foreground">Require 2FA for admin accounts</p>
-                    </div>
-                    <Switch 
-                      checked={securitySettings.twoFactorRequired}
-                      onCheckedChange={(checked) => setSecuritySettings({...securitySettings, twoFactorRequired: checked})}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Password Complexity</p>
-                      <p className="text-sm text-muted-foreground">Enforce strong password requirements</p>
-                    </div>
-                    <Switch 
-                      checked={securitySettings.passwordComplexity}
-                      onCheckedChange={(checked) => setSecuritySettings({...securitySettings, passwordComplexity: checked})}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Data Encryption</p>
-                      <p className="text-sm text-muted-foreground">Encrypt sensitive data at rest</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-                      <Switch 
-                        checked={securitySettings.dataEncryption}
-                        onCheckedChange={(checked) => setSecuritySettings({...securitySettings, dataEncryption: checked})}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="sessionTimeout">Session Timeout (Minutes)</Label>
-                    <Input
-                      id="sessionTimeout"
-                      type="number"
-                      value={securitySettings.sessionTimeout}
-                      onChange={(e) => setSecuritySettings({...securitySettings, sessionTimeout: parseInt(e.target.value)})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="loginAttempts">Max Login Attempts</Label>
-                    <Input
-                      id="loginAttempts"
-                      type="number"
-                      value={securitySettings.loginAttempts}
-                      onChange={(e) => setSecuritySettings({...securitySettings, loginAttempts: parseInt(e.target.value)})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="accountLockoutMinutes">Account Lockout (Minutes)</Label>
-                    <Input
-                      id="accountLockoutMinutes"
-                      type="number"
-                      value={securitySettings.accountLockoutMinutes}
-                      onChange={(e) => setSecuritySettings({...securitySettings, accountLockoutMinutes: parseInt(e.target.value)})}
-                    />
-                  </div>
-                </div>
-
-                <Button onClick={handleSaveSecurity} className="w-full sm:w-auto">
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Security Settings
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        {/* Footer Note */}
+        <div className="mt-8 pt-6 border-t">
+          <p className="text-xs text-center text-muted-foreground">
+            Services are monitored in real-time. Configuration changes take effect immediately.
+          </p>
+        </div>
       </div>
     </div>
   )

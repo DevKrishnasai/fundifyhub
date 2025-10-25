@@ -1,4 +1,7 @@
+export { SERVICE_ACTIONS } from './queue-names';
 import type { ApiResponse } from "@fundifyhub/types";
+
+
 
 // Format currency amount
 export function formatCurrency(amount: number, currency: string = "INR"): string {
@@ -56,4 +59,13 @@ export function sanitizeString(input: string): string {
 }
 
 // Export environment configuration
-export { appConfig, validateConfig, getEnv, type AppConfig } from "./env";
+export { appConfig, validateConfig, type AppConfig } from "./env";
+
+// Queue utilities (shared producer) - lightweight wrapper using BullMQ
+export { enqueue, closeAllQueues } from './queue';
+
+// Shared queue/job name constants and defaults
+export { QUEUE_NAMES, JOB_NAMES, DEFAULT_JOB_OPTIONS, CONNECTION_STATUS } from './queue-names';
+
+// Shared templates for emails/whatsapp
+export { EMAIL_TEMPLATES, WHATSAPP_TEMPLATES } from './templates';

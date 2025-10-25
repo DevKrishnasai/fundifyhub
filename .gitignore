@@ -108,3 +108,6 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# webwhatsapp
+.wwebjs_*/

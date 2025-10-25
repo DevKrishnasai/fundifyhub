@@ -5,17 +5,18 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🌱 Starting database seeding...");
 
-  // Create sample users with detailed information for all 4 roles
+  // Create sample users with detailed information - now with multi-role support
   const users = await Promise.all([
-    // Customer
+    // Customer only
     prisma.user.upsert({
       where: { email: "customer@example.com" },
       update: {},
       create: {
-        name: "John Customer",
+        firstName: "John",
+        lastName: "Customer",
         email: "customer@example.com",
-        phone: "+919876543210",
-        role: "CUSTOMER",
+        phoneNumber: "+919876543210",
+        roles: ["CUSTOMER"],
         district: "Mumbai",
         emailVerified: true,
         phoneVerified: true,
@@ -25,15 +26,16 @@ async function main() {
         pincode: "400001",
       },
     }),
-    // District Admin
+    // District Admin only
     prisma.user.upsert({
       where: { email: "district.admin@fundifyhub.com" },
       update: {},
       create: {
-        name: "Mumbai District Admin",
+        firstName: "Mumbai District",
+        lastName: "Admin",
         email: "district.admin@fundifyhub.com",
-        phone: "+919876543201",
-        role: "DISTRICT_ADMIN",
+        phoneNumber: "+919876543201",
+        roles: ["DISTRICT_ADMIN"],
         district: "Mumbai",
         emailVerified: true,
         phoneVerified: true,
@@ -43,15 +45,16 @@ async function main() {
         pincode: "400002",
       },
     }),
-    // Agent
+    // Agent only
     prisma.user.upsert({
       where: { email: "agent@fundifyhub.com" },
       update: {},
       create: {
-        name: "Field Agent",
+        firstName: "Field",
+        lastName: "Agent",
         email: "agent@fundifyhub.com",
-        phone: "+919876543202",
-        role: "AGENT",
+        phoneNumber: "+919876543202",
+        roles: ["AGENT"],
         district: "Mumbai",
         emailVerified: true,
         phoneVerified: true,
@@ -61,15 +64,16 @@ async function main() {
         pincode: "400003",
       },
     }),
-    // Super Admin
+    // Super Admin with all roles
     prisma.user.upsert({
       where: { email: "super.admin@fundifyhub.com" },
       update: {},
       create: {
-        name: "Super Admin",
+        firstName: "Super",
+        lastName: "Admin",
         email: "super.admin@fundifyhub.com",
-        phone: "+919876543203",
-        role: "SUPER_ADMIN",
+        phoneNumber: "+919876543203",
+        roles: ["SUPER_ADMIN", "ADMIN", "DISTRICT_ADMIN", "AGENT", "CUSTOMER"],
         emailVerified: true,
         phoneVerified: true,
         address: "Head Office, Mumbai",
@@ -78,14 +82,51 @@ async function main() {
         pincode: "400004",
       },
     }),
+    // Admin for Worker Configuration
+    prisma.user.upsert({
+      where: { email: "admin@fundifyhub.com" },
+      update: {},
+      create: {
+        firstName: "System",
+        lastName: "Admin",
+        email: "admin@fundifyhub.com",
+        phoneNumber: "+919876543204",
+        roles: ["ADMIN"],
+        emailVerified: true,
+        phoneVerified: true,
+        address: "Tech Office, Mumbai",
+        city: "Mumbai",
+        state: "Maharashtra",
+        pincode: "400005",
+      },
+    }),
+    // Multi-role user: Customer + Agent
+    prisma.user.upsert({
+      where: { email: "multi@example.com" },
+      update: {},
+      create: {
+        firstName: "Multi",
+        lastName: "Role",
+        email: "multi@example.com",
+        phoneNumber: "+919876543205",
+        roles: ["CUSTOMER", "AGENT"],
+        district: "Mumbai",
+        emailVerified: true,
+        phoneVerified: true,
+        address: "456 Multi Street, Mumbai",
+        city: "Mumbai",
+        state: "Maharashtra",
+        pincode: "400006",
+      },
+    }),
   ]);
 
   console.log(`Created ${users.length} users`);
 
   // Get users by role
-  const customer = users.find(user => user.role === "CUSTOMER")!;
-  const districtAdmin = users.find(user => user.role === "DISTRICT_ADMIN")!;
-  const agent = users.find(user => user.role === "AGENT")!;
+  const customer = users.find(user => user.roles.includes("CUSTOMER") && user.roles.length === 1)!;
+  const districtAdmin = users.find(user => user.roles.includes("DISTRICT_ADMIN") && user.roles.length === 1)!;
+  const agent = users.find(user => user.roles.includes("AGENT") && user.roles.length === 1)!;
 
   // Create sample requests with inline asset details
   const request = await prisma.request.create({
@@ -157,11 +198,14 @@ async function main() {
     },
   });
 
-  console.log("Created sample request with documents, comments, and inspection");
+
 
   console.log("🎉 Database seeding completed successfully!");
   console.log("📊 Summary:");
-  console.log(`- ${users.length} users created (1 customer, 1 district admin, 1 agent, 1 super admin)`);
+  console.log(`- ${users.length} users created with multi-role support`);
+  console.log(`  - Pure roles: customer, district admin, agent, admin`);
+  console.log(`  - Super admin with all roles`);
+  console.log(`  - Multi-role user: customer + agent`);
   console.log(`- 1 request created with inline asset details`);
   console.log(`- 1 document created`);
   console.log(`- 1 comment created`);

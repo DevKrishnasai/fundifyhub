@@ -53,13 +53,7 @@ export interface AppConfig {
     keySecret: string;
   };
   
-  // Email
-  email: {
-    host: string;
-    port: number;
-    user: string;
-    password: string;
-  };
+  // Email configuration moved to database - configured via admin panel
 }
 
 /**
@@ -75,18 +69,10 @@ function getRequiredEnv(key: string): string {
 }
 
 /**
- * Get an optional environment variable with a default value
+ * Get a required environment variable as a number
  */
-function getOptionalEnv(key: string, defaultValue: string): string {
-  return process.env[key] || defaultValue;
-}
-
-/**
- * Get an environment variable as a number
- */
-function getNumberEnv(key: string, defaultValue: number): number {
-  const value = process.env[key];
-  if (!value) return defaultValue;
+function getRequiredNumberEnv(key: string): number {
+  const value = getRequiredEnv(key);
   const parsed = parseInt(value, 10);
   if (isNaN(parsed)) {
     throw new Error(`Environment variable ${key} must be a valid number, got: ${value}`);
@@ -101,38 +87,38 @@ function getNumberEnv(key: string, defaultValue: number): number {
 export const appConfig: AppConfig = {
   database: {
     url: getRequiredEnv('DATABASE_URL'),
-    user: getOptionalEnv('POSTGRES_USER', 'user'),
-    password: getOptionalEnv('POSTGRES_PASSWORD', 'pass'),
-    name: getOptionalEnv('POSTGRES_DB', 'fundifyhub'),
+    user: getRequiredEnv('POSTGRES_USER'),
+    password: getRequiredEnv('POSTGRES_PASSWORD'),
+    name: getRequiredEnv('POSTGRES_DB'),
   },
   
   redis: {
-    host: getOptionalEnv('REDIS_HOST', 'localhost'),
-    port: getNumberEnv('REDIS_PORT', 6379),
-    url: getOptionalEnv('REDIS_URL', 'redis://localhost:6379'),
+    host: getRequiredEnv('REDIS_HOST'),
+    port: getRequiredNumberEnv('REDIS_PORT'),
+    url: getRequiredEnv('REDIS_URL'),
   },
   
   app: {
-    nodeEnv: getOptionalEnv('NODE_ENV', 'development'),
-    logLevel: getOptionalEnv('LOG_LEVEL', 'debug'),
+    nodeEnv: getRequiredEnv('NODE_ENV'),
+    logLevel: getRequiredEnv('LOG_LEVEL'),
   },
   
   services: {
     api: {
-      port: getNumberEnv('API_PORT', 3001),
-      host: getOptionalEnv('API_HOST', 'localhost'),
-      url: getOptionalEnv('API_URL', 'http://localhost:3001'),
+      port: getRequiredNumberEnv('API_PORT'),
+      host: getRequiredEnv('API_HOST'),
+      url: getRequiredEnv('API_URL'),
     },
     websocket: {
-      port: getNumberEnv('WS_PORT', 3002),
-      host: getOptionalEnv('WS_HOST', 'localhost'),
-      url: getOptionalEnv('WS_URL', 'ws://localhost:3002'),
+      port: getRequiredNumberEnv('WS_PORT'),
+      host: getRequiredEnv('WS_HOST'),
+      url: getRequiredEnv('WS_URL'),
     },
   },
   
   auth: {
     jwtSecret: getRequiredEnv('JWT_SECRET'),
-    jwtExpiresIn: getOptionalEnv('JWT_EXPIRES_IN', '7d'),
+    jwtExpiresIn: getRequiredEnv('JWT_EXPIRES_IN'),
   },
   
   razorpay: {
@@ -140,12 +126,7 @@ export const appConfig: AppConfig = {
     keySecret: getRequiredEnv('RAZORPAY_KEY_SECRET'),
   },
   
-  email: {
-    host: getOptionalEnv('SMTP_HOST', 'smtp.gmail.com'),
-    port: getNumberEnv('SMTP_PORT', 587),
-    user: getRequiredEnv('SMTP_USER'),
-    password: getRequiredEnv('SMTP_PASS'),
-  },
+  // Email configuration moved to database - configured via admin panel
 };
 
 /**
@@ -159,8 +140,7 @@ export function validateConfig(): void {
     appConfig.auth.jwtSecret;
     appConfig.razorpay.keyId;
     appConfig.razorpay.keySecret;
-    appConfig.email.user;
-    appConfig.email.password;
+    // Email configuration is now database-driven via admin panel
     
     console.log('✅ Environment configuration validated successfully');
   } catch (error) {
@@ -170,9 +150,9 @@ export function validateConfig(): void {
 }
 
 /**
- * Helper function to get environment variables (for backward compatibility)
- * @deprecated Use appConfig object instead
+ * Helper function to get required environment variables
+ * Use this only when you can't use the appConfig object
  */
-export function getEnv(key: string, defaultValue?: string): string {
-  return process.env[key] || defaultValue || '';
+export function getRequiredEnvVar(key: string): string {
+  return getRequiredEnv(key);
 }

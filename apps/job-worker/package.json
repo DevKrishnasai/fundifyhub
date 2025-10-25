@@ -4,21 +4,31 @@
   "description": "Job Worker for Finance Application",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "npx dotenv -e ../../.env -- tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "cleanup:whatsapp": "node scripts/cleanup-whatsapp-session.js"
   },
   "dependencies": {
-    "bullmq": "^5.61.0",
-    "redis": "^4.7.0",
     "@fundifyhub/logger": "workspace:*",
+    "@fundifyhub/prisma": "workspace:*",
     "@fundifyhub/utils": "workspace:*",
-    "@fundifyhub/prisma": "workspace:*"
+    "@types/nodemailer": "^7.0.2",
+    "@types/qrcode": "^1.5.5",
+    "@types/qrcode-terminal": "^0.12.2",
+    "bullmq": "^5.61.0",
+    "ioredis": "^5.8.1",
+    "nodemailer": "^7.0.9",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "redis": "^4.7.0",
+    "whatsapp-web.js": "^1.34.1"
   },
   "devDependencies": {
-    "typescript": "^5.9.2",
+    "@types/node": "^22.10.5",
+    "dotenv-cli": "^7.4.2",
     "tsx": "^4.20.5",
-    "@types/node": "^22.10.5"
+    "typescript": "^5.9.2"
   }
 }

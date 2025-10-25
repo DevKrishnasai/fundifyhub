@@ -26,34 +26,8 @@ import {
 } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 
-// Mock data for the loan request
-const loanRequest = {
-  id: "LR001",
-  userId: "U001",
-  userName: "Rahul Kumar",
-  userPhone: "+91 9876543210",
-  asset: "iPhone 14 Pro",
-  assetType: "smartphone",
-  brand: "Apple",
-  model: "iPhone 14 Pro",
-  condition: "excellent",
-  approvedAmount: 42000,
-  interestRate: 12,
-  tenure: 6,
-  planType: "monthly",
-  emiAmount: 7500,
-  district: "Mumbai",
-  pickupDate: "2025-01-25",
-  pickupTime: "14:00",
-  pickupLocation: "Bandra West, Mumbai",
-  status: "approved",
-  inspectionStatus: "pending", // pending, completed, agreement_pending, agreement_signed, disbursed
-  originalPhotos: ["/iphone-14-pro-front.jpg", "/iphone-14-pro-back.jpg"],
-  inspectionPhotos: [],
-  agreementUrl: null,
-  disbursementMode: null,
-  paymentProof: null,
-}
+// TODO: Replace with actual API call to fetch loan request details
+const loanRequest: any = null
 
 interface InspectionPhoto {
   id: string
@@ -293,7 +267,7 @@ export default function InspectionPage() {
 
                   <TabsContent value="original" className="space-y-4">
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {loanRequest.originalPhotos.map((photo, index) => (
+                      {loanRequest.originalPhotos.map((photo: any, index: number) => (
                         <div key={index} className="relative">
                           <img
                             src={photo || "/placeholder.svg"}

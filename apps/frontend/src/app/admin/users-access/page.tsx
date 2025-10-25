@@ -42,62 +42,18 @@ interface User {
   name: string
   email: string
   phone: string
-  role: UserRole
+  role: UserRole // Keep single role for mock data simplicity
   status: UserStatus
   district: string
   createdAt: string
   lastLogin: string
 }
 
-const mockUsers: User[] = [
-  {
-    id: "1",
-    name: "John Doe",
-    email: "john.doe@assetlend.com",
-    phone: "+91 98765 43210",
-    role: "admin",
-    status: "active",
-    district: "Mumbai Central",
-    createdAt: "2024-01-15",
-    lastLogin: "2024-01-20"
-  },
-  {
-    id: "2", 
-    name: "Priya Sharma",
-    email: "priya.sharma@assetlend.com",
-    phone: "+91 87654 32109",
-    role: "agent",
-    status: "active",
-    district: "Delhi South",
-    createdAt: "2024-01-10",
-    lastLogin: "2024-01-19"
-  },
-  {
-    id: "3",
-    name: "Rajesh Kumar",
-    email: "rajesh.kumar@gmail.com",
-    phone: "+91 76543 21098",
-    role: "customer",
-    status: "inactive",
-    district: "Bangalore North",
-    createdAt: "2024-01-05",
-    lastLogin: "2024-01-18"
-  },
-  {
-    id: "4",
-    name: "Amit Singh",
-    email: "amit.singh@assetlend.com", 
-    phone: "+91 65432 10987",
-    role: "agent",
-    status: "suspended",
-    district: "Pune West",
-    createdAt: "2024-01-12",
-    lastLogin: "2024-01-17"
-  }
-]
+// TODO: Replace with actual API call to fetch users
+const initialUsers: User[] = []
 
 export default function UsersAccessPage() {
-  const [users, setUsers] = useState<User[]>(mockUsers)
+  const [users, setUsers] = useState<User[]>(initialUsers)
   const [searchTerm, setSearchTerm] = useState("")
   const [roleFilter, setRoleFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -184,13 +140,13 @@ export default function UsersAccessPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Users & Access Management</h1>
-            <p className="text-gray-600">Manage user accounts, roles, and permissions</p>
+            <h1 className="text-2xl font-bold text-foreground">Users & Access Management</h1>
+            <p className="text-muted-foreground">Manage user accounts, roles, and permissions</p>
           </div>
           
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -301,11 +257,11 @@ export default function UsersAccessPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <ShieldCheck className="w-4 h-4 text-green-600" />
+                <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                  <ShieldCheck className="w-4 h-4 text-green-600 dark:text-green-200" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Agents</p>
+                  <p className="text-sm text-muted-foreground">Agents</p>
                   <p className="text-lg font-semibold">{users.filter(u => u.role === "agent").length}</p>
                 </div>
               </div>
@@ -315,11 +271,11 @@ export default function UsersAccessPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Users className="w-4 h-4 text-orange-600" />
+                <div className="p-2 bg-orange-100 dark:bg-orange-900 rounded-lg">
+                  <Users className="w-4 h-4 text-orange-600 dark:text-orange-200" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Customers</p>
+                  <p className="text-sm text-muted-foreground">Customers</p>
                   <p className="text-lg font-semibold">{users.filter(u => u.role === "customer").length}</p>
                 </div>
               </div>
@@ -333,7 +289,7 @@ export default function UsersAccessPage() {
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                   <Input
                     placeholder="Search by name, email, or phone..."
                     value={searchTerm}
