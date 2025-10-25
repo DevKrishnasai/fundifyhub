@@ -6,10 +6,12 @@ import { initializeWhatsApp, destroyWhatsApp, initializeEmail, destroyEmail } fr
 const logger = createLogger({ serviceName: 'service-control-worker' });
 
 export interface ServiceControlCommand {
-  command: 'INITIALIZE' | 'DESTROY' | 'STATUS_CHECK';
+  // Support both 'command' (worker) and legacy 'action' (producer) shapes.
+  command?: 'INITIALIZE' | 'DESTROY' | 'STATUS_CHECK';
+  action?: 'START' | 'STOP' | 'RESTART';
   serviceName: 'WHATSAPP' | 'EMAIL';
   config?: any;
-  timestamp: Date;
+  timestamp?: Date;
 }
 
 export class ServiceControlWorker {
@@ -27,16 +29,29 @@ export class ServiceControlWorker {
         try {
           logger.info(`📨 Processing ${job.data.serviceName} command: ${job.data.command}`);
 
+          // Normalize command: prefer explicit 'command', fall back to 'action'
+          const cmd = job.data.command
+            ? job.data.command
+            : (job.data.action === 'START' || job.data.action === 'RESTART')
+            ? 'INITIALIZE'
+            : job.data.action === 'STOP'
+            ? 'DESTROY'
+            : undefined;
+
+          if (!cmd) {
+            throw new Error(`Unknown service control command/action for job ${job.id}`);
+          }
+
           if (job.data.serviceName === 'WHATSAPP') {
-            if (job.data.command === 'INITIALIZE') {
+            if (cmd === 'INITIALIZE') {
               await initializeWhatsApp();
-            } else if (job.data.command === 'DESTROY') {
+            } else if (cmd === 'DESTROY') {
               await destroyWhatsApp();
             }
           } else if (job.data.serviceName === 'EMAIL') {
-            if (job.data.command === 'INITIALIZE') {
+            if (cmd === 'INITIALIZE') {
               await initializeEmail();
-            } else if (job.data.command === 'DESTROY') {
+            } else if (cmd === 'DESTROY') {
               await destroyEmail();
             }
           }

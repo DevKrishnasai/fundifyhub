@@ -1,2 +1,3 @@
-2025/10/23-09:47:30.164 4910 Creating DB D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\shared_proto_db since it was missing.
-2025/10/23-09:47:30.166 4910 Reusing MANIFEST D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\shared_proto_db/MANIFEST-000001
+2025/10/24-22:00:29.272 398c Reusing MANIFEST D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\shared_proto_db/MANIFEST-000001
+2025/10/24-22:00:29.277 398c Recovering log #3
+2025/10/24-22:00:29.278 398c Reusing old log D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\shared_proto_db/000003.log 

@@ -1,0 +1,28 @@
+2025/10/24-23:01:13.640 4394 Reusing MANIFEST D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/10/24-23:01:13.640 4394 Recovering log #415
+2025/10/24-23:01:13.661 4394 Reusing old log D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000415.log 
+2025/10/24-23:01:15.447 3dd8 Level-0 table #424: started
+2025/10/24-23:01:15.450 3dd8 Level-0 table #424: 159964 bytes OK
+2025/10/24-23:01:15.451 3dd8 Delete type=0 #415
+2025/10/24-23:01:15.451 3dd8 Manual compaction at level-0 from '\x00 \x00\x00\x00' @ 72057594037927935 : 1 .. '\x00!\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/10/24-23:01:16.495 5a50 Compacting 1@1 + 6@2 files
+2025/10/24-23:01:16.556 5a50 Generated table #425@1: 58521 keys, 2216117 bytes
+2025/10/24-23:01:16.599 5a50 Generated table #426@1: 21314 keys, 2181422 bytes
+2025/10/24-23:01:16.635 5a50 Generated table #427@1: 13705 keys, 2203683 bytes
+2025/10/24-23:01:16.696 5a50 Generated table #428@1: 46231 keys, 2203456 bytes
+2025/10/24-23:01:16.735 5a50 Generated table #429@1: 45774 keys, 1031694 bytes
+2025/10/24-23:01:16.735 5a50 Compacted 1@1 + 6@2 files => 9836372 bytes
+2025/10/24-23:01:16.737 5a50 compacted to: files[ 0 0 5 0 0 0 0 ]
+2025/10/24-23:01:16.737 5a50 Delete type=2 #414
+2025/10/24-23:01:16.737 5a50 Delete type=2 #417
+2025/10/24-23:01:16.737 5a50 Delete type=2 #418
+2025/10/24-23:01:16.737 5a50 Delete type=2 #419
+2025/10/24-23:01:16.737 5a50 Delete type=2 #420
+2025/10/24-23:01:16.737 5a50 Delete type=2 #421
+2025/10/24-23:01:16.737 5a50 Delete type=2 #424
+2025/10/24-23:04:08.601 323c Level-0 table #431: started
+2025/10/24-23:04:08.612 323c Level-0 table #431: 1112265 bytes OK
+2025/10/24-23:04:08.613 323c Delete type=0 #423
+2025/10/24-23:10:44.042 11f0 Level-0 table #433: started
+2025/10/24-23:10:44.051 11f0 Level-0 table #433: 981625 bytes OK
+2025/10/24-23:10:44.052 11f0 Delete type=0 #430

@@ -1,2 +1,3 @@
-2025/10/23-09:42:16.445 58e8 Creating DB D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\Local Storage\leveldb since it was missing.
-2025/10/23-09:42:16.454 58e8 Reusing MANIFEST D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\Local Storage\leveldb/MANIFEST-000001
+2025/10/24-23:10:51.778 2374 Reusing MANIFEST D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\Local Storage\leveldb/MANIFEST-000001
+2025/10/24-23:10:51.778 2374 Recovering log #4
+2025/10/24-23:10:51.778 2374 Reusing old log D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\Local Storage\leveldb/000004.log 

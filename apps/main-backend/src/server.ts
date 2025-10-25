@@ -1,17 +1,12 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import { createLogger } from '@fundifyhub/logger';
-import { config } from './config';
+import config from './env-config';
+import { logger } from './utils/logger';
 import apiRoutes from './api';
-import { errorHandler, notFoundHandler } from './middleware/error';
-import { startServer as startExpressServer, setupGracefulShutdown, requestLogger } from './utils/server';
-import { queueEventsService } from './services/queue-events';
 
-const logger = createLogger({ serviceName: 'main-server' });
 const app = express();
 
-// Middleware
 app.use(cors({
   origin: config.server.cors.origins,
   credentials: config.server.cors.credentials,
@@ -19,32 +14,36 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use((req, res, next) => requestLogger(req, res, next, logger));
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.url}`);
+  next();
+});
 
-// API Routes
-app.use('/api', apiRoutes);
-    
-// Error handling
-app.use('*', (req, res) => notFoundHandler(req, res));
-app.use((error: any, req: Request, res: Response, next: NextFunction) =>
-  errorHandler(error, req, res, next, logger)
-);
+app.use('/v1/api', apiRoutes);
 
-/**
- * Initialize and start server
- */
-async function initializeServer() {
-  try {
-    // Queue events service is already initialized as singleton
-    // It will automatically listen to BullMQ queue events
-    logger.info('📡 Queue events service ready for real-time updates');
+/* 404 handler */
+app.use('*', (req, res) => {
+   res.status(404).json({
+    success: false,
+    message: `Endpoint ${req.method} ${req.path} not found`
+  });
+});
+/* Global error handler */
+app.use((error: any, req: Request, res: Response, next: NextFunction) => {
+   logger.error('Unhandled error:', error);
 
-    const server = await startExpressServer(app, config.server.port, logger);
-    setupGracefulShutdown(server, logger);
-  } catch (error) {
-    logger.error('Failed to initialize server:', error as Error);
-    process.exit(1);
-  }
-}
+  // Don't expose internal errors in production
+  const message = config.env.isDevelopment 
+    ? error.message 
+    : 'Internal server error';
 
-initializeServer();
+  res.status(500).json({
+    success: false,
+    message,
+    ...(config.env.isDevelopment && { stack: error.stack })
+  });
+});
+
+app.listen(config.server.port, () => {
+  logger.info(`🚀 Server started on port ${config.server.port}`);
+});

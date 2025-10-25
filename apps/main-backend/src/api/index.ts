@@ -1,11 +1,16 @@
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
-import v1Routes from './v1';
+// import serviceRoutes from './service/routes';
+import adminRoutes from './admin/routes';
+import authRoutes from './auth/routes';
+import userRoutes from './user/routes';
 
 const router: ExpressRouter = Router();
 
-// Mount v1 routes
-router.use('/v1', v1Routes);
+// router.use('/service', serviceRoutes); //TODO: Need to clean up and add other service routes
+router.use('/admin', adminRoutes);
+router.use('/auth', authRoutes);
+router.use('/user', userRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

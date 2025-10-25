@@ -1,2 +1,3 @@
-2025/10/23-09:42:17.536 f30 Creating DB D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\Service Worker\Database since it was missing.
-2025/10/23-09:42:17.539 f30 Reusing MANIFEST D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\Service Worker\Database/MANIFEST-000001
+2025/10/24-23:10:51.783 1cac Reusing MANIFEST D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\Service Worker\Database/MANIFEST-000001
+2025/10/24-23:10:51.783 1cac Recovering log #3
+2025/10/24-23:10:51.783 1cac Reusing old log D:\Projects\fundifyhub\apps\job-worker\.wwebjs_auth\session-fundifyhub-admin-frontend\Default\Service Worker\Database/000003.log 
