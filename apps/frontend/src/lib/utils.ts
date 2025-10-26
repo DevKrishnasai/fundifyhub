@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 // API Configuration
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
+  BASE_URL: process.env.NEXT_PUBLIC_API_URL,
   ENDPOINTS: {
     AUTH: {
       REGISTER: '/api/v1/auth/register',

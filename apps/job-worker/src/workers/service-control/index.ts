@@ -46,6 +46,103 @@ export class ServiceControlWorker extends BaseWorker<ServiceControlJobData> {
   }
 
   /**
+   * Get browser executable path with intelligent fallbacks
+   * Priority: env var -> puppeteer bundled -> system chrome -> error
+   */
+  private async getBrowserExecutablePath(): Promise<string> {
+    const fs = await import('fs');
+    const path = await import('path');
+    const os = await import('os');
+
+    // 1. Check environment variable first
+    if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+      return process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    // 2. Try Puppeteer's bundled Chromium
+    try {
+      const puppeteer = await import('puppeteer');
+      const puppeteerPath = puppeteer.executablePath();
+      if (fs.existsSync(puppeteerPath)) {
+        return puppeteerPath;
+      }
+    } catch (error) {
+      this.logger.warn(`[WHATSAPP] Puppeteer not available: ${(error as Error).message}`);
+    }
+
+    // 3. Try system Chrome installations
+    const platform = os.platform();
+    const chromePaths: string[] = [];
+
+    if (platform === 'win32') {
+      chromePaths.push(
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        path.join(os.homedir(), 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe')
+      );
+    } else if (platform === 'darwin') {
+      chromePaths.push(
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium'
+      );
+    } else {
+      // Linux - add more common paths and snap/flatpak locations
+      chromePaths.push(
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/snap/bin/chromium',  // Snap package
+        '/usr/bin/chromium-browser',  // Alternative location
+        '/opt/google/chrome/chrome',  // Docker common location
+        '/usr/lib/bin/chromium-browser'  // Some distros
+      );
+    }
+
+    for (const chromePath of chromePaths) {
+      if (fs.existsSync(chromePath)) {
+        this.logger.info(`[WHATSAPP] Found system Chrome at: ${chromePath}`);
+        return chromePath;
+      }
+    }
+
+    // 4. Last resort - let Puppeteer handle it (might download)
+    throw new Error('No suitable browser found. Please install Chrome or set PUPPETEER_EXECUTABLE_PATH');
+  }
+
+  /**
+   * Clean up WhatsApp session data with retry logic
+   * Handles cases where files are still locked by the browser process
+   */
+  private async cleanupSessionData(): Promise<void> {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const sessionPath = path.join(process.cwd(), '.wwebjs_auth', 'session-fundifyhub-job-worker');
+
+    const maxRetries = 5;
+    const retryDelay = 2000; // 2 seconds between retries
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await fs.rm(sessionPath, { recursive: true, force: true });
+        this.logger.info('[WHATSAPP] Session data deleted after logout from phone');
+        return;
+      } catch (fsError: any) {
+        if (fsError.code === 'EBUSY' || fsError.code === 'ENOTEMPTY' || fsError.code === 'EPERM') {
+          if (attempt < maxRetries) {
+            this.logger.warn(`[WHATSAPP] Session cleanup attempt ${attempt}/${maxRetries} failed (${fsError.code}), retrying in ${retryDelay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            continue;
+          }
+        }
+        // For other errors or final attempt, log and give up
+        this.logger.warn(`[WHATSAPP] Could not delete session data after ${maxRetries} attempts: ${fsError.message}`);
+        break;
+      }
+    }
+  }
+
+  /**
    * Process Service Control Jobs
    * Routes jobs to appropriate service handlers based on serviceName and action
    */
@@ -113,12 +210,27 @@ export class ServiceControlWorker extends BaseWorker<ServiceControlJobData> {
       }
       await configManager.updateServiceStatus('WHATSAPP', { isActive: false, connectionStatus: CONNECTION_STATUS.INITIALIZING });
       this.logger.info('[WHATSAPP] Initializing client...');
+      
+      // Get browser executable path with fallbacks
+      const browserPath = await this.getBrowserExecutablePath();
+      this.logger.info(`[WHATSAPP] Using browser: ${browserPath}`);
+      
       this.whatsappState.client = new Client({
         authStrategy: new LocalAuth({ clientId: whatsappConfig.clientId || 'fundifyhub-job-worker' }),
         puppeteer: {
           headless: true,
+          executablePath: browserPath,
           args: [
-            '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--single-process', '--disable-gpu'
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-ipc-flooding-protection',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--memory-pressure-off'
           ]
         }
       });
@@ -189,25 +301,16 @@ export class ServiceControlWorker extends BaseWorker<ServiceControlJobData> {
           // The client is already disconnecting, just clean up references
           this.whatsappState.client = null;
           this.whatsappState.isReady = false;
-          
-          // Delete session data after logout (schedule it to avoid race conditions)
+
+          // Delete session data after logout (schedule it with longer delay and retry logic)
           setTimeout(async () => {
-            try {
-              const fs = await import('fs/promises');
-              const path = await import('path');
-              const sessionPath = path.join(process.cwd(), '.wwebjs_auth', 'session-fundifyhub-job-worker');
-              await fs.rm(sessionPath, { recursive: true, force: true });
-              this.logger.info('[WHATSAPP] Session data deleted after logout from phone');
-            } catch (fsError) {
-              // Ignore if folder doesn't exist or is locked
-              this.logger.warn(`[WHATSAPP] Could not delete session data: ${fsError}`);
-            }
-          }, 3000); // Wait 3 seconds for browser to fully close
-          
+            await this.cleanupSessionData();
+          }, 8000); // Increased delay to 8 seconds
+
           // Update service status
           await configManager.disableService('WHATSAPP', 'Logged out from phone');
-          await progressEmitter.emitWhatsAppStatus('LOGGED_OUT', { 
-            message: 'WhatsApp logged out from phone. Please enable and scan QR code again to reconnect.' 
+          await progressEmitter.emitWhatsAppStatus('LOGGED_OUT', {
+            message: 'WhatsApp logged out from phone. Please enable and scan QR code again to reconnect.'
           });
         }
       });
@@ -225,21 +328,21 @@ export class ServiceControlWorker extends BaseWorker<ServiceControlJobData> {
 
   /**
    * Destroy WhatsApp Service
-   * 
+   *
    * Gracefully disconnects from WhatsApp Web.
    * Cleans up resources, clears timeouts, and updates status in DB.
    */
   private async destroyWhatsApp() {
     if (this.whatsappState.qrTimeout) { clearTimeout(this.whatsappState.qrTimeout); this.whatsappState.qrTimeout = null; }
     if (this.whatsappState.isInitializing) return;
-    
+
     // Unregister WhatsApp client from ServiceManager
     serviceManager.setWhatsAppClient(null);
-    
+
     if (this.whatsappState.client) {
       try {
-        // Only logout if not already disconnected
-        if (this.whatsappState.isReady) {
+        // Only logout if client is ready and not already disconnected
+        if (this.whatsappState.isReady && this.whatsappState.client.info) {
           try {
             await Promise.race([
               this.whatsappState.client.logout(),
@@ -249,7 +352,7 @@ export class ServiceControlWorker extends BaseWorker<ServiceControlJobData> {
             this.logger.warn(`[WHATSAPP] Logout failed (expected if already logged out): ${logoutError}`);
           }
         }
-        
+
         try {
           // Use a longer timeout and wrap in try-catch
           await Promise.race([
@@ -262,10 +365,10 @@ export class ServiceControlWorker extends BaseWorker<ServiceControlJobData> {
           // This is expected when session is already closed, just log it
           this.logger.warn(`[WHATSAPP] Destroy failed (expected during logout): ${destroyError}`);
         }
-        
+
         this.whatsappState.client = null;
         this.whatsappState.isReady = false;
-        
+
         Promise.all([
           configManager.updateServiceStatus('WHATSAPP', { isActive: false, connectionStatus: CONNECTION_STATUS.DISABLED }),
           progressEmitter.emitWhatsAppStatus('DISABLED', { message: 'WhatsApp service disabled' })

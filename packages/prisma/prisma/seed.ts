@@ -1,9 +1,14 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log("🌱 Starting database seeding...");
+
+  // Prepare a default hashed password for seeded users
+  const defaultPassword = process.env.SEED_USER_PASSWORD || "Password123!";
+  const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
   // Create sample users with detailed information - now with multi-role support
   const users = await Promise.all([
@@ -16,6 +21,7 @@ async function main() {
         lastName: "Customer",
         email: "customer@example.com",
         phoneNumber: "+919876543210",
+        password: hashedPassword,
         roles: ["CUSTOMER"],
         district: "Mumbai",
         emailVerified: true,
@@ -35,6 +41,7 @@ async function main() {
         lastName: "Admin",
         email: "district.admin@fundifyhub.com",
         phoneNumber: "+919876543201",
+        password: hashedPassword,
         roles: ["DISTRICT_ADMIN"],
         district: "Mumbai",
         emailVerified: true,
@@ -54,6 +61,7 @@ async function main() {
         lastName: "Agent",
         email: "agent@fundifyhub.com",
         phoneNumber: "+919876543202",
+        password: hashedPassword,
         roles: ["AGENT"],
         district: "Mumbai",
         emailVerified: true,
@@ -73,6 +81,7 @@ async function main() {
         lastName: "Admin",
         email: "super.admin@fundifyhub.com",
         phoneNumber: "+919876543203",
+        password: hashedPassword,
         roles: ["SUPER_ADMIN", "ADMIN", "DISTRICT_ADMIN", "AGENT", "CUSTOMER"],
         emailVerified: true,
         phoneVerified: true,
@@ -91,6 +100,7 @@ async function main() {
         lastName: "Admin",
         email: "admin@fundifyhub.com",
         phoneNumber: "+919876543204",
+        password: hashedPassword,
         roles: ["ADMIN"],
         emailVerified: true,
         phoneVerified: true,
@@ -109,6 +119,7 @@ async function main() {
         lastName: "Role",
         email: "multi@example.com",
         phoneNumber: "+919876543205",
+        password: hashedPassword,
         roles: ["CUSTOMER", "AGENT"],
         district: "Mumbai",
         emailVerified: true,
@@ -127,6 +138,7 @@ async function main() {
   const customer = users.find(user => user.roles.includes("CUSTOMER") && user.roles.length === 1)!;
   const districtAdmin = users.find(user => user.roles.includes("DISTRICT_ADMIN") && user.roles.length === 1)!;
   const agent = users.find(user => user.roles.includes("AGENT") && user.roles.length === 1)!;
+  const admin = users.find(user => user.roles.includes("ADMIN") && user.roles.length === 1)!;
 
   // Create sample requests with inline asset details
   const request = await prisma.request.create({

@@ -20,6 +20,7 @@
     "bullmq": "^5.61.0",
     "ioredis": "^5.8.1",
     "nodemailer": "^7.0.9",
+    "puppeteer": "^24.26.1",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "redis": "^4.7.0",
