@@ -315,18 +315,22 @@ export default function AdminSettingsPage() {
 
   // Render WhatsApp card
   const renderWhatsAppCard = (service: ServiceStatus) => {
+    const isConnected = service.isActive && service.connectionStatus === 'CONNECTED'
+    const needsQR = service.isEnabled && service.connectionStatus === 'WAITING_FOR_QR_SCAN'
+    const isConnecting = service.isEnabled && ['INITIALIZING', 'AUTHENTICATED'].includes(service.connectionStatus)
+
     return (
       <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200">
-        <CardHeader className="border-b bg-muted/30 pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <CardHeader className="border-b bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 pb-4">
+          <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-green-500/10 rounded-lg">
-                <MessageSquare className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <div className="p-2.5 bg-green-500 rounded-lg shadow-sm">
+                <MessageSquare className="h-5 w-5 text-white" />
               </div>
               <div>
-                <CardTitle className="text-lg sm:text-xl">WhatsApp Business</CardTitle>
-                <CardDescription className="text-sm mt-0.5">
-                  Automated messaging and notifications
+                <CardTitle className="text-lg">WhatsApp</CardTitle>
+                <CardDescription className="text-xs mt-0.5">
+                  Automated OTP messaging
                 </CardDescription>
               </div>
             </div>
@@ -334,103 +338,130 @@ export default function AdminSettingsPage() {
           </div>
         </CardHeader>
 
-        <CardContent className="pt-6 space-y-6">
-          {/* Status Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Zap className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-medium text-muted-foreground">Status</span>
-              </div>
-              <p className="text-sm sm:text-base font-semibold">
-                {service.isEnabled ? 'Enabled' : 'Disabled'}
-              </p>
-            </div>
+        <CardContent className="pt-6 pb-6 space-y-4">
+          {/* Connected State */}
+          {isConnected && (
+            <div className="space-y-3">
+              <Alert className="border-green-500/20 bg-green-50 dark:bg-green-950/20">
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <AlertDescription className="text-sm text-green-700 dark:text-green-300">
+                  <strong>Connected!</strong> Ready to send OTP messages.
+                </AlertDescription>
+              </Alert>
 
-            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Server className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-medium text-muted-foreground">Active</span>
-              </div>
-              <p className="text-sm sm:text-base font-semibold">
-                {service.isActive ? 'Yes' : 'No'}
-              </p>
-            </div>
-
-            {service.lastConnectedAt && (
-              <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2 sm:col-span-1">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Clock className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-xs font-medium text-muted-foreground">Last Connected</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <span className="text-sm font-medium text-green-600 dark:text-green-400">Active</span>
                 </div>
-                <p className="text-xs sm:text-sm font-semibold">
-                  {new Date(service.lastConnectedAt).toLocaleString('en-US', {
-                    dateStyle: 'short',
-                    timeStyle: 'short'
-                  })}
+                {service.lastConnectedAt && (
+                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                    <span className="text-sm text-muted-foreground">Connected At</span>
+                    <span className="text-xs font-medium">
+                      {new Date(service.lastConnectedAt).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Connecting State */}
+          {isConnecting && !needsQR && (
+            <div className="space-y-3">
+              <Alert className="border-blue-500/20 bg-blue-50 dark:bg-blue-950/20">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+                <AlertDescription className="text-sm text-blue-700 dark:text-blue-300">
+                  Initializing WhatsApp connection...
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+
+          {/* QR Code Display */}
+          {needsQR && service.qrCode && (
+            <div className="border-2 border-yellow-500/30 rounded-lg p-4 bg-yellow-50 dark:bg-yellow-950/20 space-y-3">
+              <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
+                <QrCode className="h-4 w-4" />
+                <h3 className="font-semibold text-sm">Scan QR Code</h3>
+              </div>
+              
+              <div className="bg-white p-3 rounded-lg border">
+                <Image
+                  src={service.qrCode}
+                  alt="WhatsApp QR Code"
+                  width={180}
+                  height={180}
+                  className="rounded-md mx-auto"
+                />
+              </div>
+              
+              <div className="space-y-1.5 text-xs text-yellow-700 dark:text-yellow-300">
+                <p className="flex items-start gap-2">
+                  <span className="font-semibold">1.</span>
+                  <span>Open WhatsApp → Settings → Linked Devices</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="font-semibold">2.</span>
+                  <span>Tap "Link a Device" and scan this code</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <Clock className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span className="italic">QR expires in 3 minutes</span>
                 </p>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* Disabled State */}
+          {!service.isEnabled && !needsQR && (
+            <div className="space-y-3">
+              <Alert className="border-muted">
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  Connect your WhatsApp account to enable automated OTP messaging.
+                </AlertDescription>
+              </Alert>
+              
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <span className="text-sm font-medium text-muted-foreground">Disconnected</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Error Display */}
-          {service.lastError && (
+          {service.lastError && !isConnected && !needsQR && (
             <Alert variant="destructive" className="bg-destructive/5">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-sm">{service.lastError}</AlertDescription>
             </Alert>
           )}
-
-          {/* QR Code Display */}
-          {service.qrCode && (
-            <div className="border-2 border-primary rounded-lg p-4 sm:p-6 bg-muted/30 space-y-4">
-              <div className="flex items-center gap-2">
-                <QrCode className="h-5 w-5 text-primary" />
-                <h3 className="font-semibold text-base sm:text-lg">Scan QR Code to Connect</h3>
-              </div>
-              
-              <div className="bg-background p-4 rounded-lg border-2">
-                <div className="flex justify-center">
-                  <Image
-                    src={service.qrCode}
-                    alt="WhatsApp QR Code"
-                    width={256}
-                    height={256}
-                    className="rounded-md"
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2 text-xs sm:text-sm text-muted-foreground">
-                <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                  <p>Open WhatsApp on your phone → Settings → Linked Devices → Link a Device</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                  <p>Point your camera at the QR code above to connect</p>
-                </div>
-              </div>
-            </div>
-          )}
         </CardContent>
 
-        <CardFooter className="bg-muted/30 border-t flex gap-2 p-4">
+        <CardFooter className="bg-muted/30 border-t p-4">
           {!service.isEnabled ? (
             <Button
               onClick={() => handleEnable('WHATSAPP')}
               disabled={actionLoading['WHATSAPP-enable']}
-              className="w-full h-10"
+              className="w-full"
             >
               {actionLoading['WHATSAPP-enable'] ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Enabling...
+                  Connecting...
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  Enable WhatsApp
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Connect WhatsApp
                 </>
               )}
             </Button>
@@ -439,17 +470,17 @@ export default function AdminSettingsPage() {
               onClick={() => handleDisable('WHATSAPP')}
               disabled={actionLoading['WHATSAPP-disable']}
               variant="destructive"
-              className="w-full h-10"
+              className="w-full"
             >
               {actionLoading['WHATSAPP-disable'] ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Disabling...
+                  Disconnecting...
                 </>
               ) : (
                 <>
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Disable & Delete
+                  Disconnect
                 </>
               )}
             </Button>
@@ -462,20 +493,21 @@ export default function AdminSettingsPage() {
   // Render Email card
   const renderEmailCard = (service: ServiceStatus) => {
     const hasConfig = service.config && Object.keys(service.config).length > 0
-    const showConfigForm = emailConfigMode || (!hasConfig && !service.isEnabled)
+    const isConnected = service.isActive && service.connectionStatus === 'CONNECTED'
+    const showConfigForm = emailConfigMode
 
     return (
       <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200">
-        <CardHeader className="border-b bg-muted/30 pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <CardHeader className="border-b bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 pb-4">
+          <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-500/10 rounded-lg">
-                <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="p-2.5 bg-blue-500 rounded-lg shadow-sm">
+                <Mail className="h-5 w-5 text-white" />
               </div>
               <div>
-                <CardTitle className="text-lg sm:text-xl">Email Service</CardTitle>
-                <CardDescription className="text-sm mt-0.5">
-                  SMTP email notifications and alerts
+                <CardTitle className="text-lg">Email</CardTitle>
+                <CardDescription className="text-xs mt-0.5">
+                  SMTP email notifications
                 </CardDescription>
               </div>
             </div>
@@ -483,241 +515,264 @@ export default function AdminSettingsPage() {
           </div>
         </CardHeader>
 
-        <CardContent className="pt-6 space-y-6">
-          {/* Status Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Zap className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-medium text-muted-foreground">Status</span>
-              </div>
-              <p className="text-sm sm:text-base font-semibold">
-                {service.isEnabled ? 'Enabled' : 'Disabled'}
-              </p>
-            </div>
+        <CardContent className="pt-6 pb-6 space-y-4">
+          {/* Connected State - NOT in config mode */}
+          {isConnected && !showConfigForm && (
+            <div className="space-y-3">
+              <Alert className="border-blue-500/20 bg-blue-50 dark:bg-blue-950/20">
+                <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertDescription className="text-sm text-blue-700 dark:text-blue-300">
+                  <strong>Connected!</strong> Ready to send email notifications.
+                </AlertDescription>
+              </Alert>
 
-            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Server className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-medium text-muted-foreground">Config</span>
-              </div>
-              <p className="text-sm sm:text-base font-semibold">
-                {hasConfig ? 'Set' : 'Not Set'}
-              </p>
-            </div>
-
-            {hasConfig && !showConfigForm && (
-              <>
-                <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Server className="h-3.5 w-3.5 text-primary" />
-                    <span className="text-xs font-medium text-muted-foreground">SMTP Host</span>
-                  </div>
-                  <p className="text-sm font-semibold truncate">{service.config.host}</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">Active</span>
                 </div>
-                <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border col-span-2">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Mail className="h-3.5 w-3.5 text-primary" />
-                    <span className="text-xs font-medium text-muted-foreground">Email Address</span>
-                  </div>
-                  <p className="text-sm font-semibold truncate">{service.config.user}</p>
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <span className="text-sm text-muted-foreground">SMTP Host</span>
+                  <span className="text-xs font-medium truncate max-w-[180px]">{service.config?.host}</span>
                 </div>
-              </>
-            )}
-          </div>
-
-          {/* Error Display */}
-          {service.lastError && (
-            <Alert variant="destructive" className="bg-destructive/5">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription className="text-sm">{service.lastError}</AlertDescription>
-            </Alert>
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <span className="text-sm text-muted-foreground">Email</span>
+                  <span className="text-xs font-medium truncate max-w-[180px]">{service.config?.user}</span>
+                </div>
+              </div>
+            </div>
           )}
 
-          {/* Configuration Required Alert */}
+          {/* Configuration Required - NOT connected, NOT in config mode */}
           {!hasConfig && !showConfigForm && (
-            <Alert className="border-primary/20 bg-primary/5">
-              <AlertCircle className="h-4 w-4 text-primary" />
-              <AlertDescription className="text-sm">
-                Configuration required before enabling this service
-              </AlertDescription>
-            </Alert>
+            <div className="space-y-3">
+              <Alert className="border-yellow-500/20 bg-yellow-50 dark:bg-yellow-950/20">
+                <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                <AlertDescription className="text-sm text-yellow-700 dark:text-yellow-300">
+                  Configuration required before enabling this service.
+                </AlertDescription>
+              </Alert>
+              
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <span className="text-sm font-medium text-muted-foreground">Not Configured</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Disabled with config - NOT in config mode */}
+          {!service.isEnabled && hasConfig && !showConfigForm && (
+            <div className="space-y-3">
+              <Alert className="border-muted">
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  Enable email service to start sending notifications.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <span className="text-sm font-medium text-muted-foreground">Disconnected</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <span className="text-sm text-muted-foreground">SMTP Host</span>
+                  <span className="text-xs font-medium truncate max-w-[180px]">{service.config?.host}</span>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Configuration Form */}
           {showConfigForm && (
-            <div className="border-2 border-primary/20 rounded-lg p-4 sm:p-6 bg-muted/30 space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Edit className="h-5 w-5 text-primary" />
-                <h3 className="font-semibold text-base sm:text-lg">SMTP Configuration</h3>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <Settings className="h-4 w-4 text-primary" />
+                <h3 className="font-semibold text-sm">SMTP Configuration</h3>
               </div>
 
-              <div className="space-y-4">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="host" className="text-sm font-medium">SMTP Host *</Label>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="host" className="text-xs font-medium">SMTP Host</Label>
                     <Input
                       id="host"
                       placeholder="smtp.gmail.com"
                       value={emailConfig.host}
                       onChange={(e) => setEmailConfig({ ...emailConfig, host: e.target.value })}
-                      className="h-10"
+                      className="h-9 text-sm"
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="port" className="text-sm font-medium">SMTP Port *</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="port" className="text-xs font-medium">Port</Label>
                     <Input
                       id="port"
                       type="number"
                       placeholder="587"
                       value={emailConfig.port}
                       onChange={(e) => setEmailConfig({ ...emailConfig, port: parseInt(e.target.value) })}
-                      className="h-10"
+                      className="h-9 text-sm"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="user" className="text-sm font-medium">Email Address *</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="user" className="text-xs font-medium">Email Address</Label>
                   <Input
                     id="user"
                     type="email"
                     placeholder="your-email@gmail.com"
                     value={emailConfig.user}
                     onChange={(e) => setEmailConfig({ ...emailConfig, user: e.target.value })}
-                    className="h-10"
+                    className="h-9 text-sm"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-medium">Password / App Password *</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="password" className="text-xs font-medium">Password / App Password</Label>
                   <Input
                     id="password"
                     type="password"
                     placeholder="••••••••"
                     value={emailConfig.password}
                     onChange={(e) => setEmailConfig({ ...emailConfig, password: e.target.value })}
-                    className="h-10"
+                    className="h-9 text-sm"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="from" className="text-sm font-medium">From Email *</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="from" className="text-xs font-medium">From Email</Label>
                   <Input
                     id="from"
                     type="email"
                     placeholder="noreply@fundifyhub.com"
                     value={emailConfig.from}
                     onChange={(e) => setEmailConfig({ ...emailConfig, from: e.target.value })}
-                    className="h-10"
+                    className="h-9 text-sm"
                   />
                 </div>
 
-                {/* Info Alert */}
-                <Alert className="border-primary/20 bg-primary/5">
-                  <AlertCircle className="h-4 w-4 text-primary" />
-                  <AlertDescription className="text-xs sm:text-sm">
-                    <strong>Test Email:</strong> We'll send a test email to verify configuration before saving.
-                    {emailConfig.host.toLowerCase().includes('gmail') && (
-                      <span className="block mt-1.5">
-                        <strong>Gmail Users:</strong> Use an App Password instead of your regular password. 
-                        <a 
-                          href="https://myaccount.google.com/apppasswords" 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="underline ml-1 text-primary hover:text-primary/80"
-                        >
-                          Generate one here
-                        </a>
-                      </span>
-                    )}
-                  </AlertDescription>
-                </Alert>
-
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
-                  <Button
-                    onClick={handleSaveEmailConfig}
-                    disabled={actionLoading['email-config']}
-                    className="flex-1 h-10"
-                  >
-                    {actionLoading['email-config'] ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Testing & Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="mr-2 h-4 w-4" />
-                        Test & Save
-                      </>
-                    )}
-                  </Button>
-                  {hasConfig && (
-                    <Button
-                      onClick={() => setEmailConfigMode(false)}
-                      variant="outline"
-                      className="h-10"
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                </div>
+                {emailConfig.host.toLowerCase().includes('gmail') && (
+                  <Alert className="border-blue-500/20 bg-blue-50 dark:bg-blue-950/20">
+                    <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <AlertDescription className="text-xs text-blue-700 dark:text-blue-300">
+                      <strong>Gmail:</strong> Use an App Password.{' '}
+                      <a 
+                        href="https://myaccount.google.com/apppasswords" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="underline hover:text-blue-600"
+                      >
+                        Generate here
+                      </a>
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
             </div>
           )}
+
+          {/* Error Display */}
+          {service.lastError && !isConnected && (
+            <Alert variant="destructive" className="bg-destructive/5">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{service.lastError}</AlertDescription>
+            </Alert>
+          )}
         </CardContent>
 
-        <CardFooter className="bg-muted/30 border-t flex flex-col sm:flex-row gap-2 sm:gap-3 p-4">
-          {!service.isEnabled ? (
-            <>
-              {hasConfig && !showConfigForm && (
-                <Button
-                  onClick={() => setEmailConfigMode(true)}
-                  variant="outline"
-                  className="w-full sm:flex-1 h-10"
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit Configuration
-                </Button>
-              )}
+        <CardFooter className="bg-muted/30 border-t p-4 flex-col gap-2">
+          {showConfigForm ? (
+            <div className="flex gap-2 w-full">
               <Button
-                onClick={() => handleEnable('EMAIL')}
-                disabled={actionLoading['EMAIL-enable'] || !hasConfig}
-                className="w-full sm:flex-1 h-10"
+                onClick={handleSaveEmailConfig}
+                disabled={actionLoading['email-config']}
+                className="flex-1"
               >
-                {actionLoading['EMAIL-enable'] ? (
+                {actionLoading['email-config'] ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Enabling...
+                    Testing...
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Enable Service
+                    <Save className="mr-2 h-4 w-4" />
+                    Test & Save
                   </>
                 )}
               </Button>
-            </>
+              <Button
+                onClick={() => setEmailConfigMode(false)}
+                variant="outline"
+                disabled={!hasConfig}
+              >
+                Cancel
+              </Button>
+            </div>
           ) : (
-            <Button
-              onClick={() => handleDisable('EMAIL')}
-              disabled={actionLoading['EMAIL-disable']}
-              variant="destructive"
-              className="w-full h-10"
-            >
-              {actionLoading['EMAIL-disable'] ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Disabling...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Disable & Delete
-                </>
+            <>
+              {!service.isEnabled && hasConfig && (
+                <Button
+                  onClick={() => setEmailConfigMode(true)}
+                  variant="outline"
+                  className="w-full"
+                  size="sm"
+                >
+                  <Edit className="mr-2 h-3 w-3" />
+                  Edit Config
+                </Button>
               )}
-            </Button>
+              {!service.isEnabled ? (
+                <Button
+                  onClick={() => hasConfig ? handleEnable('EMAIL') : setEmailConfigMode(true)}
+                  disabled={actionLoading['EMAIL-enable']}
+                  className="w-full"
+                >
+                  {actionLoading['EMAIL-enable'] ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Enabling...
+                    </>
+                  ) : (
+                    <>
+                      {hasConfig ? (
+                        <>
+                          <Mail className="mr-2 h-4 w-4" />
+                          Enable Service
+                        </>
+                      ) : (
+                        <>
+                          <Settings className="mr-2 h-4 w-4" />
+                          Configure Email
+                        </>
+                      )}
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => handleDisable('EMAIL')}
+                  disabled={actionLoading['EMAIL-disable']}
+                  variant="destructive"
+                  className="w-full"
+                >
+                  {actionLoading['EMAIL-disable'] ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Disabling...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Disconnect
+                    </>
+                  )}
+                </Button>
+              )}
+            </>
           )}
         </CardFooter>
       </Card>
@@ -743,27 +798,21 @@ export default function AdminSettingsPage() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
         {/* Header Section */}
-        <div className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
             <div className="space-y-1">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-primary/10 rounded-lg">
-                  <Settings className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
-                </div>
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">
-                  Service Configuration
-                </h1>
-              </div>
-              <p className="text-sm sm:text-base text-muted-foreground ml-[52px]">
-                Manage communication services for notifications and messaging
+              <h1 className="text-3xl font-bold tracking-tight">
+                Service Settings
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Manage communication services for automated messaging
               </p>
             </div>
             <Button 
               onClick={handleRefresh} 
               variant="outline" 
               disabled={loading}
-              size="default"
-              className="self-start sm:self-auto"
+              size="sm"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
@@ -771,22 +820,22 @@ export default function AdminSettingsPage() {
           </div>
           
           {/* Info Banner */}
-          <Alert className="border-primary/20 bg-primary/5">
-            <Info className="h-4 w-4 text-primary" />
-            <AlertDescription className="text-sm">
-              <strong>Live Status:</strong> This page automatically refreshes every 5 seconds to show real-time service status.
+          <Alert className="border-blue-500/20 bg-blue-50 dark:bg-blue-950/20">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-sm text-blue-700 dark:text-blue-300">
+              Real-time monitoring enabled. Page auto-refreshes every 5 seconds.
             </AlertDescription>
           </Alert>
         </div>
 
-        {/* Service Cards */}
-        <div className="grid gap-6 lg:gap-8">
+        {/* Service Cards - Side by Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {services.map((service) => {
-            if (service.serviceName === 'EMAIL') {
-              return <div key={service.serviceName}>{renderEmailCard(service)}</div>
-            }
             if (service.serviceName === 'WHATSAPP') {
               return <div key={service.serviceName}>{renderWhatsAppCard(service)}</div>
+            }
+            if (service.serviceName === 'EMAIL') {
+              return <div key={service.serviceName}>{renderEmailCard(service)}</div>
             }
             return null
           })}
