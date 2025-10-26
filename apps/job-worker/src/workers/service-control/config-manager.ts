@@ -98,9 +98,18 @@ export const configManager = {
       lastError?: string 
     }
   ) {
-    await prisma.serviceConfig.update({
+    await prisma.serviceConfig.upsert({
       where: { serviceName: service },
-      data: {
+      create: {
+        serviceName: service,
+        isEnabled: false,
+        isActive: status.isActive,
+        connectionStatus: status.connectionStatus,
+        lastError: status.lastError || null,
+        lastErrorAt: status.lastError ? new Date() : null,
+        lastConnectedAt: status.isActive && status.connectionStatus === 'CONNECTED' ? new Date() : undefined,
+      },
+      update: {
         isActive: status.isActive,
         connectionStatus: status.connectionStatus,
         lastError: status.lastError || null,
@@ -118,9 +127,17 @@ export const configManager = {
     service: string,
     reason?: string
   ) {
-    await prisma.serviceConfig.update({
+    await prisma.serviceConfig.upsert({
       where: { serviceName: service },
-      data: {
+      create: {
+        serviceName: service,
+        isEnabled: false,
+        isActive: false,
+        connectionStatus: CONNECTION_STATUS.DISABLED,
+        lastError: reason || null,
+        lastErrorAt: reason ? new Date() : null,
+      },
+      update: {
         isEnabled: false,
         isActive: false,
         connectionStatus: CONNECTION_STATUS.DISABLED,
@@ -139,9 +156,17 @@ export const configManager = {
     service: string,
     qrCode: string
   ) {
-    await prisma.serviceConfig.update({
+    await prisma.serviceConfig.upsert({
       where: { serviceName: service },
-      data: {
+      create: {
+        serviceName: service,
+        isEnabled: false,
+        isActive: false,
+        connectionStatus: CONNECTION_STATUS.DISCONNECTED,
+        qrCode: qrCode,
+        updatedAt: new Date(),
+      },
+      update: {
         qrCode: qrCode,
         updatedAt: new Date(),
       },
@@ -153,9 +178,17 @@ export const configManager = {
    * @param service Service name (e.g., 'WHATSAPP')
    */
   async clearQRCode(service: string) {
-    await prisma.serviceConfig.update({
+    await prisma.serviceConfig.upsert({
       where: { serviceName: service },
-      data: {
+      create: {
+        serviceName: service,
+        isEnabled: false,
+        isActive: false,
+        connectionStatus: CONNECTION_STATUS.DISCONNECTED,
+        qrCode: null,
+        updatedAt: new Date(),
+      },
+      update: {
         qrCode: null,
         updatedAt: new Date(),
       },
