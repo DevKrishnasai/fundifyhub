@@ -4,6 +4,7 @@ import { logger } from '../../utils/logger';
 import { prisma } from '@fundifyhub/prisma';
 import bcrypt from 'bcrypt';
 import { generateAccessToken } from '../../utils/jwt';
+import { checkUserExists } from '../admin/users/services';
 import {
   enqueue,
   QUEUE_NAMES,
@@ -305,14 +306,7 @@ export async function registerController(
         .status(400)
         .json({ success: false, message: 'Both email and phone must be verified with OTP before registration' } as APIResponse);
 
-    const existing = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: email.toLowerCase() },
-          { phoneNumber: phoneNumber },
-        ],
-      },
-    });
+    const existing = await checkUserExists(email, phoneNumber);
     if (existing)
       return res
         .status(409)

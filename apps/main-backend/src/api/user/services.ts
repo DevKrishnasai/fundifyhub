@@ -1,9 +1,7 @@
 /**
  * User Services
- * Handles business logic for user profile and validation
- * DB operations
+ * Business logic and DB access for user-related operations
  */
-
 import { prisma } from '@fundifyhub/prisma';
 import { createLogger } from '@fundifyhub/logger';
 

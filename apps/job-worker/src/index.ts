@@ -1,6 +1,7 @@
 import { createLogger } from '@fundifyhub/logger';
 import { OTPWorker } from './workers/otp';
 import { ServiceControlWorker } from './workers/service-control';
+import { EmailWorker } from './workers/email';
 import { serviceManager } from './services/service-manager';
 import { prisma } from '@fundifyhub/prisma';
 import { enqueue, QUEUE_NAMES, JOB_NAMES, DEFAULT_JOB_OPTIONS, SERVICE_ACTIONS } from '@fundifyhub/utils';
@@ -11,6 +12,7 @@ const logger = createLogger({ serviceName: 'job-worker' });
 class JobWorkerServer {
   private otpWorker: OTPWorker | null = null;
   private serviceControlWorker: ServiceControlWorker | null = null;
+  private emailWorker: EmailWorker | null = null;
 
   /**
    * Check for enabled services on startup and initialize them
@@ -72,6 +74,10 @@ class JobWorkerServer {
       this.serviceControlWorker = new ServiceControlWorker(logger);
       logger.info('[Worker] Service control worker initialized');
 
+      // Initialize Email worker (shares same logger instance)
+      this.emailWorker = new EmailWorker(logger);
+      logger.info('[Worker] Email worker initialized');
+
       // Check for enabled services and initialize them
       await this.initializeEnabledServices();
 
@@ -96,6 +102,12 @@ class JobWorkerServer {
         await this.serviceControlWorker.close();
         this.serviceControlWorker = null;
         logger.info('[Worker] Service control worker closed');
+      }
+
+      if (this.emailWorker) {
+        await this.emailWorker.close();
+        this.emailWorker = null;
+        logger.info('[Worker] Email worker closed');
       }
       
       // Stop ServiceManager periodic checking

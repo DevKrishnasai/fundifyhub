@@ -41,7 +41,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       req.user = {
         id: decoded.id,
         email: decoded.email,
-        role: decoded.roles[0], // Use first role for backward compatibility
         roles: decoded.roles, // Store all roles
         emailVerified: decoded.emailVerified,
         phoneVerified: decoded.phoneVerified
@@ -92,7 +91,6 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction): v
         req.user = {
           id: decoded.id,
           email: decoded.email,
-          role: decoded.roles[0], // Use first role for backward compatibility
           roles: decoded.roles, // Store all roles
           emailVerified: decoded.emailVerified,
           phoneVerified: decoded.phoneVerified
@@ -126,7 +124,7 @@ export function requireRole(...roles: string[]) {
     }
 
     // Check if user has any of the required roles
-    const userRoles = req.user.roles || [req.user.role]; // Support both old and new format
+    const userRoles = req.user.roles || [];
     const hasRequiredRole = roles.some(role => 
       userRoles.some(userRole => userRole.toLowerCase() === role.toLowerCase())
     );
@@ -143,18 +141,3 @@ export function requireRole(...roles: string[]) {
     next();
   };
 }
-
-/**
- * Admin only middleware (includes SUPER_ADMIN)
- */
-export const requireAdmin = requireRole('ADMIN', 'SUPER_ADMIN');
-
-/**
- * Agent or Admin middleware
- */
-export const requireAgentOrAdmin = requireRole('AGENT', 'ADMIN', 'SUPER_ADMIN');
-
-/**
- * Any authenticated user middleware (alias for requireAuth)
- */
-export const requireUser = requireAuth;

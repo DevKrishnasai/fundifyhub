@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { APIResponse } from '../../types';
-import { logger } from '../../utils/logger';
+import { APIResponse } from '../../../types';
+import { logger } from '../../../utils/logger';
 import { prisma } from '@fundifyhub/prisma';
 import { SUPPORTED_SERVICES } from '@fundifyhub/types';
 import { enqueue } from '@fundifyhub/utils';
