@@ -6,7 +6,7 @@
 
 import { Router, type Router as ExpressRouter } from 'express';
 import { requireAuth } from '../auth';
-import { getProfileController, validateController, debugAuthController } from './controllers';
+import { getProfileController, validateController, debugAuthController, addAssetController, updateAssetController } from './controllers';
 
 const router: ExpressRouter = Router();
 
@@ -27,5 +27,17 @@ router.get('/validate', requireAuth, validateController);
  * Debug authentication - shows token data vs database data (development only)
  */
 router.get('/debug-auth', requireAuth, debugAuthController);
+
+/**
+ * POST /user/add-asset
+ * Create a new asset request with inline asset details (protected)
+ */
+router.post('/add-asset', requireAuth, addAssetController);
+
+/**
+ * PUT /user/update-asset
+ * Update an existing asset request (protected)
+ */
+router.put('/update-asset', requireAuth, updateAssetController);
 
 export default router;

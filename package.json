@@ -11,6 +11,7 @@
     "format:check": "prettier --check .",
     "setup": "node setup.js",
     "setup:windows": "powershell -ExecutionPolicy Bypass -File setup.ps1",
+   
     "infra:up": "docker-compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker-compose -f infra/docker-compose.yml down",
     "infra:logs": "docker-compose -f infra/docker-compose.yml logs -f",

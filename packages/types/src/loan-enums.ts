@@ -75,6 +75,7 @@ export enum InspectionStatus {
   CANCELLED = "CANCELLED"
 }
 
+
 // Type helpers for validation and type safety
 export type UserRoleType = keyof typeof UserRole;
 export type RequestStatusType = keyof typeof RequestStatus;
