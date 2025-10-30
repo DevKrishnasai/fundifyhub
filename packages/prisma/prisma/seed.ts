@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Request } from "@prisma/client";
 import bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
@@ -139,78 +139,6 @@ async function main() {
   const districtAdmin = users.find(user => user.roles.includes("DISTRICT_ADMIN") && user.roles.length === 1)!;
   const agent = users.find(user => user.roles.includes("AGENT") && user.roles.length === 1)!;
   const admin = users.find(user => user.roles.includes("ADMIN") && user.roles.length === 1)!;
-
-  // Create sample requests with inline asset details
-  const request = await prisma.request.create({
-    data: {
-      customerId: customer.id,
-      requestedAmount: 50000,
-      purpose: "Personal expenses",
-      district: "Mumbai",
-      currentStatus: "PENDING",
-      
-      // Asset details (inline)
-      assetName: "iPhone 14 Pro",
-      assetType: "ELECTRONICS",
-      assetBrand: "Apple",
-      assetModel: "iPhone 14 Pro",
-      assetCondition: "GOOD",
-      assetValue: 100000,
-      
-      // Admin offer (example)
-      adminOfferedAmount: 45000,
-      adminTenureMonths: 24,
-      adminInterestRate: 12.5,
-      
-      // Assignment
-      assignedAgentId: agent.id,
-    },
-  });
-
-  // Create sample documents
-  await prisma.document.create({
-    data: {
-      requestId: request.id,
-      fileName: "iphone_photo.jpg",
-      filePath: "/uploads/documents/iphone_photo.jpg",
-      fileSize: 2048576,
-      mimeType: "image/jpeg",
-      documentType: "asset_photo",
-      documentCategory: "ASSET",
-      uploadedBy: customer.id,
-      isVerified: true,
-      verifiedBy: agent.id,
-      verifiedAt: new Date(),
-      description: "Front photo of iPhone 14 Pro",
-    },
-  });
-
-  // Create sample comments
-  await prisma.comment.create({
-    data: {
-      requestId: request.id,
-      authorId: districtAdmin.id,
-      content: "Request looks good. Asset verification completed. Proceeding with loan approval.",
-      isInternal: false,
-      commentType: "ADMIN_REQUEST",
-    },
-  });
-
-  // Create sample inspection
-  await prisma.inspection.create({
-    data: {
-      requestId: request.id,
-      agentId: agent.id,
-      scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-      status: "SCHEDULED",
-      assetCondition: "GOOD",
-      estimatedValue: 95000,
-      notes: "Asset is in excellent condition. Market value confirmed.",
-      recommendApprove: true,
-    },
-  });
-
-
 
   console.log("🎉 Database seeding completed successfully!");
   console.log("📊 Summary:");

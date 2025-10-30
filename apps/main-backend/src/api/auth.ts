@@ -11,7 +11,9 @@ const logger = createLogger({ serviceName: 'auth-middleware' });
  * Authentication middleware - requires valid JWT token
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+
   try {
+    
     // Try to get token from Authorization header first, then from cookies
     const authHeader = req.headers.authorization;
     const headerToken = extractTokenFromHeader(authHeader);

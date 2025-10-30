@@ -64,17 +64,16 @@ model Request {
   id              String        @id @default(cuid())
   customerId      String
   requestedAmount Float
-  purpose         String?
   district        String
   currentStatus   String    @default("DRAFT")
   
   // Asset details (inline)
-  assetName       String?
-  assetType       String?
-  assetBrand      String?
-  assetModel      String?
-  assetCondition  String?
-  assetValue      Float?        // Customer's requested value
+  purchaseYear    Int?
+  assetType       String
+  assetBrand      String
+  assetModel      String
+  assetCondition  String
+  AdditionalDescription String?
   
   // Admin Offer Details
   adminOfferedAmount Float?     // Amount offered by admin
@@ -95,11 +94,11 @@ model Request {
   customer        User          @relation("CustomerRequests", fields: [customerId], references: [id], onDelete: Cascade)
   assignedAgent   User?         @relation("AgentAssignments", fields: [assignedAgentId], references: [id], onDelete: SetNull)
   loan            Loan?
-  documents       Document[]
   comments        Comment[]
   inspections     Inspection[]
   emiSchedules    EMISchedule[]
   payments        Payment[]
+  documents       Document[]     
 
   @@index([customerId])
   @@index([currentStatus])
@@ -227,8 +226,7 @@ model Payment {
 model Document {
   id               String           @id @default(cuid())
   requestId        String
-  fileName         String
-  filePath         String
+  url              String
   fileSize         Int?
   mimeType         String?
   documentType     String           // "asset_photo", "id_proof", "purchase_receipt", etc.
