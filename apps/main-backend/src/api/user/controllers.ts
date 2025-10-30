@@ -7,9 +7,8 @@
 import { prisma } from '@fundifyhub/prisma';
 import { Request, Response } from 'express';
 import { createLogger } from '@fundifyhub/logger';
-import { isValidAssetType, isValidAssetCondition, DocumentCategory } from '@fundifyhub/types';
+import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus } from '@fundifyhub/types';
 const logger = createLogger({ serviceName: 'user-controllers' });
-
 /**
  * GET /user/profile
  * Get current user profile (protected)
@@ -343,6 +342,10 @@ export async function addAssetController(req: Request, res: Response): Promise<v
  * - Replaces all existing asset photos with new ones if provided
  * - Uses transactions to ensure atomicity
  */
+// Make sure you have RequestStatus enum imported, e.g.:
+// import { RequestStatus } from '@prisma/client';
+// (Or wherever your enum is defined)
+
 export async function updateAssetController(req: Request, res: Response): Promise<void> {
   try {
     const customerId = req.user!.id;
@@ -359,6 +362,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
       assetCondition,
       requestedAmount,
       AdditionalDescription,
+      currentStatus // This from req.body is ignored, as we set it to DRAFT
     } = req.body || {};
 
     // Validate requestId
@@ -367,10 +371,11 @@ export async function updateAssetController(req: Request, res: Response): Promis
       return;
     }
 
-    // Check if request exists and get ownership info
+    // Check if request exists and get ownership/status info
+    // --- MODIFICATION 1: Added currentStatus to select ---
     const existing = await prisma.request.findUnique({ 
       where: { id: requestId },
-      select: { id: true, customerId: true }
+      select: { id: true, customerId: true, currentStatus: true } // Added currentStatus
     });
     
     if (!existing) {
@@ -388,6 +393,24 @@ export async function updateAssetController(req: Request, res: Response): Promis
       return;
     }
 
+    // --- MODIFICATION 2: Added status validation block ---
+    const allowedUpdateStatuses = [
+      RequestStatus.DRAFT,
+      RequestStatus.PENDING,
+      RequestStatus.OFFER_REJECTED,
+      RequestStatus.REJECTED,
+      RequestStatus.CANCELLED
+    ];
+
+    if (!allowedUpdateStatuses.includes(existing.currentStatus)) {
+      res.status(400).json({
+        success: false,
+        message: 'This request cannot be updated as it has already been processed or is in a locked state.'
+      });
+      return;
+    }
+    // --- End of new block ---
+
     // Build update data (only include provided fields)
     const updateData: any = {};
     
@@ -399,6 +422,9 @@ export async function updateAssetController(req: Request, res: Response): Promis
     if (typeof purchaseYear === 'number') updateData.purchaseYear = purchaseYear;
     if (typeof requestedAmount === 'number') updateData.requestedAmount = requestedAmount;
     if (AdditionalDescription !== undefined) updateData.AdditionalDescription = AdditionalDescription;
+    
+    // Any update moves it back to DRAFT status
+    updateData.currentStatus = RequestStatus.DRAFT;
 
     // Validate enum values if provided
     if (updateData.assetType && !isValidAssetType(updateData.assetType)) {
