@@ -2,8 +2,7 @@ import { Request, Response } from 'express';
 import { APIResponse } from '../../types';
 import { logger } from '../../utils/logger';
 import { prisma } from '@fundifyhub/prisma';
-import { SUPPORTED_SERVICES, RequestStatus, ServiceControlAction, ConnectionStatus,LoanStatus } from '@fundifyhub/types';
-import { ServiceControlJobData, ServiceName } from '@fundifyhub/types';
+import { SUPPORTED_SERVICES, RequestStatus, ServiceControlAction, ConnectionStatus, LoanStatus, ServiceName, ServiceControlJobData } from '@fundifyhub/types';
 import { enqueueServiceControl } from '@fundifyhub/utils';
 
 /**
