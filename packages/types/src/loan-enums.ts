@@ -9,7 +9,6 @@ export enum UserRole {
 }
 
 export enum RequestStatus {
-  DRAFT = "DRAFT",                          // Customer is still filling details
   PENDING = "PENDING",                      // Submitted, waiting for admin review
   UNDER_REVIEW = "UNDER_REVIEW",           // Admin is reviewing
   OFFER_MADE = "OFFER_MADE",               // Admin made an offer, waiting for customer response

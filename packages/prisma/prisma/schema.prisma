@@ -65,7 +65,7 @@ model Request {
   customerId      String
   requestedAmount Float
   district        String
-  currentStatus   String    @default("DRAFT")
+  currentStatus   String    @default("PENDING")
   
   // Asset details (inline)
   purchaseYear    Int?

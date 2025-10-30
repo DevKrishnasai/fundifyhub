@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { APIResponse } from '../../types';
 import { logger } from '../../utils/logger';
 import { prisma } from '@fundifyhub/prisma';
-import { SUPPORTED_SERVICES } from '@fundifyhub/types';
+import { SUPPORTED_SERVICES, RequestStatus } from '@fundifyhub/types';
 import { enqueue } from '@fundifyhub/utils';
 import { QUEUE_NAMES, JOB_NAMES, SERVICE_ACTIONS } from '@fundifyhub/utils';
 import { ServiceControlJobData, ServiceName } from '@fundifyhub/types';
@@ -295,6 +295,100 @@ export async function configureServiceController(req: Request, res: Response): P
     res.status(500).json({ 
       success: false, 
       message: `Failed to configure ${req.params.serviceName}` 
+    } as APIResponse);
+  }
+}
+
+
+export async function getActiveLoansController(req: Request, res: Response): Promise<void> {
+  return 
+}
+
+/**
+ * 
+ * @param req 
+ * @param res 
+ * @returns 
+ */
+export async function getPendingRequestsController(req: Request, res: Response): Promise<void> {
+  try {
+    const pendingStatuses = [
+      RequestStatus.PENDING,
+      RequestStatus.UNDER_REVIEW,
+      RequestStatus.OFFER_MADE,
+      RequestStatus.OFFER_ACCEPTED,
+      RequestStatus.OFFER_REJECTED,
+      RequestStatus.INSPECTION_SCHEDULED,
+      RequestStatus.INSPECTION_IN_PROGRESS,
+      RequestStatus.INSPECTION_COMPLETED
+    ];
+
+    const pendingRequests = await prisma.request.findMany({
+      where: {
+        currentStatus: {
+          in: pendingStatuses
+        }
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true,
+            district: true
+          }
+        },
+        assignedAgent: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true
+          }
+        },
+        loan: {
+          select: {
+            id: true,
+            status: true,
+            approvedAmount: true,
+            disbursedDate: true
+          }
+        },
+        _count: {
+          select: {
+            comments: true,
+            inspections: true,
+            documents: true
+          }
+        }
+      },
+      orderBy: {
+        submittedDate: 'desc'
+      }
+    });
+
+    if (pendingRequests.length === 0) {
+      res.status(200).json({
+        success: true,
+        message: 'No pending requests found',
+        data: []
+      } as APIResponse);
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Found ${pendingRequests.length} pending request(s)`,
+      data: pendingRequests
+    } as APIResponse);
+  } catch (error) {
+    logger.error('Error getting pending requests:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get pending requests'
     } as APIResponse);
   }
 }

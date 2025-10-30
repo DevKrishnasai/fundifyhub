@@ -6,6 +6,8 @@ import {
   disableServiceController,
   disconnectServiceController,
   configureServiceController,
+  getActiveLoansController,
+  getPendingRequestsController
 } from './controllers';
 
 const router: ExpressRouter = Router();
@@ -39,5 +41,17 @@ router.post('/service/:serviceName/disconnect', requireAuth, disconnectServiceCo
  * Update service configuration (e.g., email SMTP settings)
  */
 router.post('/service/:serviceName/configure', requireAuth, configureServiceController);
+
+/** GET /admin/getActiveLoans
+ * Get all active loans
+ */
+router.get('/getactiveloans', requireAuth, requireAdmin, getActiveLoansController);
+
+
+/**
+ * GET /admin/getPendingRequests
+ * Get all pending loan applications
+ */
+router.get('/getPendingRequests', requireAuth, requireAdmin, getPendingRequestsController);
 
 export default router;
