@@ -395,14 +395,13 @@ export async function updateAssetController(req: Request, res: Response): Promis
 
     // --- MODIFICATION 2: Added status validation block ---
     const allowedUpdateStatuses = [
-      RequestStatus.DRAFT,
       RequestStatus.PENDING,
       RequestStatus.OFFER_REJECTED,
       RequestStatus.REJECTED,
       RequestStatus.CANCELLED
     ];
 
-    if (!allowedUpdateStatuses.includes(existing.currentStatus)) {
+    if (!allowedUpdateStatuses.includes(existing.currentStatus as RequestStatus)) {
       res.status(400).json({
         success: false,
         message: 'This request cannot be updated as it has already been processed or is in a locked state.'
@@ -424,7 +423,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
     if (AdditionalDescription !== undefined) updateData.AdditionalDescription = AdditionalDescription;
     
     // Any update moves it back to DRAFT status
-    updateData.currentStatus = RequestStatus.DRAFT;
+    updateData.currentStatus = RequestStatus.PENDING;
 
     // Validate enum values if provided
     if (updateData.assetType && !isValidAssetType(updateData.assetType)) {
