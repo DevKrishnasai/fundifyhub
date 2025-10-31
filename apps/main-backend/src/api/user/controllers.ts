@@ -4,10 +4,12 @@
  * Business logic is delegated to user services
 */
 
-import { prisma } from '@fundifyhub/prisma';
+import { prisma, User } from '@fundifyhub/prisma';
 import { Request, Response } from 'express';
-import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus } from '@fundifyhub/types';
-import { logger } from '../../utils/logger';
+import { createLogger } from '@fundifyhub/logger';
+import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus, LoanStatus } from '@fundifyhub/types';
+import { request } from 'http';
+const logger = createLogger({ serviceName: 'user-controllers' });
 /**
  * GET /user/profile
  * Get current user profile (protected)
@@ -32,8 +34,7 @@ export async function getProfileController(req: Request, res: Response): Promise
       data: result.data,
     });
   } catch (error) {
-    const contextLogger = logger.child('[get-profile]');
-    contextLogger.error('Failed to retrieve profile:', error as Error);
+    logger.error('Get profile error:', error as Error);
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve profile',
@@ -68,8 +69,7 @@ export async function validateController(req: Request, res: Response): Promise<v
       data: result.data,
     });
   } catch (error) {
-    const contextLogger = logger.child('[validate-auth]');
-    contextLogger.error('Validation failed:', error as Error);
+    logger.error('Auth validation error:', error as Error);
     res.status(500).json({
       success: false,
       message: 'Authentication validation failed',
@@ -363,7 +363,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
       assetCondition,
       requestedAmount,
       AdditionalDescription,
-      currentStatus // This from req.body is ignored, as we set it to PENDING
+      currentStatus // This from req.body is ignored, as we set it to DRAFT
     } = req.body || {};
 
     // Validate requestId
@@ -386,7 +386,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
 
     // Authorization check: only owner or ADMIN/AGENT can update
     const isAdminOrAgent = userRoles.includes('ADMIN') || userRoles.includes('AGENT');
-    if (customerId !== existing.customerId || !isAdminOrAgent) {
+    if (customerId !== existing.customerId && !isAdminOrAgent) {
       res.status(403).json({ 
         success: false, 
         message: 'Not authorized to update this request' 
@@ -396,13 +396,14 @@ export async function updateAssetController(req: Request, res: Response): Promis
 
     // --- MODIFICATION 2: Added status validation block ---
     const allowedUpdateStatuses = [
+      RequestStatus.DRAFT,
       RequestStatus.PENDING,
       RequestStatus.OFFER_REJECTED,
       RequestStatus.REJECTED,
       RequestStatus.CANCELLED
     ];
 
-    if (!allowedUpdateStatuses.includes(existing.currentStatus as RequestStatus)) {
+    if (!allowedUpdateStatuses.includes(existing.currentStatus)) {
       res.status(400).json({
         success: false,
         message: 'This request cannot be updated as it has already been processed or is in a locked state.'
@@ -423,8 +424,8 @@ export async function updateAssetController(req: Request, res: Response): Promis
     if (typeof requestedAmount === 'number') updateData.requestedAmount = requestedAmount;
     if (AdditionalDescription !== undefined) updateData.AdditionalDescription = AdditionalDescription;
     
-    // Any update moves it back to PENDING status
-    updateData.currentStatus = RequestStatus.PENDING;
+    // Any update moves it back to DRAFT status
+    updateData.currentStatus = RequestStatus.DRAFT;
 
     // Validate enum values if provided
     if (updateData.assetType && !isValidAssetType(updateData.assetType)) {
@@ -660,5 +661,109 @@ export async function debugAuth(
       success: false,
       message: 'Debug failed',
     };
+  }
+}
+
+/**
+ * GET /user/active-loans-count
+ * Returns the count of active loans for the logged-in customer (protected)
+ */
+export async function activeLoansCountController(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user!.id;
+    const count = await countActiveLoans(userId);
+    res.status(200).json({ success: true, data: { activeLoans: count } });
+  } catch (error) {
+    logger.error('Active loans count error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve active loans count',
+    });
+  }
+}
+
+export async function countActiveLoans(userId: string): Promise<number> {
+  try {
+    return await prisma.loan.count({
+      where: {
+        status: LoanStatus.ACTIVE,
+        request: { customerId: userId },
+      },
+    });
+  } catch (error) {
+    logger.error('Count active loans error:', error as Error);
+    throw error;
+  }
+}
+
+/**
+ * GET /user/pending-loans-count
+ * Returns count of loans currently in PENDING status for the logged-in user (protected)
+ */
+export async function pendingLoansCountController(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user!.id;
+    const count = await countPendingLoans(userId);
+    res.status(200).json({ success: true, data: { pendingLoans: count } });
+  } catch (error) {
+    logger.error('Pending loans count error:', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve pending loans count' });
+  }
+}
+
+export async function countPendingLoans(userId: string): Promise<number> {
+  try {
+    return await prisma.request.count({
+      where: {
+        currentStatus: RequestStatus.PENDING,
+        customerId: userId,
+      },
+    });
+  } catch (error) {
+    logger.error('Count pending loans error:', error as Error);
+    throw error;
+  }
+}
+
+/**
+ * GET /user/total-borrow
+ * Returns total borrowed amount for the logged-in user (protected)
+ */
+export async function totalBorrowController(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user!.id;
+    const stats = await getTotalBorrowStats(userId);
+    res.status(200).json({ success: true, data: stats });
+  } catch (error) {
+    logger.error('Total borrow error:', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve total borrow stats' });
+  }
+}
+
+/**
+ * Service: Get total borrowed amount (from Loan table)
+ * Includes all loans where:
+ *   - related request belongs to the user
+ *   - loan status is either APPROVED, ACTIVE, or COMPLETED
+ */
+export async function getTotalBorrowStats(userId: string): Promise<{ totalBorrowed: number }> {
+  try {
+    const result = await prisma.loan.aggregate({
+      where: {
+        status: LoanStatus.ACTIVE,
+        request: {
+          customerId: userId,
+        },
+      },
+      _sum: {
+        approvedAmount: true,
+      },
+    });
+
+    const totalBorrowed = result._sum.approvedAmount ?? 0;
+    return { totalBorrowed };
+  } catch (error) {
+    logger.error('Get total borrow stats error:', error as Error);
+    throw error;
   }
 }

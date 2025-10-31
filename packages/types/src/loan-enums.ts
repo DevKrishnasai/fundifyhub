@@ -52,8 +52,6 @@ export enum DocumentCategory {
 }
 
 export enum LoanStatus {
-  PENDING = "PENDING",        // Loan application pending
-  APPROVED = "APPROVED",      // Loan approved, ready for disbursal
   ACTIVE = "ACTIVE",          // Money disbursed, customer paying EMIs
   COMPLETED = "COMPLETED",    // All EMIs paid successfully
   DEFAULTED = "DEFAULTED"     // Customer failed to pay, loan defaulted

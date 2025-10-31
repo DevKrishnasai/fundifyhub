@@ -1,18 +1,19 @@
-import { PrismaClient, Request } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
+import { randomUUID } from "crypto";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Starting database seeding...");
+  console.log("🌱 Starting full database seeding...");
 
-  // Prepare a default hashed password for seeded users
   const defaultPassword = process.env.SEED_USER_PASSWORD || "Password123!";
   const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
-  // Create sample users with detailed information - now with multi-role support
+  // ---------------------------------------
+  // USERS
+  // ---------------------------------------
   const users = await Promise.all([
-    // Customer only
     prisma.user.upsert({
       where: { email: "customer@example.com" },
       update: {},
@@ -26,33 +27,10 @@ async function main() {
         district: "Mumbai",
         emailVerified: true,
         phoneVerified: true,
-        address: "123 Customer Street, Mumbai",
         city: "Mumbai",
         state: "Maharashtra",
-        pincode: "400001",
       },
     }),
-    // District Admin only
-    prisma.user.upsert({
-      where: { email: "district.admin@fundifyhub.com" },
-      update: {},
-      create: {
-        firstName: "Mumbai District",
-        lastName: "Admin",
-        email: "district.admin@fundifyhub.com",
-        phoneNumber: "+919876543201",
-        password: hashedPassword,
-        roles: ["DISTRICT_ADMIN"],
-        district: "Mumbai",
-        emailVerified: true,
-        phoneVerified: true,
-        address: "Admin Building, Mumbai",
-        city: "Mumbai",
-        state: "Maharashtra",
-        pincode: "400002",
-      },
-    }),
-    // Agent only
     prisma.user.upsert({
       where: { email: "agent@fundifyhub.com" },
       update: {},
@@ -66,32 +44,8 @@ async function main() {
         district: "Mumbai",
         emailVerified: true,
         phoneVerified: true,
-        address: "Agent Office, Mumbai",
-        city: "Mumbai",
-        state: "Maharashtra",
-        pincode: "400003",
       },
     }),
-    // Super Admin with all roles
-    prisma.user.upsert({
-      where: { email: "super.admin@fundifyhub.com" },
-      update: {},
-      create: {
-        firstName: "Super",
-        lastName: "Admin",
-        email: "super.admin@fundifyhub.com",
-        phoneNumber: "+919876543203",
-        password: hashedPassword,
-        roles: ["SUPER_ADMIN", "ADMIN", "DISTRICT_ADMIN", "AGENT", "CUSTOMER"],
-        emailVerified: true,
-        phoneVerified: true,
-        address: "Head Office, Mumbai",
-        city: "Mumbai",
-        state: "Maharashtra",
-        pincode: "400004",
-      },
-    }),
-    // Admin for Worker Configuration
     prisma.user.upsert({
       where: { email: "admin@fundifyhub.com" },
       update: {},
@@ -104,52 +58,253 @@ async function main() {
         roles: ["ADMIN"],
         emailVerified: true,
         phoneVerified: true,
-        address: "Tech Office, Mumbai",
-        city: "Mumbai",
-        state: "Maharashtra",
-        pincode: "400005",
       },
     }),
-    // Multi-role user: Customer + Agent
     prisma.user.upsert({
-      where: { email: "multi@example.com" },
+      where: { email: "super.admin@fundifyhub.com" },
       update: {},
       create: {
-        firstName: "Multi",
-        lastName: "Role",
-        email: "multi@example.com",
-        phoneNumber: "+919876543205",
+        firstName: "Super",
+        lastName: "Admin",
+        email: "super.admin@fundifyhub.com",
+        phoneNumber: "+919876543203",
         password: hashedPassword,
-        roles: ["CUSTOMER", "AGENT"],
-        district: "Mumbai",
+        roles: ["SUPER_ADMIN", "ADMIN", "AGENT", "CUSTOMER"],
         emailVerified: true,
         phoneVerified: true,
-        address: "456 Multi Street, Mumbai",
-        city: "Mumbai",
-        state: "Maharashtra",
-        pincode: "400006",
       },
     }),
   ]);
 
-  console.log(`Created ${users.length} users`);
+  const customer = users.find((u) => u.roles.includes("CUSTOMER"))!;
+  const agent = users.find((u) => u.roles.includes("AGENT"))!;
+  const admin = users.find((u) => u.roles.includes("ADMIN"))!;
 
-  // Get users by role
-  const customer = users.find(user => user.roles.includes("CUSTOMER") && user.roles.length === 1)!;
-  const districtAdmin = users.find(user => user.roles.includes("DISTRICT_ADMIN") && user.roles.length === 1)!;
-  const agent = users.find(user => user.roles.includes("AGENT") && user.roles.length === 1)!;
-  const admin = users.find(user => user.roles.includes("ADMIN") && user.roles.length === 1)!;
+  console.log(`✅ Created ${users.length} users`);
 
-  console.log("🎉 Database seeding completed successfully!");
-  console.log("📊 Summary:");
-  console.log(`- ${users.length} users created with multi-role support`);
-  console.log(`  - Pure roles: customer, district admin, agent, admin`);
-  console.log(`  - Super admin with all roles`);
-  console.log(`  - Multi-role user: customer + agent`);
-  console.log(`- 1 request created with inline asset details`);
-  console.log(`- 1 document created`);
-  console.log(`- 1 comment created`);
-  console.log(`- 1 inspection created`);
+  // ---------------------------------------
+  // REQUESTS
+  // ---------------------------------------
+  const requestStatuses = ["PENDING", "ACTIVE", "REJECTED", "CLOSED"];
+  const requests: any[] = [];
+
+  for (const status of requestStatuses) {
+    const count = status === "ACTIVE" ? 4 : 2; // 4 active, 2 each for others
+
+    for (let i = 0; i < count; i++) {
+      const req = await prisma.request.create({
+        data: {
+          customerId: customer.id,
+          requestedAmount: 100000 + Math.floor(Math.random() * 50000),
+          district: "Mumbai",
+          currentStatus: status,
+          purchaseYear: 2018 + i,
+          assetType: "Vehicle",
+          assetBrand: ["Honda", "Tata", "Suzuki", "Hyundai"][Math.floor(Math.random() * 4)],
+          assetModel: `${status}-Model-${i + 1}`,
+          assetCondition: ["Excellent", "Good", "Fair"][Math.floor(Math.random() * 3)],
+          AdditionalDescription: `Demo ${status} asset ${i + 1} for testing`,
+          assignedAgentId: agent.id,
+        },
+      });
+      requests.push(req);
+    }
+  }
+
+  console.log(`✅ Created ${requests.length} requests across all statuses`);
+
+  // ---------------------------------------
+  // LOANS + EMI + PAYMENTS
+  // ---------------------------------------
+  const loans = [];
+  const emis = [];
+  const payments = [];
+
+  for (const req of requests) {
+    // Only create loans for ACTIVE and CLOSED requests
+    if (req.currentStatus === "PENDING" || req.currentStatus === "REJECTED") continue;
+
+    const approvedAmount = req.requestedAmount - 5000;
+    const interestRate = 12;
+    const tenureMonths = 6;
+    const emiAmount = parseFloat(((approvedAmount * (1 + interestRate / 100)) / tenureMonths).toFixed(2));
+    const totalInterest = approvedAmount * (interestRate / 100);
+    const totalAmount = approvedAmount + totalInterest;
+
+    const loan = await prisma.loan.create({
+      data: {
+        requestId: req.id,
+        approvedAmount,
+        interestRate,
+        tenureMonths,
+        emiAmount,
+        totalInterest,
+        totalAmount,
+        status: req.currentStatus,
+        approvedDate: new Date(),
+        disbursedDate: new Date(),
+        firstEMIDate: new Date(),
+        lastEMIDate: new Date(Date.now() + tenureMonths * 30 * 24 * 60 * 60 * 1000),
+        totalPaidAmount: 0,
+        createdById: admin.id,
+        updatedById: admin.id,
+      },
+    });
+    loans.push(loan);
+
+    // EMI Schedule
+    for (let n = 1; n <= tenureMonths; n++) {
+      const emi = await prisma.eMISchedule.create({
+        data: {
+          loanId: loan.id,
+          requestId: req.id,
+          emiNumber: n,
+          dueDate: new Date(Date.now() + n * 30 * 24 * 60 * 60 * 1000),
+          emiAmount,
+          principalAmount: approvedAmount / tenureMonths,
+          interestAmount: totalInterest / tenureMonths,
+          status: n === 1 ? "PAID" : "PENDING",
+          paidDate: n === 1 ? new Date() : null,
+          paidAmount: n === 1 ? emiAmount : null,
+        },
+      });
+      emis.push(emi);
+
+      if (n === 1) {
+        const payment = await prisma.payment.create({
+          data: {
+            loanId: loan.id,
+            requestId: req.id,
+            emiScheduleId: emi.id,
+            amount: emiAmount,
+            paymentType: "EMI",
+            paymentMethod: "UPI",
+            paymentReference: `TXN-${randomUUID()}`,
+          },
+        });
+        payments.push(payment);
+      }
+    }
+  }
+
+  console.log(`✅ Created ${loans.length} loans, ${emis.length} EMIs, ${payments.length} payments`);
+
+  // ---------------------------------------
+  // DOCUMENTS
+  // ---------------------------------------
+  await Promise.all(
+    requests.map((req, i) =>
+      prisma.document.create({
+        data: {
+          requestId: req.id,
+          url: `https://example.com/documents/${i + 1}.pdf`,
+          mimeType: "application/pdf",
+          documentType: "id_proof",
+          documentCategory: "KYC",
+          uploadedBy: customer.id,
+          isVerified: true,
+          verifiedBy: admin.id,
+          verifiedAt: new Date(),
+        },
+      })
+    )
+  );
+
+  // ---------------------------------------
+  // COMMENTS
+  // ---------------------------------------
+  await Promise.all(
+    requests.map((req, i) =>
+      prisma.comment.create({
+        data: {
+          requestId: req.id,
+          authorId: admin.id,
+          content: `This is a comment for request ${i + 1}`,
+          commentType: "GENERAL",
+        },
+      })
+    )
+  );
+
+  // ---------------------------------------
+  // INSPECTIONS
+  // ---------------------------------------
+  await Promise.all(
+    requests.map((req) =>
+      prisma.inspection.create({
+        data: {
+          requestId: req.id,
+          agentId: agent.id,
+          scheduledDate: new Date(),
+          completedDate: new Date(),
+          status: "COMPLETED",
+          assetCondition: "Good",
+          estimatedValue: req.requestedAmount - 10000,
+          recommendApprove: true,
+        },
+      })
+    )
+  );
+
+  // ---------------------------------------
+  // OTP VERIFICATIONS
+  // ---------------------------------------
+  await prisma.oTPVerification.createMany({
+    data: users.map((user) => ({
+      userId: user.id,
+      identifier: user.email,
+      type: "EMAIL",
+      code: "123456",
+      expiresAt: new Date(Date.now() + 1000 * 60 * 10),
+      isUsed: true,
+      isVerified: true,
+    })),
+    skipDuplicates: true,
+  });
+
+  // ---------------------------------------
+  // VERIFICATION SESSIONS
+  // ---------------------------------------
+  for (const user of users) {
+    await prisma.verificationSession.upsert({
+      where: { sessionId: `session-${user.email}` },
+      update: {},
+      create: {
+        sessionId: `session-${randomUUID()}`,
+        email: user.email,
+        phoneNumber: user.phoneNumber!,
+        emailOTP: "123456",
+        phoneOTP: "654321",
+        emailVerified: true,
+        phoneVerified: true,
+        expiresAt: new Date(Date.now() + 1000 * 60 * 10),
+      },
+    });
+  }
+
+  // ---------------------------------------
+  // SERVICE CONFIGS
+  // ---------------------------------------
+  const services = ["WHATSAPP", "EMAIL", "SMS"];
+  await Promise.all(
+    services.map((service) =>
+      prisma.serviceConfig.upsert({
+        where: { serviceName: service },
+        update: {},
+        create: {
+          serviceName: service,
+          isEnabled: true,
+          isActive: true,
+          connectionStatus: "CONNECTED",
+          config: { apiKey: "demo-key", sender: "FundifyHub" },
+          configuredBy: admin.id,
+          configuredAt: new Date(),
+        },
+      })
+    )
+  );
+
+  console.log("✅ All demo data successfully seeded!");
 }
 
 main()

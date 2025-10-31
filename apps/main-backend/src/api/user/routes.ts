@@ -6,7 +6,7 @@
 
 import { Router, type Router as ExpressRouter } from 'express';
 import { requireAuth } from '../auth';
-import { getProfileController, validateController, debugAuthController, addAssetController, updateAssetController } from './controllers';
+import { getProfileController, validateController, debugAuthController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController } from './controllers';
 
 const router: ExpressRouter = Router();
 
@@ -39,5 +39,28 @@ router.post('/add-asset', requireAuth, addAssetController);
  * Update an existing asset request (protected)
  */
 router.put('/update-asset', requireAuth, updateAssetController);
+
+/**
+ * GET /user/active-loans-count
+ * Returns number of currently active loans (protected)
+ */
+router.get('/active-loans-count', requireAuth, activeLoansCountController);
+
+/**
+ * GET /user/pending-loans-count
+ * Returns number of loans currently in PENDING status (protected)
+ */
+router.get('/pending-loans-count', requireAuth, pendingLoansCountController);
+
+// Note: only the active loans count endpoint is exposed here per request
+
+/**
+ * GET /user/total-borrow
+ * Returns total borrowed and outstanding amounts (protected)
+ */
+router.get('/total-borrow', requireAuth, totalBorrowController);
+
+
+
 
 export default router;
