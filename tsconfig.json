@@ -9,6 +9,7 @@
   },
   "references": [
     { "path": "./packages/types" },
+  { "path": "./packages/templates" },
     { "path": "./packages/utils" },
     { "path": "./packages/prisma" },
     { "path": "./packages/logger" },

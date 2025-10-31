@@ -2,6 +2,7 @@ type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 export interface SimpleLoggerConfig {
   serviceName: string;
+  context?: string; // Optional context like [Job 1] [email-worker]
 }
 
 // ANSI color codes with bright variants for better visibility
@@ -31,9 +32,37 @@ const colors = {
 
 export class SimpleLogger {
   private serviceName: string;
+  private context?: string;
 
   constructor(config: SimpleLoggerConfig) {
     this.serviceName = config.serviceName;
+    this.context = config.context;
+  }
+
+  /**
+   * Create a child logger with additional context
+   * Example: logger.child('[Job 1] [email-worker]')
+   */
+  child(context: string): SimpleLogger {
+    return new SimpleLogger({
+      serviceName: this.serviceName,
+      context: this.context ? `${this.context} ${context}` : context
+    });
+  }
+
+  /**
+   * Update context dynamically
+   * Example: logger.setContext('[Job 2] [whatsapp-worker]')
+   */
+  setContext(context: string): void {
+    this.context = context;
+  }
+
+  /**
+   * Clear context
+   */
+  clearContext(): void {
+    this.context = undefined;
   }
 
   private formatDateTime(): string {
@@ -74,12 +103,16 @@ export class SimpleLogger {
     
     const useColors = forceColors || process.stdout.isTTY || true; // Default to true
     
+    // Build the log line with optional context
+    const contextStr = this.context ? ` ${colors.brightMagenta}${this.context}${colors.reset}` : '';
+    
     if (useColors) {
-      const logLine = `${colors.dim}${timestamp}${colors.reset} ${colors.brightBlue}[${this.serviceName}]${colors.reset} ${levelColor}${colors.bold}${level.toUpperCase()}${colors.reset}: ${message}`;
+      const logLine = `${colors.dim}${timestamp}${colors.reset} ${colors.brightBlue}[${this.serviceName}]${colors.reset}${contextStr} ${levelColor}${colors.bold}${level.toUpperCase()}${colors.reset}: ${message}`;
       console.log(logLine);
     } else {
       // Fallback to no colors for non-TTY environments
-      const logLine = `${timestamp} [${this.serviceName}] ${level.toUpperCase()}: ${message}`;
+      const plainContext = this.context ? ` ${this.context}` : '';
+      const logLine = `${timestamp} [${this.serviceName}]${plainContext} ${level.toUpperCase()}: ${message}`;
       console.log(logLine);
     }
   }

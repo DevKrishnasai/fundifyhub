@@ -2,10 +2,9 @@ import { Request, Response } from 'express';
 import { APIResponse } from '../../types';
 import { logger } from '../../utils/logger';
 import { prisma } from '@fundifyhub/prisma';
-import { SUPPORTED_SERVICES, RequestStatus } from '@fundifyhub/types';
-import { enqueue } from '@fundifyhub/utils';
-import { QUEUE_NAMES, JOB_NAMES, SERVICE_ACTIONS } from '@fundifyhub/utils';
+import { SUPPORTED_SERVICES, RequestStatus, ServiceControlAction, ConnectionStatus } from '@fundifyhub/types';
 import { ServiceControlJobData, ServiceName } from '@fundifyhub/types';
+import { enqueueServiceControl } from '@fundifyhub/utils';
 
 /**
  * GET /admin/services
@@ -14,15 +13,17 @@ import { ServiceControlJobData, ServiceName } from '@fundifyhub/types';
 export async function getAllServicesController(req: Request, res: Response): Promise<void> {
   try {
     let configs = await prisma.serviceConfig.findMany({ orderBy: { serviceName: 'asc' } });
-    // Auto-create missing configs
+    
     for (const serviceName of SUPPORTED_SERVICES) {
       if (!configs.find(cfg => cfg.serviceName === serviceName)) {
-        await prisma.serviceConfig.create({
-          data: {
+        await prisma.serviceConfig.upsert({
+          where: { serviceName },
+          update: {},
+          create: {
             serviceName,
             isEnabled: false,
             isActive: false,
-            connectionStatus: 'DISCONNECTED',
+            connectionStatus: ConnectionStatus.DISCONNECTED,
             config: {},
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -30,11 +31,11 @@ export async function getAllServicesController(req: Request, res: Response): Pro
         });
       }
     }
+    
     configs = await prisma.serviceConfig.findMany({ orderBy: { serviceName: 'asc' } });
     const serviceStatuses = configs.map(cfg => {
       let transformedConfig = cfg.config;
       
-      // Transform email config keys back to frontend format
       if (cfg.serviceName === 'EMAIL' && cfg.config && typeof cfg.config === 'object') {
         const emailConfig = cfg.config as any;
         transformedConfig = {
@@ -55,16 +56,18 @@ export async function getAllServicesController(req: Request, res: Response): Pro
         lastConnectedAt: cfg.lastConnectedAt || undefined,
         lastError: cfg.lastError || undefined,
         config: transformedConfig,
-        qrCode: cfg.qrCode || undefined, // Include QR code if present
+        qrCode: cfg.qrCode || undefined,
       };
     });
+    
     res.status(200).json({
       success: true,
       message: 'Service configurations retrieved successfully',
       data: serviceStatuses,
     } as APIResponse);
   } catch (error) {
-    logger.error('Error getting service configurations:', error as Error);
+    const contextLogger = logger.child('[get-services]');
+    contextLogger.error('Failed to get services:', error as Error);
     res.status(500).json({
       success: false,
       message: 'Failed to get service configurations',
@@ -82,13 +85,14 @@ export async function enableServiceController(req: Request, res: Response): Prom
   try {
     const { serviceName } = req.params;
     let config = await prisma.serviceConfig.findUnique({ where: { serviceName: serviceName.toUpperCase() } });
+    
     if (!config) {
       config = await prisma.serviceConfig.create({
         data: {
           serviceName: serviceName.toUpperCase(),
           isEnabled: true,
           isActive: false,
-          connectionStatus: 'DISCONNECTED',
+          connectionStatus: ConnectionStatus.DISCONNECTED,
           config: {},
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -100,17 +104,24 @@ export async function enableServiceController(req: Request, res: Response): Prom
         data: { isEnabled: true, updatedAt: new Date() },
       });
     }
-    // Enqueue job for worker to start service
+    
     const adminUserId = (req as any).user?.id || 'unknown-admin';
     const jobData: ServiceControlJobData = {
-      action: SERVICE_ACTIONS.START,
+      action: ServiceControlAction.START,
       serviceName: serviceName.toUpperCase() as ServiceName,
       triggeredBy: adminUserId,
     };
-    await enqueue(QUEUE_NAMES.SERVICE_CONTROL, JOB_NAMES.SERVICE_STATUS_UPDATED, jobData);
+    const result = await enqueueServiceControl(jobData);
+    
+    if (result.error) {
+      const contextLogger = logger.child('[enable-service]');
+      contextLogger.error(`Failed to enqueue: ${result.error}`);
+    }
+    
     res.status(200).json({ success: true, message: `${serviceName} enabled`, data: config } as APIResponse);
   } catch (error) {
-    logger.error('Error enabling service:', error as Error);
+    const contextLogger = logger.child('[enable-service]');
+    contextLogger.error('Failed to enable service:', error as Error);
     res.status(500).json({ success: false, message: `Failed to enable ${req.params.serviceName}` } as APIResponse);
   }
 }
@@ -130,14 +141,17 @@ export async function disableServiceController(req: Request, res: Response): Pro
       return;
     }
     
-    // Enqueue job for worker to stop service first
     const adminUserId = (req as any).user?.id || 'unknown-admin';
     const jobData: ServiceControlJobData = {
-      action: SERVICE_ACTIONS.STOP,
+      action: ServiceControlAction.STOP,
       serviceName: serviceName.toUpperCase() as ServiceName,
       triggeredBy: adminUserId,
     };
-    await enqueue(QUEUE_NAMES.SERVICE_CONTROL, JOB_NAMES.SERVICE_STATUS_UPDATED, jobData);
+    const result = await enqueueServiceControl(jobData);
+    
+    if (result.error) {
+      logger.error(`Failed to enqueue service control: ${result.error}`);
+    }
     
     // Delete the service config from database
     await prisma.serviceConfig.delete({
@@ -167,15 +181,22 @@ export async function disconnectServiceController(req: Request, res: Response): 
       res.status(404).json({ success: false, message: `Service ${serviceName} not found` } as APIResponse);
       return;
     }
-    await prisma.serviceConfig.delete({ where: { serviceName: serviceName.toUpperCase() } });
+    
     // Enqueue job for worker to disconnect and cleanup service
     const adminUserId = (req as any).user?.id || 'unknown-admin';
     const jobData: ServiceControlJobData = {
-      action: SERVICE_ACTIONS.DISCONNECT,
+      action: ServiceControlAction.DISCONNECT,
       serviceName: serviceName.toUpperCase() as ServiceName,
       triggeredBy: adminUserId,
     };
-    await enqueue(QUEUE_NAMES.SERVICE_CONTROL, JOB_NAMES.SERVICE_STATUS_UPDATED, jobData);
+    const result = await enqueueServiceControl(jobData);
+    
+    if (result.error) {
+      logger.error(`Failed to enqueue service control: ${result.error}`);
+    }
+    
+    await prisma.serviceConfig.delete({ where: { serviceName: serviceName.toUpperCase() } });
+    
     res.status(200).json({ success: true, message: `${serviceName} disconnected and cleaned up` } as APIResponse);
   } catch (error) {
     logger.error('Error disconnecting service:', error as Error);
@@ -269,7 +290,7 @@ export async function configureServiceController(req: Request, res: Response): P
           serviceName: upperServiceName,
           isEnabled: false,
           isActive: false,
-          connectionStatus: 'DISCONNECTED',
+          connectionStatus: ConnectionStatus.DISCONNECTED,
           config: configData,
           createdAt: new Date(),
           updatedAt: new Date(),

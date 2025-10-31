@@ -45,38 +45,16 @@ export interface OTPJobData {
   templateType?: OTPTemplateType | 'VERIFICATION' | 'LOGIN' | 'RESET_PASSWORD';
 }
 
-export interface OTPJobOptions {
-  delay?: number;
-  attempts?: number;
-  backoff?: {
-    type: 'exponential' | 'fixed';
-    delay: number;
-  };
-}
-
-export interface OTPQueueStats {
-  waiting: number;
-  active: number;
-  completed: number;
-  failed: number;
-}
-
 // ============================================
 // Service Control Queue Types
 // ============================================
 
 export interface ServiceControlJobData {
-  action: 'START' | 'STOP' | 'RESTART' | 'DISCONNECT';
+  // Use shared enum for actions
+  action: import('./queue-constants').ServiceControlAction | string;
   serviceName: ServiceName | 'WHATSAPP' | 'EMAIL';
   reason?: string;
   triggeredBy?: string; // admin user id
-}
-
-export interface ServiceControlQueueStats {
-  waiting: number;
-  active: number;
-  completed: number;
-  failed: number;
 }
 
 // ============================================
@@ -86,52 +64,53 @@ export interface ServiceControlQueueStats {
 export interface ServiceStatusJobData {
   serviceName: ServiceName | 'WHATSAPP' | 'EMAIL';
   isActive: boolean;
-  connectionStatus: 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'CONNECTING';
+  connectionStatus: import('./queue-constants').ConnectionStatus | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'CONNECTING';
   lastError?: string;
   timestamp: Date;
 }
 
-export interface ServiceStatusQueueStats {
-  waiting: number;
-  active: number;
-  completed: number;
-  failed: number;
+// ============================================
+// Template / Enqueue shared types & constants
+// These are used by job-worker and any caller that needs to enqueue template-driven jobs
+// ============================================
+
+export const EMAIL_QUEUE = 'email-queue';
+export const WHATSAPP_QUEUE = 'whatsapp-queue';
+
+export interface JobOptions {
+  priority?: number;
+  delay?: number;
+  attempts?: number;
 }
 
-// ============================================
-// Email Service Queue Types (Future)
-// ============================================
-
-export interface EmailJobData {
-  userId?: string;
-  recipient: string;
-  subject: string;
-  template: string;
-  templateData?: Record<string, any>;
-  priority?: 'low' | 'normal' | 'high';
+export interface TemplateDefinition {
+  /** Unique template key */
+  name: string;
+  /** Services supported by this template */
+  supportedServices: ServiceName[];
+  /** Required variable names that must be present in job variables */
+  requiredVariables?: string[];
+  /** Optional variable names */
+  optionalVariables?: string[];
+  /** Default job options applied when enqueueing from callers (can be overridden by caller options) */
+  defaults?: JobOptions;
 }
 
-// ============================================
-// WhatsApp Service Queue Types (Future)
-// ============================================
-
-export interface WhatsAppJobData {
-  userId?: string;
-  recipient: string;
-  message: string;
-  templateName?: string;
-  templateData?: Record<string, any>;
-  priority?: 'low' | 'normal' | 'high';
+export interface TemplateJobPayload {
+  templateName: string;
+  variables: Record<string, unknown>;
 }
 
-// ============================================
-// Generic Queue Result Types
-// ============================================
+export interface EnqueueOptions {
+  services?: ServiceName[];
+  priority?: number;
+  delay?: number;
+  attempts?: number;
+}
 
-export interface QueueJobResult<T = any> {
-  success: boolean;
-  jobId?: string;
-  data?: T;
-  message: string;
+export interface EnqueueResult {
+  service: ServiceName;
+  jobId?: string | number | null;
+  warning?: string;
   error?: string;
 }

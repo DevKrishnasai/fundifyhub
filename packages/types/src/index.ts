@@ -1,3 +1,5 @@
+import { ServiceName } from "./queue-types";
+
 // User related types
 export interface User {
   id: string;
@@ -65,4 +67,8 @@ export * from "./loan-enums";
 
 // Export all queue job types
 export * from "./queue-types";
-export { SUPPORTED_SERVICES } from "./queue-types";
+export { SUPPORTED_SERVICES, ServiceName, EMAIL_QUEUE, WHATSAPP_QUEUE } from "./queue-types";
+// Template metadata is now provided by @fundifyhub/templates package
+
+export * from './template-types';
+export * from './queue-constants';

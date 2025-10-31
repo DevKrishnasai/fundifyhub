@@ -7,8 +7,8 @@ export abstract class BaseWorker<T = any> {
   protected logger: SimpleLogger;
   protected queueName: string;
 
-  constructor(queueName: string, logger: any) {
-    this.logger = logger;
+  constructor(queueName: string, logger: SimpleLogger) {
+    this.logger = logger; // Use the passed logger directly (single instance)
     this.queueName = queueName;
 
     const connection = {
@@ -44,19 +44,22 @@ export abstract class BaseWorker<T = any> {
    */
   private setupEventHandlers(): void {
     this.worker.on('error', (err: Error) => {
-      this.logger.error(`[${this.queueName}] Worker error:`, err);
+      const contextLogger = this.logger.child(`[${this.queueName}]`);
+      contextLogger.error('Worker error:', err);
     });
 
     this.worker.on('failed', (job, err) => {
-      this.logger.error(`[Job ${job?.id}] [${this.queueName}] Failed:`, err);
+      const contextLogger = this.logger.child(`[Job ${job?.id}] [${this.queueName}]`);
+      contextLogger.error('Failed:', err);
     });
 
     this.worker.on('completed', (job) => {
-      this.logger.info(`[Job ${job.id}] [${this.queueName}] Completed`);
+      // Only log on success, no need for routine completions
     });
 
     this.worker.on('active', (job) => {
-      this.logger.info(`[Job ${job.id}] [${this.queueName}] Processing...`);
+      const contextLogger = this.logger.child(`[Job ${job.id}] [${this.queueName}]`);
+      contextLogger.info('Processing...');
     });
   }
 
@@ -65,7 +68,8 @@ export abstract class BaseWorker<T = any> {
    */
   async close(): Promise<void> {
     await this.worker.close();
-    this.logger.info(`[${this.queueName}] Worker closed`);
+    const contextLogger = this.logger.child(`[${this.queueName}]`);
+    contextLogger.info('Worker closed');
   }
 
   /**

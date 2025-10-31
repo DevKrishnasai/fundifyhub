@@ -4,14 +4,7 @@ import { logger } from '../../utils/logger';
 import { prisma } from '@fundifyhub/prisma';
 import bcrypt from 'bcrypt';
 import { generateAccessToken } from '../../utils/jwt';
-import {
-  enqueue,
-  QUEUE_NAMES,
-  JOB_NAMES,
-  DEFAULT_JOB_OPTIONS,
-  EMAIL_TEMPLATES,
-  WHATSAPP_TEMPLATES,
-} from '@fundifyhub/utils';
+import { enqueue, EMAIL_TEMPLATES, WHATSAPP_TEMPLATES } from '@fundifyhub/utils';
 import type { OTPJobData } from '@fundifyhub/types';
 import { OTPType, OTPTemplateType, ServiceName } from '@fundifyhub/types';
 
@@ -98,7 +91,8 @@ export async function checkAvailabilityController(
         data: { available: true },
       } as APIResponse);
   } catch (error) {
-    logger.error('Check availability error:', error as Error);
+    const contextLogger = logger.child('[check-availability]');
+    contextLogger.error('Failed to check availability:', error as Error);
     res
       .status(500)
       .json({
@@ -151,7 +145,7 @@ export async function sendOTPController(
       },
     });
 
-    // Enqueue OTP delivery job
+    // Enqueue OTP delivery job using template-driven helper.
     try {
       const jobPayload: OTPJobData = {
         recipient: identifier,
@@ -161,7 +155,10 @@ export async function sendOTPController(
         serviceType: email ? ServiceName.EMAIL : ServiceName.WHATSAPP,
         templateType: OTPTemplateType.VERIFICATION,
       };
-      await enqueue(QUEUE_NAMES.OTP, JOB_NAMES.SEND_OTP, jobPayload, DEFAULT_JOB_OPTIONS);
+      // Determine template name and target service
+      const templateName = EMAIL_TEMPLATES.OTP; // both email and whatsapp use same template key internally
+      const services = jobPayload.serviceType ? [jobPayload.serviceType] as any : undefined;
+      await enqueue(templateName, jobPayload as unknown as Record<string, unknown>, { services });
     } catch (err) {
       logger.error('OTP enqueue error:', err as Error);
     }
@@ -353,10 +350,8 @@ export async function registerController(
 
       if (email.toLowerCase()) {
         try {
-          // Use central EMAIL_TEMPLATES for the welcome email content. If the
-          // job-worker expects only a template key (e.g. 'WELCOME'), it can use
-          // `templateKey` below; we also provide the template body for convenience.
-          await enqueue(QUEUE_NAMES.EMAIL, JOB_NAMES.WELCOME_EMAIL, {
+          // Use central EMAIL_TEMPLATES for the welcome email content.
+          await enqueue(EMAIL_TEMPLATES.WELCOME_EMAIL, {
             recipient: user.email,
             userId: user.id,
             templateKey: 'WELCOME',
@@ -473,6 +468,39 @@ export async function loginController(
       maxAge: 24 * 60 * 60 * 1000,
       path: '/',
     });
+
+    // add login alert here
+    // Fire-and-forget: enqueue a template-driven login alert and don't block the
+    // login response. Template existence and required-field validation is the
+    // responsibility of the job-worker (template registry + renderer).
+    (async () => {
+      try {
+        const ip =
+          (req.headers['x-forwarded-for'] as string) || req.ip || req.socket?.remoteAddress || '';
+        const userAgent = String(req.headers['user-agent'] || '');
+        const loginPayload = {
+          recipient: user.email,
+          phone: user.phoneNumber, // Add phone number for WhatsApp
+          userId: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          loginAt: new Date().toISOString(),
+          ip,
+          userAgent,
+        } as Record<string, unknown>;
+
+        const services: Array<ServiceName> = [];
+        if (user.email) services.push(ServiceName.EMAIL);
+        if (user.phoneNumber) services.push(ServiceName.WHATSAPP);
+
+        // Enqueue without awaiting to avoid delaying the HTTP response.
+        enqueue(EMAIL_TEMPLATES.LOGIN_ALERT, loginPayload, { services }).catch((err: unknown) => {
+          logger.error('Failed to enqueue login alert (background):', err as Error);
+        });
+      } catch (err) {
+        logger.error('Failed preparing login alert payload:', err as Error);
+      }
+    })();
 
     return res
       .status(200)

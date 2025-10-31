@@ -1,9 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { createLogger } from '@fundifyhub/logger';
 import { verifyToken, extractTokenFromHeader, JWTPayload } from '../utils/jwt';
 import { AuthPayload } from '../types';
-
-const logger = createLogger({ serviceName: 'auth-middleware' });
+import { logger } from '../utils/logger';
 
 // The Request user property is already extended in the existing types
 
@@ -52,8 +50,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Token verification failed';
       
-      logger.warn(`Authentication failed: ${errorMessage}`);
-      
       let code = 'TOKEN_INVALID';
       if (errorMessage.includes('expired')) {
         code = 'TOKEN_EXPIRED';
@@ -67,7 +63,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       return;
     }
   } catch (error) {
-    logger.error('Authentication middleware error:', error as Error);
+    const contextLogger = logger.child('[auth-middleware]');
+    contextLogger.error('Authentication error:', error as Error);
     res.status(500).json({
       success: false,
       message: 'Authentication service unavailable'

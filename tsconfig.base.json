@@ -17,6 +17,7 @@
     "paths": {
       "@fundifyhub/types": ["./packages/types/src"],
       "@fundifyhub/utils": ["./packages/utils/src"], 
+      "@fundifyhub/templates": ["./packages/templates/src"],
       "@fundifyhub/prisma": ["./packages/prisma/src"],
       "@fundifyhub/logger": ["./packages/logger/src"]
     }

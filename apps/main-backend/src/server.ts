@@ -37,25 +37,22 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.url}`);
-  next();
-});
 
 app.use('/api/v1', apiRoutes);
 
 /* 404 handler */
 app.use('*', (req, res) => {
-   res.status(404).json({
+  res.status(404).json({
     success: false,
     message: `Endpoint ${req.method} ${req.path} not found`
   });
 });
+
 /* Global error handler */
 app.use((error: any, req: Request, res: Response, next: NextFunction) => {
-   logger.error('Unhandled error:', error);
+  const contextLogger = logger.child('[error-handler]');
+  contextLogger.error('Unhandled error:', error);
 
-  // Don't expose internal errors in production
   const message = config.env.isDevelopment 
     ? error.message 
     : 'Internal server error';

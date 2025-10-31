@@ -1,7 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { createLogger } from '@fundifyhub/logger';
-
-const logger = createLogger({ serviceName: 'jwt-utils' });
+import { logger } from './logger';
 
 // JWT configuration - Simplified (only access token needed)
 if (!process.env.JWT_SECRET || !process.env.JWT_EXPIRES_IN) {
@@ -33,7 +31,8 @@ export function generateAccessToken(payload: JWTPayload): string {
       { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
     );
   } catch (error) {
-    logger.error('Failed to generate access token:', error as Error);
+    const contextLogger = logger.child('[generate-token]');
+    contextLogger.error('Failed to generate access token:', error as Error);
     throw new Error('Token generation failed');
   }
 }
@@ -51,7 +50,8 @@ export function verifyToken(token: string): JWTPayload {
     } else if (error instanceof jwt.JsonWebTokenError) {
       throw new Error('Invalid token');
     } else {
-      logger.error('Token verification failed:', error as Error);
+      const contextLogger = logger.child('[verify-token]');
+      contextLogger.error('Token verification failed:', error as Error);
       throw new Error('Token verification failed');
     }
   }
@@ -79,7 +79,8 @@ export function getTokenExpiration(token: string): Date | null {
     }
     return null;
   } catch (error) {
-    logger.error('Failed to decode token for expiration:', error as Error);
+    const contextLogger = logger.child('[token-expiration]');
+    contextLogger.error('Failed to decode token:', error as Error);
     return null;
   }
 }

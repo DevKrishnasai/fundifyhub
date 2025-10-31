@@ -6,9 +6,8 @@
 
 import { prisma } from '@fundifyhub/prisma';
 import { Request, Response } from 'express';
-import { createLogger } from '@fundifyhub/logger';
 import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus } from '@fundifyhub/types';
-const logger = createLogger({ serviceName: 'user-controllers' });
+import { logger } from '../../utils/logger';
 /**
  * GET /user/profile
  * Get current user profile (protected)
@@ -33,7 +32,8 @@ export async function getProfileController(req: Request, res: Response): Promise
       data: result.data,
     });
   } catch (error) {
-    logger.error('Get profile error:', error as Error);
+    const contextLogger = logger.child('[get-profile]');
+    contextLogger.error('Failed to retrieve profile:', error as Error);
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve profile',
@@ -68,7 +68,8 @@ export async function validateController(req: Request, res: Response): Promise<v
       data: result.data,
     });
   } catch (error) {
-    logger.error('Auth validation error:', error as Error);
+    const contextLogger = logger.child('[validate-auth]');
+    contextLogger.error('Validation failed:', error as Error);
     res.status(500).json({
       success: false,
       message: 'Authentication validation failed',
@@ -362,7 +363,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
       assetCondition,
       requestedAmount,
       AdditionalDescription,
-      currentStatus // This from req.body is ignored, as we set it to DRAFT
+      currentStatus // This from req.body is ignored, as we set it to PENDING
     } = req.body || {};
 
     // Validate requestId
@@ -385,7 +386,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
 
     // Authorization check: only owner or ADMIN/AGENT can update
     const isAdminOrAgent = userRoles.includes('ADMIN') || userRoles.includes('AGENT');
-    if (customerId !== existing.customerId && !isAdminOrAgent) {
+    if (customerId !== existing.customerId || !isAdminOrAgent) {
       res.status(403).json({ 
         success: false, 
         message: 'Not authorized to update this request' 
@@ -422,7 +423,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
     if (typeof requestedAmount === 'number') updateData.requestedAmount = requestedAmount;
     if (AdditionalDescription !== undefined) updateData.AdditionalDescription = AdditionalDescription;
     
-    // Any update moves it back to DRAFT status
+    // Any update moves it back to PENDING status
     updateData.currentStatus = RequestStatus.PENDING;
 
     // Validate enum values if provided

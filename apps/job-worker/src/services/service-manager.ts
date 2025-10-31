@@ -9,7 +9,9 @@
 
 import { Client } from 'whatsapp-web.js';
 import type { Transporter } from 'nodemailer';
+import nodemailer from 'nodemailer';
 import { prisma } from '@fundifyhub/prisma';
+import { SimpleLogger } from '@fundifyhub/logger';
 
 interface ServiceState {
   whatsappClient: Client | null;
@@ -51,11 +53,43 @@ class ServiceManager {
    * Initialize service manager with logger
    * Starts periodic checking of service status
    */
-  public initialize(logger: any) {
+  public initialize(logger: SimpleLogger) {
     this.logger = logger;
-    this.logger.info('[ServiceManager] Initialized');
+    const contextLogger = this.logger.child('[service-manager]');
+    contextLogger.info('Initialized');
     
-    // Start periodic check every 10 seconds
+    try {
+      const host = process.env.SMTP_HOST;
+      const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : undefined;
+      const user = process.env.SMTP_USER;
+      const pass = process.env.SMTP_PASS;
+      const fromEmail = process.env.SMTP_FROM;
+
+      if (host && port && user && pass) {
+        this.state.emailConfig = {
+          smtpHost: host,
+          smtpPort: port,
+          smtpUser: user,
+          smtpPass: pass,
+          fromEmail,
+          smtpSecure: port === 465,
+        };
+
+        const transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure: port === 465,
+          auth: { user, pass },
+        });
+
+        this.setEmailTransporter(transporter);
+        const emailLogger = this.logger.child('[email-service]');
+        emailLogger.info('Transporter created from environment');
+      }
+    } catch (envErr) {
+      // Silent - no SMTP env vars configured
+    }
+
     this.startPeriodicCheck();
   }
 
@@ -63,13 +97,49 @@ class ServiceManager {
    * Start periodic checking of service status from database
    */
   private startPeriodicCheck() {
-    // Initial check
-    this.checkServices();
+    this.checkAndAutoStartServices();
     
-    // Periodic check every 10 seconds
     this.checkInterval = setInterval(() => {
       this.checkServices();
     }, 10000);
+  }
+  
+  /**
+   * Check services and auto-start enabled ones on first initialization
+   */
+  private async checkAndAutoStartServices() {
+    try {
+      const services = await prisma.serviceConfig.findMany({
+        where: {
+          serviceName: {
+            in: ['EMAIL', 'WHATSAPP']
+          }
+        }
+      });
+
+      for (const service of services) {
+        if (service.serviceName === 'WHATSAPP' && service.isEnabled && !this.state.whatsappClient) {
+          const contextLogger = this.logger.child('[whatsapp-service]');
+          contextLogger.info('Auto-starting enabled service');
+          
+          const { startWhatsAppService } = await import('./whatsapp-service');;
+          await startWhatsAppService();
+        }
+        
+        if (service.serviceName === 'EMAIL') {
+          if (service.isEnabled && this.state.emailTransporter) {
+            const contextLogger = this.logger.child('[email-service]');
+            contextLogger.info('Service enabled and ready');
+          }
+        }
+      }
+      
+      this.checkServices();
+    } catch (error) {
+      const contextLogger = this.logger.child('[service-manager]');
+      contextLogger.error('Failed to auto-start services:', error);
+      this.checkServices();
+    }
   }
 
   /**
@@ -87,7 +157,6 @@ class ServiceManager {
 
       for (const service of services) {
         if (service.serviceName === 'EMAIL') {
-          // Check if email config has changed
           if (service.isEnabled && service.config) {
             const config = service.config as Record<string, any>;
             
@@ -100,10 +169,8 @@ class ServiceManager {
               smtpSecure: config.smtpSecure === true || parseInt(String(config.smtpPort || '587')) === 465,
             };
             
-            // Update email config if changed
             if (JSON.stringify(this.state.emailConfig) !== JSON.stringify(newEmailConfig)) {
               this.state.emailConfig = newEmailConfig;
-              this.logger.info('[EMAIL] Configuration updated');
             }
           } else {
             if (this.state.emailConfig !== null) {
@@ -113,17 +180,18 @@ class ServiceManager {
         }
         
         if (service.serviceName === 'WHATSAPP') {
-          // Only log when state changes
-          if (service.isEnabled && service.isActive !== this.lastWhatsAppState) {
-            this.lastWhatsAppState = service.isActive;
-            if (service.isActive) {
-              this.logger.info('[WHATSAPP] Service is active and ready');
-            }
+          if (service.isEnabled && service.isActive && this.lastWhatsAppState === false) {
+            this.lastWhatsAppState = true;
+            const contextLogger = this.logger.child('[whatsapp-service]');
+            contextLogger.info('Connected and ready');
+          } else if (!service.isActive && this.lastWhatsAppState !== false) {
+            this.lastWhatsAppState = false;
           }
         }
       }
     } catch (error) {
-      this.logger.error('❌ Failed to check services:', error);
+      const contextLogger = this.logger.child('[service-manager]');
+      contextLogger.error('Failed to check services:', error);
     }
   }
 
@@ -132,11 +200,6 @@ class ServiceManager {
    */
   public setWhatsAppClient(client: Client | null) {
     this.state.whatsappClient = client;
-    if (client) {
-      this.logger.info('[WHATSAPP] Client registered in ServiceManager');
-    } else {
-      this.logger.info('[WHATSAPP] Client unregistered from ServiceManager');
-    }
   }
 
   /**
@@ -144,11 +207,6 @@ class ServiceManager {
    */
   public setEmailTransporter(transporter: Transporter | null) {
     this.state.emailTransporter = transporter;
-    if (transporter) {
-      this.logger.info('[EMAIL] Transporter registered in ServiceManager');
-    } else {
-      this.logger.info('[EMAIL] Transporter unregistered from ServiceManager');
-    }
   }
 
   /**
@@ -160,7 +218,18 @@ class ServiceManager {
         where: { serviceName: 'WHATSAPP' }
       });
       
-      return !!(service?.isEnabled && this.state.whatsappClient);
+      // Check if service is enabled, client exists, AND client is ready
+      if (!service?.isEnabled) {
+        return false;
+      }
+      
+      if (!this.state.whatsappClient) {
+        return false;
+      }
+      
+      // Check if client is in a ready state
+      const clientState = await this.state.whatsappClient.getState();
+      return clientState === 'CONNECTED';
     } catch (error) {
       this.logger.error('Failed to check WhatsApp availability:', error);
       return false;
@@ -175,8 +244,8 @@ class ServiceManager {
       const service = await prisma.serviceConfig.findUnique({
         where: { serviceName: 'EMAIL' }
       });
-      
-      return !!(service?.isEnabled && this.state.emailConfig);
+      // Consider email available only when it's enabled in DB and a transporter is registered
+      return !!(service?.isEnabled && this.state.emailTransporter);
     } catch (error) {
       this.logger.error('Failed to check Email availability:', error);
       return false;
