@@ -3,10 +3,14 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "composite": true
+    "composite": true,
+    "jsx": "react",
+    "lib": ["ES2022", "DOM"],
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*"]
-  ,
+  "include": ["src/**/*"],
   "references": [
     { "path": "../types" }
   ]

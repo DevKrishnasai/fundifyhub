@@ -1,7 +1,0 @@
-{
-  "name": "loginAlert",
-  "supportedServices": ["EMAIL", "WHATSAPP"],
-  "requiredVariables": ["recipient", "userId", "firstName", "lastName", "loginAt", "ip", "userAgent"],
-  "optionalVariables": [],
-  "defaults": { "priority": 2, "attempts": 2, "delay": 0 }
-}

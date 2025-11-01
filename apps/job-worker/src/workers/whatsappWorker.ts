@@ -46,7 +46,7 @@ export class WhatsAppWorker extends BaseWorker<any> {
       return true;
     } catch (err) {
       const contextLogger = this.logger.child(`[Job ${job.id}] [whatsapp-worker]`);
-      contextLogger.error('Failed to process job:', err as Error);
+      contextLogger.error(`Failed to process WhatsApp job (template: ${data.templateName}, recipient: ${variables.phone || variables.recipient}):`, err as Error);
       throw err;
     }
   }

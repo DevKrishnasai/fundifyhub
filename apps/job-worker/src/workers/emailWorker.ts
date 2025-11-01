@@ -47,7 +47,7 @@ export class EmailWorker extends BaseWorker<any> {
       return true;
     } catch (err) {
       const contextLogger = this.logger.child(`[Job ${job.id}] [email-worker]`);
-      contextLogger.error('Failed to process job:', err as Error);
+      contextLogger.error(`Failed to process email job (template: ${data.templateName}, recipient: ${variables.email || variables.recipient}):`, err as Error);
       throw err;
     }
   }

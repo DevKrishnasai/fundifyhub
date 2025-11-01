@@ -482,12 +482,17 @@ export async function loginController(
           recipient: user.email,
           phone: user.phoneNumber, // Add phone number for WhatsApp
           userId: user.id,
-          firstName: user.firstName,
+          customerName: user.firstName,
           lastName: user.lastName,
-          loginAt: new Date().toISOString(),
-          ip,
-          userAgent,
+          time: new Date().toISOString(),
+          location: ip,
+          device: userAgent,
+          supportUrl: 'https://support.fundifyhub.com', // TODO: Make configurable
+          resetPasswordUrl: 'https://app.fundifyhub.com/reset-password', // TODO: Make configurable
+          companyName: 'Dummy Hub', // TODO: Make configurable
         } as Record<string, unknown>;
+
+        console.log('Login alert payload:', loginPayload)
 
         const services: Array<ServiceName> = [];
         if (user.email) services.push(ServiceName.EMAIL);
