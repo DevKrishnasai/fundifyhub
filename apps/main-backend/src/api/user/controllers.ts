@@ -1,4 +1,23 @@
 /**
+ * Adds new asset photos to the request (does not delete existing)
+ */
+async function updateAssetPhotos(tx: any, requestId: string, assetPhotos: any, customerId: string, res: Response) {
+  const parsedPhotos = validateAssetPhotos(assetPhotos, res);
+  if (parsedPhotos === null || parsedPhotos.length === 0) return false;
+  await Promise.all(parsedPhotos.map((url: string) =>
+    tx.document.create({
+      data: {
+        requestId,
+        url,
+        documentType: 'asset_photo',
+        documentCategory: DocumentCategory.ASSET,
+        uploadedBy: customerId,
+      },
+    })
+  ));
+  return true;
+}
+/**
  * User Controllers
  * Handles HTTP requests and responses for user operations
  * Business logic is delegated to user services
@@ -350,57 +369,34 @@ export async function updateAssetController(req: Request, res: Response): Promis
   try {
     const customerId = req.user!.id;
     const userRoles = Array.isArray(req.user!.roles) ? req.user!.roles : [];
-    
-    const {
-      requestId,
-      district,
-      assetPhotos,
-      assetType,
-      assetBrand,
-      assetModel,
-      purchaseYear,
-      assetCondition,
-      requestedAmount,
-      AdditionalDescription,
-      currentStatus // This from req.body is ignored, as we set it to PENDING 
-    } = req.body || {};
+  const { requestId, assetPhotos, ...updateData } = req.body || {};
 
-    // Validate requestId
     if (!requestId || typeof requestId !== 'string') {
       res.status(400).json({ success: false, message: 'requestId is required' });
       return;
     }
 
-    // Check if request exists and get ownership/status info
-    // --- MODIFICATION 1: Added currentStatus to select ---
-    const existing = await prisma.request.findUnique({ 
+    const existing = await prisma.request.findUnique({
       where: { id: requestId },
-      select: { id: true, customerId: true, currentStatus: true } // Added currentStatus
+      select: { id: true, customerId: true, currentStatus: true }
     });
-    
     if (!existing) {
       res.status(404).json({ success: false, message: 'Request not found' });
       return;
     }
-
-    // Authorization check: only owner or ADMIN/AGENT can update
+// Either User or Admin/Agent can only update the request
     const isAdminOrAgent = userRoles.includes('ADMIN') || userRoles.includes('AGENT');
-    if (customerId !== existing.customerId && !isAdminOrAgent) {
-      res.status(403).json({ 
-        success: false, 
-        message: 'Not authorized to update this request' 
-      });
+    if (customerId !== existing.customerId || !isAdminOrAgent) {
+      res.status(403).json({ success: false, message: 'Not authorized to update this request' });
       return;
     }
 
-    // --- MODIFICATION 2: Added status validation block ---
     const allowedUpdateStatuses = [
       RequestStatus.PENDING,
       RequestStatus.OFFER_REJECTED,
       RequestStatus.REJECTED,
       RequestStatus.CANCELLED
     ];
-
     if (!allowedUpdateStatuses.includes(existing.currentStatus as RequestStatus)) {
       res.status(400).json({
         success: false,
@@ -408,69 +404,22 @@ export async function updateAssetController(req: Request, res: Response): Promis
       });
       return;
     }
-    // --- End of new block ---
 
-    // Build update data (only include provided fields)
-    const updateData: any = {};
-    
-    if (district) updateData.district = district;
-    if (assetType) updateData.assetType = assetType;
-    if (assetBrand) updateData.assetBrand = assetBrand;
-    if (assetModel) updateData.assetModel = assetModel;
-    if (assetCondition) updateData.assetCondition = assetCondition;
-    if (typeof purchaseYear === 'number') updateData.purchaseYear = purchaseYear;
-    if (typeof requestedAmount === 'number') updateData.requestedAmount = requestedAmount;
-    if (AdditionalDescription !== undefined) updateData.AdditionalDescription = AdditionalDescription;
-
-    // Any update moves it back to PENDING status
+    // Always set status to PENDING on update
     updateData.currentStatus = RequestStatus.PENDING;
 
-    // Validate enum values if provided
-    if (updateData.assetType && !isValidAssetType(updateData.assetType)) {
-      res.status(400).json({ 
-        success: false, 
-        message: 'Invalid assetType. Must be one of: VEHICLE, PROPERTY, MACHINERY, JEWELRY, ELECTRONICS, OTHER' 
-      });
-      return;
-    }
-
-    if (updateData.assetCondition && !isValidAssetCondition(updateData.assetCondition)) {
-      res.status(400).json({ 
-        success: false, 
-        message: 'Invalid assetCondition. Must be one of: EXCELLENT, GOOD, FAIR, POOR' 
-      });
-      return;
-    }
-
-    // Validate and parse photos
-    const photos = validateAssetPhotos(assetPhotos, res);
-    if (photos === null) return;
-
-    // Update request and documents in transaction
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedReq = await tx.request.update({ 
-        where: { id: requestId }, 
-        data: updateData 
-      });
-      
-      // Update documents if photos provided
+    // Update request and asset photos in transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.request.update({ where: { id: requestId }, data: updateData });
       if (assetPhotos !== undefined) {
-        await handleDocuments(tx, requestId, photos, customerId);
+        await updateAssetPhotos(tx, requestId, assetPhotos, customerId, res);
       }
-      
-      return updatedReq;
     });
 
-    res.status(200).json({ 
-      success: true, 
-      message: 'Request updated successfully'
-    });
+    res.status(200).json({ success: true, message: 'Request updated successfully' });
   } catch (error) {
     logger.error('Update asset error:', error as Error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to update asset request' 
-    });
+    res.status(500).json({ success: false, message: 'Failed to update asset request' });
   }
 }
 

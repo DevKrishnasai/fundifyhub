@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { APIResponse } from '../../types';
 import { logger } from '../../utils/logger';
 import { prisma } from '@fundifyhub/prisma';
-import { SUPPORTED_SERVICES, RequestStatus, ServiceControlAction, ConnectionStatus } from '@fundifyhub/types';
+import { SUPPORTED_SERVICES, RequestStatus, ServiceControlAction, ConnectionStatus,LoanStatus } from '@fundifyhub/types';
 import { ServiceControlJobData, ServiceName } from '@fundifyhub/types';
 import { enqueueServiceControl } from '@fundifyhub/utils';
 
@@ -322,7 +322,42 @@ export async function configureServiceController(req: Request, res: Response): P
 
 
 export async function getActiveLoansController(req: Request, res: Response): Promise<void> {
-  return 
+  try {
+    // Query all loans with status ACTIVE
+    const activeLoans = await prisma.loan.findMany({
+      where: {
+        status: LoanStatus.ACTIVE,
+      },
+      include: {
+        request: {
+          include: {
+            customer: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phoneNumber: true,
+                district: true,
+              }
+            }
+          }
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Found ${activeLoans.length} active loan(s)`,
+      data: activeLoans,
+    } as APIResponse);
+  } catch (error) {
+    logger.error('Error getting active loans:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get active loans',
+    } as APIResponse);
+  }
 }
 
 /**
