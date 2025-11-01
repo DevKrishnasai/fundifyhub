@@ -493,7 +493,6 @@ export async function loginController(
           companyName: 'Dummy Hub', // TODO: Make configurable
         } as Record<string, unknown>;
 
-        console.log('Login alert payload:', loginPayload)
 
         const services: Array<ServiceName> = [];
         if (user.email) services.push(ServiceName.EMAIL);

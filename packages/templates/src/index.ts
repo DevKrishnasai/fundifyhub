@@ -1,10 +1,12 @@
 import loginAlert from './templates/loginAlert';
 import otpVerification from './templates/otpVerification';
+import assetPledge from './templates/assetPledge';
 import type { Template } from '@fundifyhub/types';
 
 const REGISTRY: Record<string, Template> = {
   [loginAlert.name]: loginAlert as Template,
   [otpVerification.name]: otpVerification as Template,
+  [assetPledge.name]: assetPledge as Template,
 };
 
 export const getTemplate = (name: string) => REGISTRY[name];
