@@ -2,13 +2,12 @@
  * User Controllers
  * Handles HTTP requests and responses for user operations
  * Business logic is delegated to user services
-*/
+ */
 
 import { prisma, User } from '@fundifyhub/prisma';
 import { Request, Response } from 'express';
 import { createLogger } from '@fundifyhub/logger';
 import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus, LoanStatus } from '@fundifyhub/types';
-import { request } from 'http';
 const logger = createLogger({ serviceName: 'user-controllers' });
 /**
  * GET /user/profile
@@ -363,7 +362,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
       assetCondition,
       requestedAmount,
       AdditionalDescription,
-      currentStatus // This from req.body is ignored, as we set it to DRAFT
+      currentStatus // This from req.body is ignored, as we set it to PENDING 
     } = req.body || {};
 
     // Validate requestId
@@ -396,14 +395,13 @@ export async function updateAssetController(req: Request, res: Response): Promis
 
     // --- MODIFICATION 2: Added status validation block ---
     const allowedUpdateStatuses = [
-      RequestStatus.DRAFT,
       RequestStatus.PENDING,
       RequestStatus.OFFER_REJECTED,
       RequestStatus.REJECTED,
       RequestStatus.CANCELLED
     ];
 
-    if (!allowedUpdateStatuses.includes(existing.currentStatus)) {
+    if (!allowedUpdateStatuses.includes(existing.currentStatus as RequestStatus)) {
       res.status(400).json({
         success: false,
         message: 'This request cannot be updated as it has already been processed or is in a locked state.'
@@ -423,9 +421,9 @@ export async function updateAssetController(req: Request, res: Response): Promis
     if (typeof purchaseYear === 'number') updateData.purchaseYear = purchaseYear;
     if (typeof requestedAmount === 'number') updateData.requestedAmount = requestedAmount;
     if (AdditionalDescription !== undefined) updateData.AdditionalDescription = AdditionalDescription;
-    
-    // Any update moves it back to DRAFT status
-    updateData.currentStatus = RequestStatus.DRAFT;
+
+    // Any update moves it back to PENDING status
+    updateData.currentStatus = RequestStatus.PENDING;
 
     // Validate enum values if provided
     if (updateData.assetType && !isValidAssetType(updateData.assetType)) {

@@ -41,7 +41,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       req.user = {
         id: decoded.id,
         email: decoded.email,
-        role: decoded.roles[0], // Use first role for backward compatibility
         roles: decoded.roles, // Store all roles
         emailVerified: decoded.emailVerified,
         phoneVerified: decoded.phoneVerified
@@ -49,7 +48,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       next();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Token verification failed';
-      
+            
       let code = 'TOKEN_INVALID';
       if (errorMessage.includes('expired')) {
         code = 'TOKEN_EXPIRED';
@@ -91,7 +90,6 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction): v
         req.user = {
           id: decoded.id,
           email: decoded.email,
-          role: decoded.roles[0], // Use first role for backward compatibility
           roles: decoded.roles, // Store all roles
           emailVerified: decoded.emailVerified,
           phoneVerified: decoded.phoneVerified
@@ -125,7 +123,7 @@ export function requireRole(...roles: string[]) {
     }
 
     // Check if user has any of the required roles
-    const userRoles = req.user.roles || [req.user.role]; // Support both old and new format
+    const userRoles = req.user.roles || [];
     const hasRequiredRole = roles.some(role => 
       userRoles.some(userRole => userRole.toLowerCase() === role.toLowerCase())
     );

@@ -17,7 +17,9 @@ export const API_CONFIG = {
       RESEND_OTP: '/api/v1/auth/resend-otp',
     },
     ADMIN: {
-      SERVICES: '/api/v1/admin/services',
+      SERVICES: '/api/v1/admin/service',
+      USERS: '/api/v1/admin/users',
+      USER_BY_ID: (id: string) => `/api/v1/admin/users/${id}`,
       SERVICE_ENABLE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/enable`,
       SERVICE_DISABLE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disable`,
       SERVICE_DISCONNECT: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disconnect`,
