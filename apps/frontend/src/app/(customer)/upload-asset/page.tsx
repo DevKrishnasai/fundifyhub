@@ -84,6 +84,8 @@ export default function UploadAssetPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [purchaseYearError, setPurchaseYearError] = useState("")
+  const currentYear = new Date().getFullYear()
 
   const [formData, setFormData] = useState({
     assetType: "",
@@ -122,6 +124,25 @@ export default function UploadAssetPage() {
   // Removed ID proof remove handler
 
   const handleInputChange = (field: string, value: string) => {
+    // Validate purchase year when that field changes
+    if (field === "purchaseYear") {
+      // allow empty value (optional field)
+      if (!value) {
+        setPurchaseYearError("")
+        setFormData((prev) => ({ ...prev, [field]: value }))
+        return
+      }
+
+      const num = parseInt(value.toString(), 10)
+      if (isNaN(num)) {
+        setPurchaseYearError("Enter a valid year")
+      } else if (num < 1900 || num > currentYear) {
+        setPurchaseYearError(`Year must be between 1900 and ${currentYear}`)
+      } else {
+        setPurchaseYearError("")
+      }
+    }
+
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -180,7 +201,12 @@ export default function UploadAssetPage() {
     }
   }
 
-  const canProceedToStep2 = assetPhotos.length >= 2 && formData.assetType && formData.assetBrand && formData.assetModel
+  const canProceedToStep2 =
+    assetPhotos.length >= 2 &&
+    formData.assetType &&
+    formData.assetBrand &&
+    formData.assetModel &&
+    !purchaseYearError
   const canProceedToStep3 = formData.assetCondition && formData.requestedAmount
   const canSubmit = true // No longer require ID proof or district
 
@@ -381,10 +407,16 @@ export default function UploadAssetPage() {
                     <Input
                       id="purchaseYear"
                       placeholder="e.g., 2023"
+                      type="number"
+                      min={1900}
+                      max={currentYear}
                       value={formData.purchaseYear}
                       onChange={(e) => handleInputChange("purchaseYear", e.target.value)}
                       className="h-10 sm:h-auto"
                     />
+                    {purchaseYearError && (
+                      <p className="text-sm text-destructive mt-1">{purchaseYearError}</p>
+                    )}
                   </div>
                 </div>
               </CardContent>

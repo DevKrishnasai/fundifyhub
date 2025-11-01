@@ -44,7 +44,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         roles: decoded.roles, // Store all roles
         district:decoded.district
       };
-      console.log(req.user)
       next();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Token verification failed';

@@ -26,7 +26,8 @@ async function updateAssetPhotos(tx: any, requestId: string, assetPhotos: any, c
 import { prisma, User } from '@fundifyhub/prisma';
 import { Request, Response } from 'express';
 import { createLogger } from '@fundifyhub/logger';
-import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus, LoanStatus } from '@fundifyhub/types';
+import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus, LoanStatus, ServiceName } from '@fundifyhub/types';
+import { enqueue } from '@fundifyhub/utils';
 const logger = createLogger({ serviceName: 'user-controllers' });
 /**
  * GET /user/profile
@@ -318,11 +319,57 @@ export async function addAssetController(req: Request, res: Response): Promise<v
       return reqCreated;
     });
 
+    // Respond immediately
     res.status(201).json({ 
       success: true, 
       message: 'Asset request created successfully'
-      
     });
+
+    // Enqueue admin notification (non-blocking) using assetPledge template
+    (async () => {
+      try {
+        const templateName = 'assetPledge';
+        const customerName = `${(req.user as any)?.firstName || ''} ${(req.user as any)?.lastName || ''}`.trim() || undefined;
+        // Resolve district admin email from DB; fallback to any admin or env/default
+        let recipientEmail: string | undefined = undefined;
+        try {
+          const districtAdmin = await prisma.user.findFirst({
+            where: { roles: { has: 'DISTRICT_ADMIN' }, district },
+            select: { email: true },
+          });
+          recipientEmail = districtAdmin?.email;
+        } catch (e) {
+          // If this DB lookup fails for any reason, we'll fallback below
+          logger.warn('Failed to lookup district admin email, will fallback to global admin');
+        }
+
+        if (!recipientEmail) {
+          const anyAdmin = await prisma.user.findFirst({
+            where: { roles: { has: 'ADMIN' } },
+            select: { email: true },
+          });
+          recipientEmail = anyAdmin?.email
+        }
+
+        const jobPayload: Record<string, any> = {
+          customerName,
+          assetName: `${assetBrand || ''} ${assetModel || ''}`.trim(),
+          amount: requestedAmount ?? 0,
+          district,
+          requestId: createdRequest.id,
+          companyName: process.env.COMPANY_NAME || 'Fundify',
+          timestamp: new Date().toISOString(),
+          additionalDescription: AdditionalDescription,
+          // recipient used by email worker if provided (district admin preferred)
+          recipient: recipientEmail,
+        };
+
+        await enqueue(templateName, jobPayload, { services: [ServiceName.EMAIL] });
+      } catch (err) {
+        // Log errors but do not affect the already-sent response
+        logger.error('Failed to enqueue assetPledge job:', err as Error);
+      }
+    })();
   } catch (error) {
     logger.error('Add asset error:', error as Error);
     res.status(500).json({ 
