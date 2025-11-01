@@ -15,6 +15,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { useToast } from "@/hooks/use-toast"
 import { Eye, EyeOff, ArrowLeft, Shield, CreditCard } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
+import { post } from "@/lib/api-client"
+import { BACKEND_API_CONFIG } from "@/lib/urls"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -47,24 +49,14 @@ export default function LoginPage() {
       return
     }
 
-    // API call to login endpoint
+    // API call to login endpoint using axios helper
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/login`, {
-        method: 'POST',
-        credentials: 'include', // Include cookies
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password
-        })
-      })
+      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.LOGIN, {
+        email: formData.email,
+        password: formData.password,
+      });
 
-      const data = await response.json()
-
-      if (response.ok && data.success) {
+      if (data && data.success) {
         const { user } = data.data
 
         toast({
@@ -75,19 +67,21 @@ export default function LoginPage() {
         // Update auth context - it will handle the redirect to /dashboard
         login(user)
       } else {
-        setError(data.message || "Login failed. Please check your credentials.")
+        setError(data?.message || "Login failed. Please check your credentials.")
         toast({
           variant: "destructive",
           title: "Login failed",
-          description: data.message || "Please check your credentials and try again.",
+          description: data?.message || "Please check your credentials and try again.",
         })
       }
-    } catch (error) {
-      setError("Network error. Please check your connection and try again.")
+    } catch (err: any) {
+      // axios error handling
+      const message = err?.response?.data?.message || err?.message || "Network error. Please try again.";
+      setError(message)
       toast({
         variant: "destructive",
-        title: "Network error",
-        description: "Unable to connect to server. Please try again.",
+        title: "Login failed",
+        description: message,
       })
     }
     setIsLoading(false)

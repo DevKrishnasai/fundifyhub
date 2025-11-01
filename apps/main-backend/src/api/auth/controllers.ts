@@ -453,13 +453,12 @@ export async function loginController(
 
     const token = generateAccessToken({
       id: user.id,
-      userId: user.id,
       email: user.email,
       roles: user.roles,
       firstName: user.firstName,
       lastName: user.lastName,
-      district: user.district
-
+      district: user.district,
+      isActive: user.isActive,
     });
 
     res.cookie('accessToken', token, {

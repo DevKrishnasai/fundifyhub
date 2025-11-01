@@ -1,0 +1,7 @@
+
+export const ROLES = {
+  CUSTOMER: "CUSTOMER",
+  DISTRICT_ADMIN: "DISTRICT_ADMIN",
+  SUPER_ADMIN: "SUPER_ADMIN",
+  AGENT: "AGENT",
+} as const;

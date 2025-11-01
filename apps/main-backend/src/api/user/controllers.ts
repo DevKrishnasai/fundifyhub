@@ -563,8 +563,6 @@ export async function validateUserAuth(userId: string): Promise<{
         firstName: true,
         lastName: true,
         roles: true,
-        emailVerified: true,
-        phoneVerified: true,
         isActive: true,
       },
     });

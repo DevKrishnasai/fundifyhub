@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { apiUrl, API_CONFIG } from '@/lib/utils'
+import { BACKEND_API_CONFIG } from '@/lib/urls'
+import { get, post, patch } from '@/lib/api-client'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -88,11 +89,8 @@ export default function UsersAccessPage() {
     async function fetchUsers() {
       setIsLoading(true)
       try {
-        const res = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.USERS), { credentials: 'include' })
-        if (!res.ok) {
-          throw new Error('Failed to fetch users')
-        }
-  const data = (await res.json()) as ApiResponse<any>
+
+          const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS) as ApiResponse<any>
 
         const list = (data.data || []).map((u: any) => {
           const firstName = u.firstName || ''
@@ -202,19 +200,12 @@ export default function UsersAccessPage() {
     setEmailValidation({ isValid: false, isChecking: true, error: "" })
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/check-availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.CHECK_AVAILABILITY, { email })
+
+      if (data && data.success) {
         setEmailValidation({ isValid: true, isChecking: false, error: "" })
       } else {
-        setEmailValidation({ isValid: false, isChecking: false, error: data.message || "Email already exists" })
+        setEmailValidation({ isValid: false, isChecking: false, error: data?.message || "Email already exists" })
       }
     } catch (error) {
       setEmailValidation({ isValid: false, isChecking: false, error: "Unable to verify email" })
@@ -232,19 +223,12 @@ export default function UsersAccessPage() {
     setPhoneValidation({ isValid: false, isChecking: true, error: "" })
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/check-availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.CHECK_AVAILABILITY, { phone })
+
+      if (data && data.success) {
         setPhoneValidation({ isValid: true, isChecking: false, error: "" })
       } else {
-        setPhoneValidation({ isValid: false, isChecking: false, error: data.message || "Phone number already exists" })
+        setPhoneValidation({ isValid: false, isChecking: false, error: data?.message || "Phone number already exists" })
       }
     } catch (error) {
       setPhoneValidation({ isValid: false, isChecking: false, error: "Unable to verify phone number" })
@@ -281,19 +265,7 @@ export default function UsersAccessPage() {
         isActive: newUser._isActive ?? true,
       }
 
-      const res = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.USERS), {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}))
-        throw new Error(errorData.message || 'Failed to create user')
-      }
-
-      const response = await res.json()
+      const response = await post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS, body)
       const createdUser = response.data
 
       // Add the created user to local state
@@ -393,14 +365,7 @@ export default function UsersAccessPage() {
         roles: editForm.roles,
         isActive: editForm.isActive,
       }
-      const res = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.USER_BY_ID(editingUser.id)), {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error('Failed to update user')
-      const payload = await res.json()
+      const payload = await patch(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USER_BY_ID(editingUser.id), body)
       const updated = payload.data
       // update local list
       setUsers(prev => prev.map(u => u.id === editingUser.id ? ({

@@ -1,15 +1,5 @@
 import { ServiceName } from "./queue-types";
 
-// User related types
-export interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 // Payment related types
 export interface PaymentEvent {
   id: string;
@@ -72,4 +62,5 @@ export { SUPPORTED_SERVICES, ServiceName, EMAIL_QUEUE, WHATSAPP_QUEUE } from "./
 
 export * from './template-types';
 export * from './queue-constants';
-
+export * from './constants';
+export * from './types';

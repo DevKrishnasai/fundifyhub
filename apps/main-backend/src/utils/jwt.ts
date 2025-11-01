@@ -11,12 +11,12 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN as string;
 
 export interface JWTPayload {
   id: string;
-  userId: string; // Keep for backward compatibility
   email: string;
-  roles: string[]; // Changed from role to roles array
+  roles: string[];
   firstName: string;
   lastName: string;
-  district :string;
+  district: string;
+  isActive: boolean;
 }
 
 /**
