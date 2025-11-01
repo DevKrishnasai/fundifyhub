@@ -266,7 +266,7 @@ export async function registerController(
   res: Response
 ): Promise<any> {
   try {
-    const { email, phoneNumber, firstName, lastName, password } = req.body;
+    const { email, phoneNumber, firstName, lastName, password, district } = req.body;
     if (!email || !phoneNumber || !firstName || !lastName || !password)
       return res
         .status(400)
@@ -334,6 +334,7 @@ export async function registerController(
           roles: ['CUSTOMER'],
           emailVerified: true,
           phoneVerified: true,
+          district: district
         },
       });
 
@@ -457,8 +458,8 @@ export async function loginController(
       roles: user.roles,
       firstName: user.firstName,
       lastName: user.lastName,
-      emailVerified: user.emailVerified,
-      phoneVerified: user.phoneVerified,
+      district: user.district
+
     });
 
     res.cookie('accessToken', token, {

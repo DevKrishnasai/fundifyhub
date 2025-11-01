@@ -16,25 +16,23 @@ import { useToast } from "@/hooks/use-toast"
 import { Upload, X, Camera, FileText, MapPin, CreditCard, ArrowLeft, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-
+import { API_CONFIG, apiUrl } from "@/lib/utils"
 const assetTypes = [
-  { value: "smartphone", label: "Smartphone" },
-  { value: "laptop", label: "Laptop" },
-  { value: "tablet", label: "Tablet" },
-  { value: "camera", label: "Camera" },
-  { value: "gaming-console", label: "Gaming Console" },
-  { value: "smartwatch", label: "Smartwatch" },
-  { value: "motorcycle", label: "Motorcycle" },
-  { value: "car", label: "Car" },
-  { value: "jewelry", label: "Jewelry" },
-  { value: "other", label: "Other" },
+  { value: "LAPTOP", label: "Laptop" },
+  { value: "TABLET", label: "Tablet" },
+  { value: "CAMERA", label: "Camera" },
+  { value: "GAMING CONSOLE", label: "Gaming Console" },
+  { value: "MOTORCYCLE", label: "Motorcycle" },
+  { value: "CAR", label: "Car" },
+  { value: "JEWELRY", label: "Jewelry" },
+  { value: "OTHER", label: "Other" },
 ]
 
 const assetConditions = [
-  { value: "excellent", label: "Excellent - Like new" },
-  { value: "good", label: "Good - Minor wear" },
-  { value: "fair", label: "Fair - Visible wear" },
-  { value: "poor", label: "Poor - Significant wear" },
+  { value: "EXCELLENT", label: "Excellent - Like new" },
+  { value: "GOOD", label: "Good - Minor wear" },
+  { value: "FAIR", label: "Fair - Visible wear" },
+  { value: "POOR", label: "Poor - Significant wear" },
 ]
 
 const districts = [
@@ -82,7 +80,7 @@ export default function UploadAssetPage() {
   const { toast } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
   const [assetPhotos, setAssetPhotos] = useState<AssetPhoto[]>([])
-  const [idProofs, setIdProofs] = useState<IDProof[]>([])
+  // Removed ID proof state
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -95,7 +93,7 @@ export default function UploadAssetPage() {
     purchaseYear: "",
     description: "",
     district: "",
-    requestedAmount: "",
+    requestedAmount: null,
   })
 
   const handleAssetPhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,18 +109,7 @@ export default function UploadAssetPage() {
     })
   }
 
-  const handleIDProofUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
-
-    Array.from(files).forEach((file) => {
-      if (file.type.startsWith("image/") || file.type === "application/pdf") {
-        const id = Math.random().toString(36).substr(2, 9)
-        const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : ""
-        setIdProofs((prev) => [...prev, { id, file, preview, type: file.type }])
-      }
-    })
-  }
+  // Removed ID proof upload handler
 
   const removeAssetPhoto = (id: string) => {
     setAssetPhotos((prev) => {
@@ -132,13 +119,7 @@ export default function UploadAssetPage() {
     })
   }
 
-  const removeIDProof = (id: string) => {
-    setIdProofs((prev) => {
-      const proof = prev.find((p) => p.id === id)
-      if (proof && proof.preview) URL.revokeObjectURL(proof.preview)
-      return prev.filter((p) => p.id !== id)
-    })
-  }
+  // Removed ID proof remove handler
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -148,43 +129,60 @@ export default function UploadAssetPage() {
     setIsSubmitting(true)
     setUploadProgress(0)
 
+
+    // Prepare assetPhotos URLs (dummy for now, but structure for real upload)
+    // If you implement upload, replace this with actual upload logic
+    const assetPhotoUrls = assetPhotos.length > 0
+      ? assetPhotos.map((_, i) => `https://images.unsplash.com/photo-1519125323398-675f0ddb6308?dummy=${i}`)
+      : [
+          "https://images.unsplash.com/photo-1519125323398-675f0ddb6308",
+          "https://images.unsplash.com/photo-1526178613658-3f1622045544"
+        ];
+
+    // Prepare payload
+    const payload = {
+      ...formData,
+  requestedAmount: parseFloat(formData.requestedAmount ?? "") || 0,
+      assetPhotos: assetPhotoUrls,
+    };
+
     try {
-      // Simulate upload progress
-      const progressIntervals = [10, 25, 40, 60, 75, 90, 100]
-      
-      for (const progress of progressIntervals) {
-        await new Promise((resolve) => setTimeout(resolve, 300))
-        setUploadProgress(progress)
+  const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.USER.UPLOAD_ASSET), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to submit asset request");
       }
 
-      // Final processing
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      setIsSubmitted(true)
-      
+      setIsSubmitted(true);
       toast({
         title: "Loan request submitted!",
         description: "Your asset has been uploaded successfully. We'll review your request within 24 hours.",
-      })
-
-      // Redirect to dashboard after 3 seconds
+      });
       setTimeout(() => {
-        router.push("/dashboard")
-      }, 3000)
-    } catch (error) {
+        router.push("/dashboard");
+      }, 3000);
+    } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Upload failed",
-        description: "Something went wrong. Please try again.",
-      })
-      setIsSubmitting(false)
-      setUploadProgress(0)
+        description: error.message || "Something went wrong. Please try again.",
+      });
+      setIsSubmitting(false);
+      setUploadProgress(0);
     }
   }
 
   const canProceedToStep2 = assetPhotos.length >= 2 && formData.assetType && formData.assetBrand && formData.assetModel
   const canProceedToStep3 = formData.assetCondition && formData.requestedAmount
-  const canSubmit = idProofs.length >= 1 && formData.district
+  const canSubmit = true // No longer require ID proof or district
 
   if (isSubmitted) {
     return (
@@ -444,8 +442,8 @@ export default function UploadAssetPage() {
                   <Input
                     id="requestedAmount"
                     placeholder="₹ 40,000"
-                    value={formData.requestedAmount}
-                    onChange={(e) => handleInputChange("requestedAmount", e.target.value)}
+                    value={formData.requestedAmount ?? ""}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange("requestedAmount", e.target.value)}
                     className="h-10 sm:h-auto"
                   />
                   <p className="text-xs sm:text-sm text-muted-foreground mt-1">Enter the amount you need</p>
@@ -534,10 +532,7 @@ export default function UploadAssetPage() {
                         <p className="text-xs sm:text-sm text-muted-foreground">Requested Amount</p>
                         <p className="font-semibold text-lg text-primary">₹{formData.requestedAmount}</p>
                       </div>
-                      <div>
-                        <p className="text-xs sm:text-sm text-muted-foreground">Processing District</p>
-                        <p className="font-medium text-sm sm:text-base">{formData.district}</p>
-                      </div>
+                      {/* District removed */}
                     </div>
                   </div>
 
@@ -549,10 +544,7 @@ export default function UploadAssetPage() {
                         <p className="text-xs sm:text-sm text-muted-foreground">Asset Photos</p>
                         <p className="font-medium text-sm sm:text-base">{assetPhotos.length} photos uploaded</p>
                       </div>
-                      <div>
-                        <p className="text-xs sm:text-sm text-muted-foreground">ID Verification</p>
-                        <p className="font-medium text-sm sm:text-base">{idProofs.length} document(s) uploaded</p>
-                      </div>
+                      {/* ID Verification removed */}
                     </div>
                   </div>
 
@@ -568,91 +560,9 @@ export default function UploadAssetPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                  <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Upload ID Proof
-                </CardTitle>
-                <p className="text-sm sm:text-base text-muted-foreground">
-                  Upload a clear photo of your Aadhaar card or PAN card
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
-                  {idProofs.map((proof) => (
-                    <div key={proof.id} className="relative group">
-                      {proof.preview ? (
-                        <img
-                          src={proof.preview || "/placeholder.svg"}
-                          alt="ID proof"
-                          className="w-full h-24 sm:h-32 object-cover rounded-lg border"
-                        />
-                      ) : (
-                        <div className="w-full h-24 sm:h-32 bg-muted rounded-lg border flex items-center justify-center">
-                          <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground" />
-                        </div>
-                      )}
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-1 right-1 w-5 h-5 sm:w-6 sm:h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => removeIDProof(proof.id)}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ))}
+            {/* ID Proof upload removed */}
 
-                  <label className="border-2 border-dashed border-border rounded-lg p-3 sm:p-4 h-24 sm:h-32 flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors">
-                    <Upload className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground mb-1 sm:mb-2" />
-                    <span className="text-xs sm:text-sm text-muted-foreground text-center">Upload ID</span>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,.pdf"
-                      className="hidden"
-                      onChange={handleIDProofUpload}
-                    />
-                  </label>
-                </div>
-
-                {idProofs.length < 1 && (
-                  <p className="text-xs sm:text-sm text-muted-foreground">
-                    Please upload at least one ID proof to continue
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                  <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Select District
-                </CardTitle>
-                <p className="text-sm sm:text-base text-muted-foreground">Choose your district for local processing</p>
-              </CardHeader>
-              <CardContent>
-                <div>
-                  <Label htmlFor="district" className="text-sm sm:text-base">
-                    District *
-                  </Label>
-                  <Select value={formData.district} onValueChange={(value) => handleInputChange("district", value)}>
-                    <SelectTrigger className="h-10 sm:h-auto">
-                      <SelectValue placeholder="Select your district" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {districts.map((district) => (
-                        <SelectItem key={district} value={district}>
-                          {district}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
+            {/* District selection removed */}
 
             <div className="flex flex-col sm:flex-row justify-between gap-3">
               <Button variant="outline" onClick={() => setCurrentStep(2)} className="w-full sm:w-auto">

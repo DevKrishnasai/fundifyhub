@@ -161,7 +161,7 @@ function validateAssetEnums(assetType: string, assetCondition: string, res: Resp
   if (!isValidAssetType(assetType)) {
     res.status(400).json({ 
       success: false, 
-      message: 'Invalid assetType. Must be one of: VEHICLE, PROPERTY, MACHINERY, JEWELRY, ELECTRONICS, OTHER' 
+      message: assetType + 'Invalid assetType. Must be one of: VEHICLE, PROPERTY, MACHINERY, JEWELRY, ELECTRONICS, OTHER' 
     });
     return false;
   }
@@ -271,8 +271,9 @@ async function handleDocuments(tx: any, requestId: string, photos: string[], cus
 export async function addAssetController(req: Request, res: Response): Promise<void> {
   try {
     const customerId = req.user!.id;
+    const district = req.user!.district
     const {
-      district,
+      
       assetPhotos,
       assetType,
       assetBrand,

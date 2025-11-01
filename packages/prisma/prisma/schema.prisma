@@ -20,7 +20,7 @@ model User {
   phoneNumber     String?  @unique
   password        String?  // Hashed password for email/password login
   roles           String[] @default(["CUSTOMER"]) // Array of roles: CUSTOMER, AGENT, ADMIN
-  district        String?
+  district        String
   isActive        Boolean  @default(true)
   emailVerified   Boolean  @default(false)
   phoneVerified   Boolean  @default(false)

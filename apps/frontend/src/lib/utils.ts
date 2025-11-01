@@ -24,7 +24,17 @@ export const API_CONFIG = {
       SERVICE_DISABLE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disable`,
       SERVICE_DISCONNECT: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disconnect`,
       SERVICE_CONFIGURE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/configure`,
-    }
+    },
+    USER: {
+      PROFILE: '/api/v1/user/profile',
+      UPDATE_PROFILE: '/api/v1/user/profile/update',
+      UPLOAD_ASSET: '/api/v1/user/add-asset',
+      UPDATE_ASSET: '/api/v1/user/update-asset',
+      ACTIVE_LOANS_COUNT: '/api/v1/user/active-loans-count',
+      PENDING_LOANS_COUNT: '/api/v1/user/pending-loans-count',
+      TOTAL_BORROW: '/api/v1/user/total-borrow',
+
+    },
   }
 }
 

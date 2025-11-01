@@ -14,10 +14,9 @@ export interface AuthPayload {
   id: string;
   email: string;
   roles?: string[]; // All roles array (optional for backward compatibility)
-  emailVerified: boolean;
-  phoneVerified: boolean;
   firstName?: string;
   lastName?: string;
+  district:string;
 }
 
 export interface APIResponse<T = any> {

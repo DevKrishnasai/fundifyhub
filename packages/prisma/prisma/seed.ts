@@ -56,8 +56,7 @@ async function main() {
         phoneNumber: "+919876543204",
         password: hashedPassword,
         roles: ["ADMIN"],
-        emailVerified: true,
-        phoneVerified: true,
+        district:"Ahmedabad"
       },
     }),
     prisma.user.upsert({
@@ -70,8 +69,7 @@ async function main() {
         phoneNumber: "+919876543203",
         password: hashedPassword,
         roles: ["SUPER_ADMIN", "ADMIN", "AGENT", "CUSTOMER"],
-        emailVerified: true,
-        phoneVerified: true,
+        district:"Ahmedabad"
       },
     }),
   ]);
@@ -145,9 +143,7 @@ async function main() {
         disbursedDate: new Date(),
         firstEMIDate: new Date(),
         lastEMIDate: new Date(Date.now() + tenureMonths * 30 * 24 * 60 * 60 * 1000),
-        totalPaidAmount: 0,
-        createdById: admin.id,
-        updatedById: admin.id,
+        totalPaidAmount: 0
       },
     });
     loans.push(loan);

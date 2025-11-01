@@ -61,6 +61,4 @@ router.get('/pending-loans-count', requireAuth, pendingLoansCountController);
 router.get('/total-borrow', requireAuth, totalBorrowController);
 
 
-
-
 export default router;
