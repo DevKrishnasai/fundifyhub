@@ -9,5 +9,13 @@
   },
   "dependencies": {
     "@fundifyhub/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@react-email/components": "^0.5.7",
+    "@react-email/render": "^1.4.0",
+    "@types/react": "^18.3.24",
+    "@types/react-dom": "^18.3.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

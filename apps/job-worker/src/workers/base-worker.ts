@@ -54,7 +54,8 @@ export abstract class BaseWorker<T = any> {
     });
 
     this.worker.on('completed', (job) => {
-      // Only log on success, no need for routine completions
+      const contextLogger = this.logger.child(`[Job ${job.id}] [${this.queueName}]`);
+      contextLogger.info('Completed successfully');
     });
 
     this.worker.on('active', (job) => {

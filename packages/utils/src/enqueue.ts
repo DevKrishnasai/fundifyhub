@@ -22,11 +22,15 @@ export async function enqueue(
     return { error: `Template not found: ${templateName}` };
   }
 
+  console.log('Enqueueing template:', templateName, 'with variables:', variables);
+
   // Validate required variables (shallow presence check)
   const missing = (templateMeta.requiredVariables || []).filter((v: string) => !(v in variables));
   if (missing.length > 0) {
     return { error: `Missing variables: ${missing.join(', ')}` };
   }
+
+  console.log('All required variables present for template:', templateName);
 
   // Determine services to enqueue: options.services overrides template supportedServices
   const servicesToEnqueue = options.services && options.services.length > 0 ? options.services : templateMeta.supportedServices;

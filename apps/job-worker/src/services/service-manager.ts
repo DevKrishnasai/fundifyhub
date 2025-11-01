@@ -97,11 +97,13 @@ class ServiceManager {
    * Start periodic checking of service status from database
    */
   private startPeriodicCheck() {
+    // Initial check and auto-start
     this.checkAndAutoStartServices();
     
+    // Check every 2 minutes (120000ms)
     this.checkInterval = setInterval(() => {
       this.checkServices();
-    }, 10000);
+    }, 120000);
   }
   
   /**
@@ -156,34 +158,89 @@ class ServiceManager {
       });
 
       for (const service of services) {
+        // Handle Email Service
         if (service.serviceName === 'EMAIL') {
-          if (service.isEnabled && service.config) {
-            const config = service.config as Record<string, any>;
-            
-            const newEmailConfig: EmailConfig = {
-              smtpHost: String(config.smtpHost || ''),
-              smtpPort: parseInt(String(config.smtpPort || '587')),
-              smtpUser: String(config.smtpUser || ''),
-              smtpPass: String(config.smtpPass || ''),
-              fromEmail: config.fromEmail || config.from,
-              smtpSecure: config.smtpSecure === true || parseInt(String(config.smtpPort || '587')) === 465,
-            };
-            
-            if (JSON.stringify(this.state.emailConfig) !== JSON.stringify(newEmailConfig)) {
-              this.state.emailConfig = newEmailConfig;
+          const contextLogger = this.logger.child('[email-service]');
+          
+          if (service.isEnabled) {
+            // Check if we need to start or reconfigure email service
+            if (service.config) {
+              const config = service.config as Record<string, any>;
+              
+              const newEmailConfig: EmailConfig = {
+                smtpHost: String(config.smtpHost || ''),
+                smtpPort: parseInt(String(config.smtpPort || '587')),
+                smtpUser: String(config.smtpUser || ''),
+                smtpPass: String(config.smtpPass || ''),
+                fromEmail: config.fromEmail || config.from,
+                smtpSecure: config.smtpSecure === true || parseInt(String(config.smtpPort || '587')) === 465,
+              };
+
+              // If config changed or no transporter exists, (re)start email service
+              if (!this.state.emailTransporter || JSON.stringify(this.state.emailConfig) !== JSON.stringify(newEmailConfig)) {
+                contextLogger.info('Starting/updating email service with new configuration');
+                this.state.emailConfig = newEmailConfig;
+                
+                try {
+                  const { startEmailService } = await import('./email-service');
+                  await startEmailService();
+                } catch (err) {
+                  contextLogger.error('Failed to start/update email service:', err);
+                }
+              } else {
+                // Verify existing transporter is still working
+                try {
+                  await this.state.emailTransporter.verify();
+                  contextLogger.debug('Email transporter verified successfully');
+                } catch (err) {
+                  contextLogger.warn('Email transporter verification failed, attempting restart');
+                  const { startEmailService } = await import('./email-service');
+                  await startEmailService();
+                }
+              }
             }
-          } else {
-            if (this.state.emailConfig !== null) {
-              this.state.emailConfig = null;
+          } else if (!service.isEnabled && this.state.emailTransporter) {
+            // Service is disabled but we have an active transporter - stop it
+            contextLogger.info('Stopping disabled email service');
+            try {
+              const { stopEmailService } = await import('./email-service');
+              await stopEmailService();
+            } catch (err) {
+              contextLogger.error('Error stopping email service:', err);
             }
           }
         }
         
+        // Handle WhatsApp Service
         if (service.serviceName === 'WHATSAPP') {
-          if (service.isEnabled && service.isActive && this.lastWhatsAppState === false) {
-            this.lastWhatsAppState = true;
-            const contextLogger = this.logger.child('[whatsapp-service]');
-            contextLogger.info('Connected and ready');
+          const contextLogger = this.logger.child('[whatsapp-service]');
+          
+          if (service.isEnabled) {
+            if (!this.state.whatsappClient) {
+              contextLogger.info('Starting WhatsApp service');
+              try {
+                const { startWhatsAppService } = await import('./whatsapp-service');
+                await startWhatsAppService();
+              } catch (err) {
+                contextLogger.error('Failed to start WhatsApp service:', err);
+              }
+            } else {
+              // Update state tracking
+              if (service.isActive && this.lastWhatsAppState === false) {
+                this.lastWhatsAppState = true;
+                contextLogger.info('Connected and ready');
+              }
+            }
+          } else if (!service.isEnabled && this.state.whatsappClient) {
+            // Service is disabled but client exists - stop it
+            contextLogger.info('Stopping disabled WhatsApp service');
+            try {
+              const { stopWhatsAppService } = await import('./whatsapp-service');
+              await stopWhatsAppService();
+              this.lastWhatsAppState = false;
+            } catch (err) {
+              contextLogger.error('Error stopping WhatsApp service:', err);
+            }
           } else if (!service.isActive && this.lastWhatsAppState !== false) {
             this.lastWhatsAppState = false;
           }

@@ -1,11 +1,38 @@
-export const renderWhatsApp = (vars: Record<string, any>) => {
-  const firstName = vars.firstName || '';
-  const lastName = vars.lastName || '';
-  const name = `${firstName} ${lastName}`.trim() || 'User';
-  const loginAt = vars.loginAt ? new Date(vars.loginAt).toLocaleString() : 'Unknown time';
-  const ip = vars.ip || 'Unknown IP';
+interface LoginWhatsAppProps {
+  customerName?: string;
+  device?: string;
+  location?: string;
+  time?: string;
+  supportUrl?: string;
+  resetPasswordUrl?: string;
+  companyName?: string;
+}
 
-  return `Hi ${name}, we noticed a new login to your account on ${loginAt} from IP ${ip}. If this wasn't you, please secure your account.`;
+export const renderLoginWhatsApp = (vars: Record<string, any>) => {
+  const props: LoginWhatsAppProps = {
+    customerName: vars.customerName || 'User',
+    device: vars.device || 'Unknown Device',
+    location: vars.location || 'Unknown Location',
+    time: vars.time || new Date().toLocaleString(),
+    supportUrl: vars.supportUrl,
+    resetPasswordUrl: vars.resetPasswordUrl,
+    companyName: vars.companyName
+  };
+
+  return `⚠️ *${props.companyName} Login Alert*
+
+Hi ${props.customerName},
+
+A new login to your ${props.companyName} account was detected:
+
+• *Device:* ${props.device}
+• *Location:* ${props.location}
+• *Time:* ${props.time}
+
+If this was you, no action is required. Otherwise, secure your account immediately:
+${props.resetPasswordUrl}
+
+Need help? Visit ${props.supportUrl} for support.`;
 };
 
-export default renderWhatsApp;
+export default renderLoginWhatsApp;
