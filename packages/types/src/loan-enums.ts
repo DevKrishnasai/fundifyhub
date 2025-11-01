@@ -26,11 +26,13 @@ export enum RequestStatus {
 }
 
 export enum AssetType {
-  VEHICLE = "VEHICLE",
-  PROPERTY = "PROPERTY",
-  MACHINERY = "MACHINERY", 
+  LAPTOP = "LAPTOP",
+  TABLET = "TABLET",
+  CAMERA = "CAMERA",
+  "GAMING CONSOLE" = "GAMING CONSOLE",
+  MOTORCYCLE = "MOTORCYCLE",
+  CAR = "CAR",
   JEWELRY = "JEWELRY",
-  ELECTRONICS = "ELECTRONICS",
   OTHER = "OTHER"
 }
 

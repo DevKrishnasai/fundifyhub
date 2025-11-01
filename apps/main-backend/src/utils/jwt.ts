@@ -16,8 +16,7 @@ export interface JWTPayload {
   roles: string[]; // Changed from role to roles array
   firstName: string;
   lastName: string;
-  emailVerified: boolean;
-  phoneVerified: boolean;
+  district :string;
 }
 
 /**

@@ -20,7 +20,7 @@ model User {
   phoneNumber     String?  @unique
   password        String?  // Hashed password for email/password login
   roles           String[] @default(["CUSTOMER"]) // Array of roles: CUSTOMER, AGENT, ADMIN
-  district        String?
+  district        String
   isActive        Boolean  @default(true)
   emailVerified   Boolean  @default(false)
   phoneVerified   Boolean  @default(false)
@@ -36,9 +36,7 @@ model User {
   refreshToken    String?  // For JWT refresh
   
   createdAt       DateTime @default(now())
-  createdById    String?
   updatedAt       DateTime @updatedAt
-  updatedById    String? 
   
   // Relations
   requests        Request[] @relation("CustomerRequests")
@@ -46,12 +44,6 @@ model User {
   comments        Comment[]
   inspections     Inspection[]
   otpVerifications OTPVerification[]
-  loansCreated     Loan[] @relation("LoanCreatedBy")
-  loansUpdated     Loan[] @relation("LoanUpdatedBy")
-  createdBy        User? @relation("UserCreatedBy", fields: [createdById], references: [id])
-  updatedBy        User? @relation("UserUpdatedBy", fields: [updatedById], references: [id])
-  usersCreated     User[] @relation("UserCreatedBy")
-  usersUpdated     User[] @relation("UserUpdatedBy")
 
   @@index([email])
   @@index([roles])
@@ -123,7 +115,7 @@ model Loan {
   totalAmount     Float      // Total amount to be repaid (principal + interest)
   
   // Loan Status & Dates
-  status          String   @default("PENDING")
+  status          String   @default("ACTIVE")
   approvedDate    DateTime?  // When loan was approved by agent
   disbursedDate   DateTime?  // When amount was transferred to customer
   firstEMIDate    DateTime?  // When first EMI is due
@@ -146,16 +138,12 @@ model Loan {
   closureType       String?    // "NORMAL", "FORECLOSURE", "DEFAULT"
   
   createdAt       DateTime   @default(now())
-  createdById    String
   updatedAt       DateTime   @updatedAt
-  updatedById    String
 
   // Relations Added created By and updated by relations as well.
   request         Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
   emisSchedule    EMISchedule[]
   payments        Payment[]
-  createdBy       User @relation("LoanCreatedBy", fields: [createdById], references:[id], onDelete: Cascade)
-  updatedBy       User @relation("LoanUpdatedBy", fields: [updatedById], references:[id], onDelete: Cascade)
 
   @@index([requestId])
   @@index([status])

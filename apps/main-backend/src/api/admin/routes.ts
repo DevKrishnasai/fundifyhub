@@ -18,14 +18,14 @@ router.use('/users', usersRoutes);
 /** GET /admin/getActiveLoans
  * Get all active loans
  */
-router.get('/getactiveloans', requireAuth, requireAdmin, getActiveLoansController);
+router.get('/get-active-loans', requireAuth, requireAdmin, getActiveLoansController);
 
 
 /**
  * GET /admin/getPendingRequests
  * Get all pending loan applications
  */
-router.get('/getPendingRequests', requireAuth, requireAdmin, getPendingRequestsController);
+router.get('/get-pending-requests', requireAuth, requireAdmin, getPendingRequestsController);
 
 
 export default router;

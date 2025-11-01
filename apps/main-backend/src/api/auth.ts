@@ -42,9 +42,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         id: decoded.id,
         email: decoded.email,
         roles: decoded.roles, // Store all roles
-        emailVerified: decoded.emailVerified,
-        phoneVerified: decoded.phoneVerified
+        district:decoded.district
       };
+      console.log(req.user)
       next();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Token verification failed';
@@ -91,8 +91,7 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction): v
           id: decoded.id,
           email: decoded.email,
           roles: decoded.roles, // Store all roles
-          emailVerified: decoded.emailVerified,
-          phoneVerified: decoded.phoneVerified
+          district:decoded.district
         };
       } catch (error) {
         // Ignore token errors for optional auth
