@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build:
+    name: Build (turbo)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'pnpm'
+
+      - name: Enable corepack and activate pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.17.1 --activate
+
+      - name: Install dependencies (pnpm)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (turbo)
+        env:
+          CI: true
+        run: pnpm build
+
+  pr-feedback:
+    name: PR feedback
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - name: Comment on PR with result
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.TOKEN }}
+          script: |
+            const buildResult = '${{ needs.build.result }}';
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.info('No pull request context available.');
+              return;
+            }
+            const prNumber = pr.number;
+            if (buildResult !== 'success') {
+              const body = `:x: CI build failed for this pull request. The branch protection rules should prevent merging until the CI check named **Build (turbo)** passes.
+
+Please run these locally to reproduce and fix the issue:
+
+1. pnpm install --frozen-lockfile
+2. pnpm build
+
+When you push a fix the CI will re-run. You can view the failing logs in the Actions tab: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}
+
+If you need help, paste the build error output here and request a review.`;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body
+              });
+            } else {
+              const body = ':white_check_mark: CI build passed — branch is build-green and ready for review.';
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body
+              });
+            }
