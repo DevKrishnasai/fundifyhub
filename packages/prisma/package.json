@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "prisma generate && ts",
+    "build": "prisma generate && tsc",
     "dev": "tsc --watch",
     "lint": "eslint .",
     "clean": "rimraf dist",
