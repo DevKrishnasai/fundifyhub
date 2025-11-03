@@ -10,6 +10,7 @@ import { enqueueServiceControl } from '@fundifyhub/utils';
  * GET /admin/services
  * Get all service configurations (auto-create if missing)
  */
+
 export async function getAllServicesController(req: Request, res: Response): Promise<void> {
   try {
     let configs = await prisma.serviceConfig.findMany({ orderBy: { serviceName: 'asc' } });
