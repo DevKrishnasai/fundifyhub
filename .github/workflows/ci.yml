@@ -19,8 +19,8 @@ jobs:
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
-          cache: 'pnpm'
+          node-version: "22.x"
+          cache: "pnpm"
 
       - name: Enable corepack and activate pnpm
         run: |
@@ -39,17 +39,17 @@ jobs:
     name: PR feedback
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.event_name == 'pull_request' }}
+  if: ${{ github.event_name == 'pull_request' }}
     steps:
       - name: Comment on PR with result
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const buildResult = '${{ needs.build.result }}';
             const pr = context.payload.pull_request;
             if (!pr) {
-              core.info('No pull request context available.');
+              console.info('No pull request context available.');
               return;
             }
             const prNumber = pr.number;
@@ -61,7 +61,7 @@ Please run these locally to reproduce and fix the issue:
 1. pnpm install --frozen-lockfile
 2. pnpm build
 
-When you push a fix the CI will re-run. You can view the failing logs in the Actions tab: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}
+When you push a fix, the CI will re-run. You can view the failing logs in the Actions tab: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}
 
 If you need help, paste the build error output here and request a review.`;
               await github.rest.issues.createComment({
