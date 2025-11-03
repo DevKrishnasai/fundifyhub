@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken, extractTokenFromHeader, JWTPayload } from '../utils/jwt';
-import { AuthPayload } from '../types';
+import { verifyToken, extractTokenFromHeader } from '../utils/jwt';
 import { logger } from '../utils/logger';
 
 // The Request user property is already extended in the existing types
@@ -42,7 +41,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         id: decoded.id,
         email: decoded.email,
         roles: decoded.roles, // Store all roles
-        district:decoded.district
+        district: decoded.district,
+        firstName: decoded.firstName,
+        lastName: decoded.lastName,
+        isActive: decoded.isActive
       };
       next();
     } catch (error) {
@@ -88,9 +90,12 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction): v
         // Convert JWTPayload to AuthPayload
         req.user = {
           id: decoded.id,
+          firstName: decoded.firstName,
+          lastName: decoded.lastName,
           email: decoded.email,
           roles: decoded.roles, // Store all roles
-          district:decoded.district
+          district: decoded.district,
+          isActive: decoded.isActive
         };
       } catch (error) {
         // Ignore token errors for optional auth

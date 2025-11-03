@@ -8,19 +8,6 @@ import {
   logoutController,
 } from './controllers';
 
-/**
- * Authentication Routes
- *
- * Defines all authentication-related API endpoints:
- * - POST /check-availability - Check if email/phone is available
- * - POST /send-otp - Send OTP for email or phone verification
- * - POST /verify-otp - Verify OTP code
- * - POST /register - Complete user registration
- * - POST /login - User login
- * - POST /logout - User logout
- *
- * All routes are prefixed with /api/v1/auth in the main router.
- */
 const router: ExpressRouter = Router();
 
 // Check if email/phone is available for registration

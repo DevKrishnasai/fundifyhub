@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
 import serviceRoutes from './service/routes';
-import { requireAuth, requireAdmin } from '../auth';
 import {
   getActiveLoansController,
   getPendingRequestsController
@@ -18,14 +17,13 @@ router.use('/users', usersRoutes);
 /** GET /admin/getActiveLoans
  * Get all active loans
  */
-router.get('/get-active-loans', requireAuth, requireAdmin, getActiveLoansController);
-
+router.get('/get-active-loans', getActiveLoansController);
 
 /**
  * GET /admin/getPendingRequests
  * Get all pending loan applications
  */
-router.get('/get-pending-requests', requireAuth, requireAdmin, getPendingRequestsController);
+router.get('/get-pending-requests', getPendingRequestsController);
 
 
 export default router;

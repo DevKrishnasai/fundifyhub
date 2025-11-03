@@ -1,23 +1,4 @@
-export interface User {
-  id: string;
-  email: string;
-  phone: string;
-  name: string;
-  role: string;
-  emailVerified: boolean;
-  phoneVerified: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface AuthPayload {
-  id: string;
-  email: string;
-  roles?: string[]; // All roles array (optional for backward compatibility)
-  firstName?: string;
-  lastName?: string;
-  district:string;
-}
+import { User } from "@fundifyhub/types";
 
 export interface APIResponse<T = any> {
   success: boolean;
@@ -29,7 +10,7 @@ export interface APIResponse<T = any> {
 declare global {
   namespace Express {
     interface Request {
-      user?: AuthPayload;
+      user?: User;
     }
   }
 }
