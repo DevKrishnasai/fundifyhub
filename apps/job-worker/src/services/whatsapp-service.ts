@@ -245,9 +245,9 @@ export const startWhatsAppService = async () => {
         config: {},
         lastError: (error as Error).message,
       }
-    }).catch(err => {
+    }).catch((err: unknown) => {
       const errorLogger = logger.child('[whatsapp-service]');
-      errorLogger.error('Failed to update error status:', err);
+      errorLogger.error('Failed to update error status:', err instanceof Error ? err : new Error(String(err)));
     });
     
     throw error;
