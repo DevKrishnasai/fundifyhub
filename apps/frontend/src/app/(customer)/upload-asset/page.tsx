@@ -16,7 +16,8 @@ import { useToast } from "@/hooks/use-toast"
 import { Upload, X, Camera, FileText, MapPin, CreditCard, ArrowLeft, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { API_CONFIG, apiUrl } from "@/lib/utils"
+import { BACKEND_API_CONFIG } from "@/lib/urls"
+import { post } from '@/lib/api-client'
 const assetTypes = [
   { value: "LAPTOP", label: "Laptop" },
   { value: "TABLET", label: "Tablet" },
@@ -168,18 +169,10 @@ export default function UploadAssetPage() {
     };
 
     try {
-  const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.USER.UPLOAD_ASSET), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
+      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.USER.UPLOAD_ASSET, payload)
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to submit asset request");
+      if (!data || !data.success) {
+        throw new Error(data?.message || "Failed to submit asset request")
       }
 
       setIsSubmitted(true);

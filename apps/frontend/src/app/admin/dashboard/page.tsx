@@ -87,7 +87,7 @@ const getAssetIcon = (type: string) => {
 
 export default function AdminDashboard() {
   const router = useRouter()
-  const { user, isLoading } = useAuth()
+  const { user, isLoading } = useAuth();
   
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")

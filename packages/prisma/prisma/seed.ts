@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, User } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
 
@@ -74,9 +74,9 @@ async function main() {
     }),
   ]);
 
-  const customer = users.find((u) => u.roles.includes("CUSTOMER"))!;
-  const agent = users.find((u) => u.roles.includes("AGENT"))!;
-  const admin = users.find((u) => u.roles.includes("ADMIN"))!;
+  const customer = users.find((u: User) => u.roles.includes("CUSTOMER"))!;
+  const agent = users.find((u: User) => u.roles.includes("AGENT"))!;
+  const admin = users.find((u: User) => u.roles.includes("ADMIN"))!;
 
   console.log(`✅ Created ${users.length} users`);
 

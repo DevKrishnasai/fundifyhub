@@ -14,6 +14,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import { useToast } from "@/hooks/use-toast"
 import { Eye, EyeOff, ArrowLeft, CreditCard, User, Mail, Phone, Lock, ChevronRight, ChevronLeft, Check, X, CheckCircle, MessageSquare } from "lucide-react"
+import { post } from '@/lib/api-client'
+import { BACKEND_API_CONFIG } from '@/lib/urls'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -109,19 +111,12 @@ export default function RegisterPage() {
     setEmailValidation({ isValid: false, isChecking: true, error: "" })
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/check-availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.CHECK_AVAILABILITY, { email })
+
+      if (data && data.success) {
         setEmailValidation({ isValid: true, isChecking: false, error: "" })
       } else {
-        setEmailValidation({ isValid: false, isChecking: false, error: data.message || "Email already exists" })
+        setEmailValidation({ isValid: false, isChecking: false, error: data?.message || "Email already exists" })
       }
     } catch (error) {
       setEmailValidation({ isValid: false, isChecking: false, error: "Unable to verify email" })
@@ -139,19 +134,12 @@ export default function RegisterPage() {
     setPhoneValidation({ isValid: false, isChecking: true, error: "" })
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/check-availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.CHECK_AVAILABILITY, { phone })
+
+      if (data && data.success) {
         setPhoneValidation({ isValid: true, isChecking: false, error: "" })
       } else {
-        setPhoneValidation({ isValid: false, isChecking: false, error: data.message || "Phone number already exists" })
+        setPhoneValidation({ isValid: false, isChecking: false, error: data?.message || "Phone number already exists" })
       }
     } catch (error) {
       setPhoneValidation({ isValid: false, isChecking: false, error: "Unable to verify phone number" })
@@ -163,18 +151,9 @@ export default function RegisterPage() {
     setOtpLoading(prev => ({ ...prev, email: true }))
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/send-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: step2Data.email
-        })
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP, { email: step2Data.email })
+
+      if (data && data.success) {
         setEmailOTPSent(true)
         // Store sessionId for verification
         setStep2Data(prev => ({ ...prev, emailSessionId: data.data.sessionId }))
@@ -186,7 +165,7 @@ export default function RegisterPage() {
         toast({
           variant: "destructive",
           title: "Failed to send email OTP",
-          description: data.message,
+          description: data?.message,
         })
       }
     } catch (error) {
@@ -205,18 +184,9 @@ export default function RegisterPage() {
     setOtpLoading(prev => ({ ...prev, phone: true }))
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/send-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: step2Data.phoneNumber
-        })
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP, { phone: step2Data.phoneNumber })
+
+      if (data && data.success) {
         setPhoneOTPSent(true)
         // Store sessionId for verification
         setStep2Data(prev => ({ ...prev, phoneSessionId: data.data.sessionId }))
@@ -228,7 +198,7 @@ export default function RegisterPage() {
         toast({
           variant: "destructive",
           title: "Failed to send phone OTP",
-          description: data.message,
+          description: data?.message,
         })
       }
     } catch (error) {
@@ -271,19 +241,9 @@ export default function RegisterPage() {
     }))
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/verify-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          sessionId,
-          otp
-        })
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VERIFY_OTP, { sessionId, otp })
+
+      if (data && data.success) {
         if (type === 'EMAIL') {
           setEmailVerified(true)
         } else {
@@ -298,7 +258,7 @@ export default function RegisterPage() {
         toast({
           variant: "destructive",
           title: "Verification failed",
-          description: data.message,
+          description: data?.message,
         })
       }
     } catch (error) {
@@ -323,20 +283,11 @@ export default function RegisterPage() {
     }))
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      const response = await fetch(`${apiUrl}/api/v1/auth/send-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          type === 'EMAIL' 
-            ? { email: step2Data.email }
-            : { phone: step2Data.phoneNumber }
-        )
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP,
+        type === 'EMAIL' ? { email: step2Data.email } : { phone: step2Data.phoneNumber }
+      )
+
+      if (data && data.success) {
         // Clear the OTP input and store new sessionId
         if (type === 'EMAIL') {
           setStep2Data(prev => ({ ...prev, emailOTP: '', emailSessionId: data.data.sessionId }))
@@ -352,7 +303,7 @@ export default function RegisterPage() {
         toast({
           variant: "destructive",
           title: "Failed to resend OTP",
-          description: data.message,
+          description: data?.message,
         })
       }
     } catch (error) {
@@ -383,23 +334,16 @@ export default function RegisterPage() {
     setIsLoading(true)
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
       // Use the verified contact methods for registration
-      const response = await fetch(`${apiUrl}/api/v1/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: step2Data.email,
-          phoneNumber: step2Data.phoneNumber,
-          firstName: step1Data.firstName,
-          lastName: step1Data.lastName,
-          password: step1Data.password
-        })
+      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.REGISTER, {
+        email: step2Data.email,
+        phoneNumber: step2Data.phoneNumber,
+        firstName: step1Data.firstName,
+        lastName: step1Data.lastName,
+        password: step1Data.password,
       })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+
+      if (data && data.success) {
         toast({
           title: "Registration successful!",
           description: "Your account has been created successfully.",
@@ -407,11 +351,11 @@ export default function RegisterPage() {
         
         router.push('/dashboard')
       } else {
-        setError(data.message || "Registration failed. Please try again.")
+        setError(data?.message || "Registration failed. Please try again.")
         toast({
           variant: "destructive",
           title: "Registration failed",
-          description: data.message,
+          description: data?.message,
         })
       }
     } catch (error) {

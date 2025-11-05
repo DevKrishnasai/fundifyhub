@@ -23,7 +23,7 @@ async function updateAssetPhotos(tx: any, requestId: string, assetPhotos: any, c
  * Business logic is delegated to user services
  */
 
-import { prisma, User } from '@fundifyhub/prisma';
+import { prisma } from '@fundifyhub/prisma';
 import { Request, Response } from 'express';
 import { createLogger } from '@fundifyhub/logger';
 import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus, LoanStatus, ServiceName } from '@fundifyhub/types';
@@ -313,7 +313,7 @@ export async function addAssetController(req: Request, res: Response): Promise<v
     requestData.customerId = customerId;
 
     // Create request and documents in transaction
-    const createdRequest = await prisma.$transaction(async (tx) => {
+    const createdRequest = await prisma.$transaction(async (tx: any) => {
       const reqCreated = await tx.request.create({ data: requestData });
       await handleDocuments(tx, reqCreated.id, photos, customerId);
       return reqCreated;
@@ -457,7 +457,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
     updateData.currentStatus = RequestStatus.PENDING;
 
     // Update request and asset photos in transaction
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.request.update({ where: { id: requestId }, data: updateData });
       if (assetPhotos !== undefined) {
         await updateAssetPhotos(tx, requestId, assetPhotos, customerId, res);
@@ -563,8 +563,6 @@ export async function validateUserAuth(userId: string): Promise<{
         firstName: true,
         lastName: true,
         roles: true,
-        emailVerified: true,
-        phoneVerified: true,
         isActive: true,
       },
     });

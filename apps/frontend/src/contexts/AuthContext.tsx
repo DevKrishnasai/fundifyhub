@@ -1,52 +1,28 @@
 "use client";
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { 
-  User, 
-  clearAuthData,
   logout as logoutUser
-} from '@/lib/auth';
+} from '@/lib/utils';
+import { ROLES, User } from '@fundifyhub/types';
+import { BACKEND_API_CONFIG, FRONTEND_API_CONFIG, FrontendPublicRoutes } from '@/lib/urls';
+import { get } from '@/lib/api-client';
 
 interface AuthContextType {
-  // User state
   user: User | null;
   isLoading: boolean;
   isLoggedIn: boolean;
-  
   // Auth actions
   login: (user: User) => void;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
-  
   // Utility methods
   hasRole: (roles: string | string[]) => boolean;
-  isAdmin: () => boolean;
+  isSuperAdmin: () => boolean;
+  isDistrictAdmin: () => boolean;
   isAgent: () => boolean;
   isCustomer: () => boolean;
   getDisplayName: () => string;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Public routes that don't require authentication
-const publicRoutes = [
-  '/',
-  '/auth/login',
-  '/auth/register',
-  '/forgot-password',
-  '/about',
-  '/contact',
-  '/privacy',
-  '/terms'
-];
-
-// Check if a route is public
-function isPublicRoute(pathname: string): boolean {
-  return publicRoutes.some(route => {
-    if (route === '/') return pathname === route;
-    return pathname.startsWith(route);
-  });
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -56,19 +32,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Get user display name
+  /** 
+   * Check if a route is public 
+   */
+  function isPublicRoute(pathname: string): boolean {
+    return FrontendPublicRoutes.some(route => {
+      if (route === '/') return pathname === route;
+      return pathname.startsWith(route);
+    });
+  }
+
+  /** 
+   * Get user's display name
+   */
   const getDisplayName = useCallback((): string => {
     if (!user) return '';
-    return `${user.firstName} ${user.lastName}`.trim() || user.email;
+    return `${user.firstName} ${user.lastName}`.trim();
   }, [user]);
 
-  // Client-side role checking (fast)
+  /**
+   * Check if user has required role(s)
+   */
   const hasRole = useCallback((roles: string | string[]): boolean => {
-    console.log('AuthContext.hasRole called with:', roles, 'user:', user);
-    if (!user) {
-      console.log('No user found in AuthContext');
+    if (!user) 
       return false;
-    }
     
     // Use capital case for all role comparisons
     const toCapitalCase = (str: string) => str.trim().toUpperCase();
@@ -83,62 +70,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return hasAccess;
   }, [user]);
 
-  const isAdmin = useCallback((): boolean => {
-    return hasRole(['ADMIN']);
+  const isSuperAdmin = useCallback((): boolean => {
+    return hasRole([ROLES.SUPER_ADMIN]);
+  }, [hasRole]);
+
+  const isDistrictAdmin = useCallback((): boolean => {
+    return hasRole([ROLES.DISTRICT_ADMIN]);
   }, [hasRole]);
 
   const isAgent = useCallback((): boolean => {
-    return hasRole(['AGENT']);
+    return hasRole([ROLES.AGENT]);
   }, [hasRole]);
 
   const isCustomer = useCallback((): boolean => {
-    return hasRole(['CUSTOMER']);
+    return hasRole([ROLES.CUSTOMER]);
   }, [hasRole]);
 
-  // Server-side authentication validation (when needed)
-  const validateWithServer = async (): Promise<User | null> => {
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL!;
-      const response = await fetch(`${apiUrl}/api/v1/user/validate`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data.user) {
-          return data.data.user;
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Server validation failed:', error);
-      return null;
+  const redirectToDashboard = useCallback(() => {
+    if (isDistrictAdmin()) {
+      router.replace('/admin/dashboard');
+    } else if (isAgent()) {
+      router.replace('/agent/dashboard');
+    } else {
+      router.replace('/dashboard');
     }
+  }, [router, isDistrictAdmin, isAgent]);
+
+  /** 
+   * Server-side authentication validation
+   */
+  const validateWithServer = async (): Promise<User | null> => {
+      const data = await get(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE);
+      if (data && data.success && data.data?.user) 
+        return data.data.user as User;
+      return null;  
   };
 
   // Initialize authentication state
   const initializeAuth = useCallback(async () => {
     setIsLoading(true);
-    
     try {
-      // Since we use httpOnly cookies, we can't read the token client-side
-      // We need to validate with the server to get user data
       const serverUser = await validateWithServer();
-      
       if (serverUser) {
         setUser(serverUser);
         setLastTokenCheck(Date.now());
       } else {
         setUser(null);
       }
-      
     } catch (error) {
-      console.error('Auth initialization failed:', error);
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -149,25 +128,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleLogin = useCallback((userData: User) => {
     setUser(userData);
     setLastTokenCheck(Date.now());
-    
-    // Redirect all users to unified dashboard
-    router.replace('/dashboard');
+    redirectToDashboard();
   }, [router]);
 
   // Handle logout
   const handleLogout = useCallback(async () => {
     try {
-      await logoutUser(); // Clear server-side cookies
-      clearAuthData(); // Clear any client-side data
+      await logoutUser();
       setUser(null);
       setLastTokenCheck(0);
-      router.replace('/auth/login');
+      router.replace(FRONTEND_API_CONFIG.ENDPOINTS.AUTH.LOGIN);
     } catch (error) {
-      console.error('Logout failed:', error);
-      // Force logout even if server call fails
-      clearAuthData();
       setUser(null);
-      router.replace('/auth/login');
+      router.replace(FRONTEND_API_CONFIG.ENDPOINTS.AUTH.LOGIN);
     }
   }, [router]);
 
@@ -188,13 +161,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Redirect logged-in users away from auth pages
       if (isLoggedIn && (pathname.startsWith('/auth') || pathname === '/forgot-password')) {
-        router.replace('/dashboard');
+        redirectToDashboard();
         return;
       }
       
       // Redirect non-authenticated users to login (except public routes)
       if (!isLoggedIn && !isPublicRoute(pathname)) {
-        router.replace('/auth/login');
+        router.replace(FRONTEND_API_CONFIG.ENDPOINTS.AUTH.LOGIN);
         return;
       }
     }
@@ -211,39 +184,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('Session expired, logging out');
         handleLogout();
       }
-    }, 5 * 60 * 1000); // Check every 5 minutes
+    }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
   }, [user, handleLogout]);
-
-  // Development debug info
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && user) {
-      console.log('Auth Debug Info:', {
-        user: user,
-        isLoggedIn: !!user,
-        pathname: pathname,
-        lastTokenCheck: new Date(lastTokenCheck).toLocaleString()
-      });
-    }
-  }, [user, pathname, lastTokenCheck]);
 
   const value: AuthContextType = {
     // State
     user,
     isLoading,
     isLoggedIn: !!user,
-    
     // Actions
     login: handleLogin,
     logout: handleLogout,
     refresh: handleRefresh,
-    
     // Utilities
     hasRole,
-    isAdmin,
+    isDistrictAdmin,
     isAgent,
     isCustomer,
+    isSuperAdmin,
     getDisplayName,
   };
 
@@ -253,6 +213,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

@@ -26,7 +26,8 @@ import {
   Settings,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { apiUrl, API_CONFIG } from "@/lib/utils"
+import { BACKEND_API_CONFIG } from "@/lib/urls"
+import { get, post } from '@/lib/api-client'
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
 
@@ -82,17 +83,9 @@ export default function AdminSettingsPage() {
   // Load services from API
   const loadServices = async () => {
     try {
-      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICES), {
-        credentials: 'include',
-      })
+      const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICES)
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      
-      if (data.success && data.data) {
+      if (data && data.success && data.data) {
         setServices(data.data)
       }
     } catch (error: any) {
@@ -147,14 +140,9 @@ export default function AdminSettingsPage() {
     setActionLoading({ ...actionLoading, [`${serviceName}-enable`]: true })
     
     try {
-      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_ENABLE(serviceName)), {
-        method: 'POST',
-        credentials: 'include',
-      })
+      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_ENABLE(serviceName))
 
-      const data = await response.json()
-
-      if (data.success) {
+      if (data && data.success) {
         toast({
           title: "✅ Service Enabled",
           description: `${serviceName} has been enabled`,
@@ -183,14 +171,9 @@ export default function AdminSettingsPage() {
     setActionLoading({ ...actionLoading, [`${serviceName}-disable`]: true })
     
     try {
-      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_DISABLE(serviceName)), {
-        method: 'POST',
-        credentials: 'include',
-      })
+      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_DISABLE(serviceName))
 
-      const data = await response.json()
-
-      if (data.success) {
+      if (data && data.success) {
         toast({
           title: "✅ Service Disabled",
           description: `${serviceName} has been disabled and deleted`,
@@ -231,16 +214,9 @@ export default function AdminSettingsPage() {
     })
     
     try {
-      const response = await fetch(apiUrl(API_CONFIG.ENDPOINTS.ADMIN.SERVICE_CONFIGURE('email')), {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(emailConfig),
-      })
+      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_CONFIGURE('email'), emailConfig)
 
-      const data = await response.json()
-
-      if (data.success) {
+      if (data && data.success) {
         toast({
           title: "✅ Configuration Saved & Tested",
           description: "Test email sent successfully! Check your inbox to confirm.",

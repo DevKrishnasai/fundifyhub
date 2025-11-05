@@ -1,26 +1,3 @@
-/**
- * FundifyHub Main Backend Server
- *
- * This is the main Express.js server for the FundifyHub application.
- * It provides REST API endpoints for user authentication, loan management,
- * and other financial services.
- *
- * Architecture:
- * - Express.js web framework
- * - TypeScript for type safety
- * - Prisma ORM for database operations
- * - JWT for authentication
- * - BullMQ for background job processing
- * - Winston for logging
- *
- * Security Features:
- * - CORS configuration
- * - Cookie-based authentication
- * - Input validation
- * - Rate limiting (TODO)
- * - Request logging
- */
-
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
