@@ -37,12 +37,10 @@ import {
   CreditCard,
 } from "lucide-react"
 import Link from "next/link"
+import { apiGet } from "@/lib/api-client"
+import { API_CONFIG, apiUrl } from '@/lib/utils'
 
-// TODO: Replace with actual API call to fetch loans
-const mockLoans: any[] = []
-
-// TODO: Replace with actual API call to fetch loan requests
-const requests: any[] = []
+// Data will be loaded from admin API endpoints: /admin/get-active-loans and /admin/get-pending-requests
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -97,6 +95,9 @@ export default function AdminDashboard() {
   const [actionType, setActionType] = useState("")
   const [activeTab, setActiveTab] = useState("loans")
   const [requests, setRequests] = useState<any[]>([])
+  const [loans, setLoans] = useState<any[]>([])
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(false)
+  const [dataError, setDataError] = useState<string | null>(null)
   const [isCollectionDialogOpen, setIsCollectionDialogOpen] = useState(false)
   const [selectedLoanForCollection, setSelectedLoanForCollection] = useState<any>(null)
   const [collectionFormData, setCollectionFormData] = useState({
@@ -111,6 +112,72 @@ export default function AdminDashboard() {
     }
   }, [user, isLoading, router])
 
+  // Fetch admin data (active loans and pending requests)
+  useEffect(() => {
+    let mounted = true
+    async function fetchData() {
+      setIsLoadingData(true)
+      setDataError(null)
+      try {
+        const [activeResp, pendingResp] = await Promise.all([
+          apiGet(API_CONFIG.ENDPOINTS.ADMIN.GET_ACTIVE_LOANS),
+          apiGet(API_CONFIG.ENDPOINTS.ADMIN.GET_PENDING_REQUESTS),
+        ])
+
+        if (!mounted) return
+
+        const fetchedLoans = (activeResp.data || []).map((loan: any) => {
+          const customer = loan.request?.customer
+          const borrower = customer ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() : 'Unknown'
+          const outstanding = loan.remainingAmount ?? (loan.totalAmount ? loan.totalAmount - (loan.totalPaidAmount || 0) : 0)
+          const overdueAmount = (loan.overdueEMIs || 0) * (loan.emiAmount || 0)
+
+          return {
+            id: loan.id,
+            borrower,
+            asset: loan.request?.assetBrand && loan.request?.assetModel ? `${loan.request.assetBrand} ${loan.request.assetModel}` : loan.request?.assetType || 'N/A',
+            outstandingAmount: outstanding || 0,
+            nextEmiDate: loan.firstEMIDate || null,
+            overdueAmount: overdueAmount || 0,
+            collectionAttempts: 0,
+            status: (loan.status || 'active').toLowerCase(),
+            riskLevel: 'medium',
+            loanAmount: loan.approvedAmount || loan.totalAmount || 0,
+            emiAmount: loan.emiAmount || 0,
+          }
+        })
+
+        const fetchedRequests = (pendingResp.data || []).map((r: any) => ({
+          id: r.id,
+          asset: r.assetBrand && r.assetModel ? `${r.assetBrand} ${r.assetModel}` : r.assetType || 'N/A',
+          assetType: r.assetType || 'unknown',
+          brand: r.assetBrand || '',
+          model: r.assetModel || '',
+          condition: r.assetCondition || 'Unknown',
+          requestedAmount: r.requestedAmount || 0,
+          submittedDate: r.submittedDate || r.createdAt || new Date().toISOString(),
+          district: r.district || r.customer?.district || '',
+          userName: r.customer ? `${r.customer.firstName || ''} ${r.customer.lastName || ''}`.trim() : 'Unknown',
+          userPhone: r.customer?.phoneNumber || r.customer?.phone || '',
+        }))
+
+        setLoans(fetchedLoans)
+        setRequests(fetchedRequests)
+      } catch (err: any) {
+        console.error('Failed to load admin data', err)
+        setDataError(err?.message || 'Failed to load data')
+      } finally {
+        setIsLoadingData(false)
+      }
+    }
+
+    if (!isLoading && user && user.roles?.some((r: string) => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase()))) {
+      fetchData()
+    }
+
+    return () => { mounted = false }
+  }, [isLoading, user])
+
   // Show loading while checking auth
   if (isLoading || !user || !user.roles?.some(r => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase()))) {
     return (
@@ -123,7 +190,7 @@ export default function AdminDashboard() {
     )
   }
 
-  const filteredLoans = mockLoans.filter((loan) => {
+  const filteredLoans = loans.filter((loan: any) => {
     const matchesSearch =
       loan.borrower.toLowerCase().includes(searchTerm.toLowerCase()) ||
       loan.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -140,6 +207,9 @@ export default function AdminDashboard() {
       request.id.toLowerCase().includes(searchTerm.toLowerCase())
     return matchesSearch
   })
+
+  const totalDisbursed = loans.reduce((s, l) => s + (l.loanAmount || 0), 0)
+  const totalOutstanding = loans.reduce((s, l) => s + (l.outstandingAmount || 0), 0)
 
   const handleCollectionAction = (loan: any, action: string) => {
     setSelectedLoan(loan)
@@ -191,7 +261,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total Loans</p>
-                  <p className="text-lg font-semibold">0</p>
+                  <p className="text-lg font-semibold">{loans.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -219,7 +289,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Active</p>
-                  <p className="text-lg font-semibold">0</p>
+                  <p className="text-lg font-semibold">{loans.filter(l => l.status === 'active').length}</p>
                 </div>
               </div>
             </CardContent>
@@ -233,7 +303,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Overdue</p>
-                  <p className="text-lg font-semibold">0</p>
+                  <p className="text-lg font-semibold">{loans.filter(l => l.status === 'overdue').length}</p>
                 </div>
               </div>
             </CardContent>
@@ -244,7 +314,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Disbursed</p>
                 <p className="text-lg font-semibold">
-                  ₹0L
+                  ₹{totalDisbursed.toLocaleString()}
                 </p>
               </div>
             </CardContent>
@@ -255,7 +325,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Outstanding</p>
                 <p className="text-lg font-semibold">
-                  ₹0L
+                  ₹{totalOutstanding.toLocaleString()}
                 </p>
               </div>
             </CardContent>
