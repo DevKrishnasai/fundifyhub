@@ -17,6 +17,8 @@ export const API_CONFIG = {
       RESEND_OTP: '/api/v1/auth/resend-otp',
     },
     ADMIN: {
+      GET_ACTIVE_LOANS: '/api/v1/admin/get-active-loans',
+      GET_PENDING_REQUESTS: '/api/v1/admin/get-pending-requests',
       SERVICES: '/api/v1/admin/service',
       USERS: '/api/v1/admin/users',
       USER_BY_ID: (id: string) => `/api/v1/admin/users/${id}`,
