@@ -37,7 +37,7 @@ import {
   CreditCard,
 } from "lucide-react"
 import Link from "next/link"
-import { apiGet } from "@/lib/api-client"
+import { get } from "@/lib/api-client"
 import { API_CONFIG, apiUrl } from '@/lib/utils'
 
 // Data will be loaded from admin API endpoints: /admin/get-active-loans and /admin/get-pending-requests
@@ -120,8 +120,8 @@ export default function AdminDashboard() {
       setDataError(null)
       try {
         const [activeResp, pendingResp] = await Promise.all([
-          apiGet(API_CONFIG.ENDPOINTS.ADMIN.GET_ACTIVE_LOANS),
-          apiGet(API_CONFIG.ENDPOINTS.ADMIN.GET_PENDING_REQUESTS),
+          get(API_CONFIG.ENDPOINTS.ADMIN.GET_ACTIVE_LOANS),
+          get(API_CONFIG.ENDPOINTS.ADMIN.GET_PENDING_REQUESTS),
         ])
 
         if (!mounted) return
