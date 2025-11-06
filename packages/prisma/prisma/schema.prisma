@@ -13,7 +13,7 @@ datasource db {
 // User model shd add username and Legal names as 2 diff columns instead of id and name to better identify.
 // Phone is mandatory to contact with the user.
 model User {
-  id              String   @id @default(cuid())
+  id              String   @id @default(dbgenerated("'USR' || nextval('users_seq')")) @db.Text
   email           String   @unique
   firstName       String
   lastName        String
@@ -53,7 +53,7 @@ model User {
 
 // Main Request model (simplified)
 model Request {
-  id              String        @id @default(cuid())
+  id              String        @id @default(dbgenerated("'REQ' || nextval('requests_seq')")) @db.Text
   customerId      String
   requestedAmount Float
   district        String
@@ -101,7 +101,7 @@ model Request {
 
 // Enhanced Loan model for EMI-based fixed loans
 model Loan {
-  id              String     @id @default(cuid())
+  id              String     @id @default(dbgenerated("'LR' || nextval('loans_seq')")) @db.Text
   requestId       String     @unique
   
   // Fixed Loan Terms (Set by Admin - Cannot be changed)
@@ -153,7 +153,7 @@ model Loan {
 
 // EMI Schedule model - Fixed schedule for each loan
 model EMISchedule {
-  id              String    @id @default(cuid())
+  id              String    @id @default(dbgenerated("'EMI' || nextval('emi_schedules_seq')")) @db.Text
   loanId          String
   requestId       String
   emiNumber       Int       // EMI number (1, 2, 3, ...)
@@ -183,7 +183,7 @@ model EMISchedule {
 
 // Payment model - Individual payments made
 model Payment {
-  id               String     @id @default(cuid())
+  id               String     @id @default(dbgenerated("'PAY' || nextval('payments_seq')")) @db.Text
   loanId           String
   requestId        String
   emiScheduleId    String?    // Which EMI this payment is for (if EMI payment)
@@ -212,7 +212,7 @@ model Payment {
 
 // Document model with categories
 model Document {
-  id               String           @id @default(cuid())
+  id               String           @id @default(dbgenerated("'DOC' || nextval('documents_seq')")) @db.Text
   requestId        String
   url              String
   fileSize         Int?
@@ -237,7 +237,7 @@ model Document {
 // Need a better understanding of the comments model.
 // Comment model
 model Comment {
-  id          String   @id @default(cuid())
+  id          String   @id @default(dbgenerated("'CMT' || nextval('comments_seq')")) @db.Text
   requestId   String
   authorId    String
   content     String
@@ -258,7 +258,7 @@ model Comment {
 
 // Inspection model
 model Inspection {
-  id               String           @id @default(cuid())
+  id               String           @id @default(dbgenerated("'INS' || nextval('inspections_seq')")) @db.Text
   requestId        String
   agentId          String?
   scheduledDate    DateTime?
@@ -283,7 +283,7 @@ model Inspection {
 
 // OTP Verification model for email and phone verification
 model OTPVerification {
-  id              String   @id @default(cuid())
+  id              String   @id @default(dbgenerated("'OTP' || nextval('otp_verifications_seq')")) @db.Text
   userId          String?  // Optional for temporary registration OTPs
   identifier      String   // email or phone number
   type            String   // "EMAIL" or "PHONE"
@@ -308,7 +308,7 @@ model OTPVerification {
 
 // Verification Session model for multi-step registration
 model VerificationSession {
-  id              String   @id @default(cuid())
+  id              String   @id @default(dbgenerated("'VRS' || nextval('verification_sessions_seq')")) @db.Text
   sessionId       String   @unique // Unique session identifier
   email           String
   phoneNumber     String
@@ -329,7 +329,7 @@ model VerificationSession {
 
 // Service Configuration model for admin-configurable services
 model ServiceConfig {
-  id              String   @id @default(cuid())
+  id              String   @id @default(dbgenerated("'SVC' || nextval('service_configs_seq')")) @db.Text
   serviceName     String   @unique // "WHATSAPP", "EMAIL", "SMS", etc.
   isEnabled       Boolean  @default(false)
   isActive        Boolean  @default(false) // If service is currently active/connected
