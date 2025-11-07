@@ -124,10 +124,25 @@ doc.fontSize(9).text(`Generated: ${new Date().toLocaleString()}`);
 
 doc.addPage();
 
+h1('Contents');
+bullet([
+  'Overview',
+  'Approach A — Single EC2 + RDS',
+  'Approach B — ECS Fargate + RDS',
+  'Approach C — Serverless (Lambda + Aurora/RDS Proxy)',
+  'Approach D — Hybrid (ECS web/API + EC2 worker)',
+  'Decision Flowchart',
+  'Runbook checklist',
+]);
+
+doc.addPage();
+
 h1('Overview');
 p('This guide proposes four deployment approaches with a cost-first mindset. Each section includes tradeoffs, a concrete setup checklist, and rough monthly cost ranges for 100/500/1000 monthly users.');
 
 // Approach A
+h1(' '); // spacing guard to avoid header stickiness on some viewers
+doc.addPage();
 h1('Approach A — Single EC2 + RDS');
 h2('When to pick');
 bullet([
@@ -169,6 +184,7 @@ costTable('Estimated monthly cost — Approach A', [
 ]);
 
 // Approach B
+doc.addPage();
 h1('Approach B — ECS Fargate + RDS');
 h2('When to pick');
 bullet([
@@ -206,6 +222,7 @@ costTable('Estimated monthly cost — Approach B', [
 ]);
 
 // Approach C
+doc.addPage();
 h1('Approach C — Serverless (Lambda + Aurora Serverless or RDS Proxy)');
 h2('When to pick');
 bullet([
@@ -242,6 +259,7 @@ costTable('Estimated monthly cost — Approach C', [
 ]);
 
 // Approach D
+doc.addPage();
 h1('Approach D — Hybrid (ECS for web/API, EC2 for workers)');
 h2('When to pick');
 bullet([
@@ -302,6 +320,8 @@ flowBox(midX, top + gapY*3, bw, bh, 'Pick Approach D:\nHybrid', { fill: '#F0F9FF
 callout('note', 'Tip: Start with Approach A for cost, move to B or D as traffic and team grow; choose C for spiky workloads with minimal ops.');
 
 // Runbook checklist
+h1(' ');
+doc.addPage();
 h1('Runbook checklist');
 bullet([
   'IAM: minimal roles/policies, rotate keys, use instance/task roles.',
