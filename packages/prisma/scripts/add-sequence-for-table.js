@@ -10,7 +10,7 @@
  * If --seq is omitted it will default to <table>_seq. If --prefix omitted it uses first 3 letters uppercased.
  */
 
-const { Client } = require('pg');
+const { PrismaClient } = require('@prisma/client');
 const dotenv = require('dotenv');
 const path = require('path');
 
@@ -20,6 +20,8 @@ if (!DATABASE_URL) {
   console.error('DATABASE_URL not found in .env or environment. Aborting.');
   process.exit(1);
 }
+
+const prisma = new PrismaClient();
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -49,30 +51,27 @@ async function run() {
   const prefix = opts.prefix || table.substring(0, 3).toUpperCase();
   const force = !!opts.force;
 
-  const client = new Client({ connectionString: DATABASE_URL });
-  await client.connect();
-
   try {
     console.log(`Creating sequence '${seq}' (if not exists)`);
-    await client.query(`CREATE SEQUENCE IF NOT EXISTS ${seq} START 10001;`);
+    await prisma.$executeRawUnsafe(`CREATE SEQUENCE IF NOT EXISTS ${seq} START 10001;`);
 
     // check id column exists
-    const col = await client.query(
+    const col = await prisma.$queryRawUnsafe(
       `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name = 'id'`,
-      [table]
+      table
     );
-    if (col.rowCount === 0) {
+    if (!col || col.length === 0) {
       console.warn(`Table '${table}' does not have an 'id' column. Aborting.`);
       return;
     }
 
     console.log(`Altering ${table}.id => TEXT and setting default to ${prefix}||nextval(${seq})`);
-    await client.query(`ALTER TABLE ${table} ALTER COLUMN id TYPE TEXT;`);
-    await client.query(`ALTER TABLE ${table} ALTER COLUMN id SET DEFAULT ('${prefix}' || nextval('${seq}')::text);`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE ${table} ALTER COLUMN id TYPE TEXT;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE ${table} ALTER COLUMN id SET DEFAULT ('${prefix}' || nextval('${seq}')::text);`);
 
     if (force) {
       console.log('Force flag present: truncating table (CASCADE)');
-      await client.query(`TRUNCATE TABLE ${table} CASCADE;`);
+      await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${table} CASCADE;`);
     } else {
       console.log('Not truncating table. Use --force to allow truncation.');
     }
@@ -82,7 +81,7 @@ async function run() {
     console.error('Error:', err.message || err);
     process.exitCode = 1;
   } finally {
-    await client.end();
+    await prisma.$disconnect();
   }
 }
 
