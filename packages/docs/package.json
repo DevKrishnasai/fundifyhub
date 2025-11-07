@@ -1,0 +1,13 @@
+{
+  "name": "fundify-docs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Docs helper package for Fundify — PDF generation",
+  "main": "generate-polished-deployment-pdf.js",
+  "scripts": {
+    "genpdf": "node generate-polished-deployment-pdf.js"
+  },
+  "dependencies": {
+    "pdfkit": "^0.13.0"
+  }
+}
