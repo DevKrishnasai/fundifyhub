@@ -1,11 +1,11 @@
 {
-  "name": "fundify-docs",
+  "name": "fundify-deployment-docs",
   "version": "1.0.0",
   "private": true,
-  "description": "Docs helper package for Fundify — PDF generation",
-  "main": "generate-polished-deployment-pdf.js",
+  "description": "Text-only visually attractive AWS deployment guide generator with flowchart and cost assumptions",
+  "main": "generate-deployment-guide.js",
   "scripts": {
-    "genpdf": "node generate-polished-deployment-pdf.js"
+    "gen": "node generate-deployment-guide.js"
   },
   "dependencies": {
     "pdfkit": "^0.13.0"
