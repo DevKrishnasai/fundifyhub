@@ -1,9 +1,3 @@
-import dotenv from 'dotenv';
-import path from 'path';
-
-// Load environment variables FIRST
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
-
 import { EmailWorker, WhatsAppWorker  } from './workers';
 import { serviceManager } from './services/service-manager';
 import { QUEUE_NAMES } from '@fundifyhub/types';

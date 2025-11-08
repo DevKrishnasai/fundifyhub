@@ -1,12 +1,16 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { validateLiveSocketsEnv } from '@fundifyhub/utils';
 
-// TODO: need to add validation for env variables if required variables are missing then throw an error so that server doesn't start with invalid config
+// Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+
+// Validate and get typed environment variables
+const env = validateLiveSocketsEnv();
 
 const config = {
   services: {
-      port: Number(process.env.WS_PORT)
+      port: env.WS_PORT
     }
 };
 

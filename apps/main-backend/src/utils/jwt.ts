@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { JWTPayloadType } from '@fundifyhub/types';
 import jwt from 'jsonwebtoken';
 import logger from './logger';
-import config from './env-config';
+import config from './config';
 
 const JWT_SECRET = config.jwt.secret;
 const JWT_EXPIRES_IN = config.jwt.expiresIn;

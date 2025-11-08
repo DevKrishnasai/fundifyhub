@@ -1,16 +1,20 @@
 
 import dotenv from 'dotenv';
 import path from 'path';
+import { validateJobWorkerEnv } from '@fundifyhub/utils';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 
+// Validate and get typed environment variables
+const env = validateJobWorkerEnv();
+
 const config = {
   // Redis Configuration
   redis: {
-    host: process.env.REDIS_HOST!,
-    port: Number(process.env.REDIS_PORT!),
-    url: process.env.REDIS_URL || `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`
+    host: env.REDIS_HOST,
+    port: env.REDIS_PORT,
+    url: env.REDIS_URL || `redis://${env.REDIS_HOST}:${env.REDIS_PORT}`
   },
 
   // Service Configuration
@@ -21,8 +25,8 @@ const config = {
 
   // Environment
   env: {
-    isDevelopment: process.env.NODE_ENV === 'development',
-    logLevel: process.env.LOG_LEVEL
+    isDevelopment: env.NODE_ENV === 'development',
+    logLevel: env.LOG_LEVEL
   }
 };
 

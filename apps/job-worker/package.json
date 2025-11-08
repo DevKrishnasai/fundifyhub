@@ -23,6 +23,7 @@
     "whatsapp-web.js": "^1.34.1"
   },
   "devDependencies": {
-    "@types/nodemailer": "^7.0.3"
+    "@types/nodemailer": "^7.0.3",
+    "@types/qrcode": "^1.5.5"
   }
 }

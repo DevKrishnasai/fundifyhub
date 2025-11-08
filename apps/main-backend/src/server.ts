@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { validateMainBackendEnv } from '@fundifyhub/utils';
-import config from './utils/env-config';
+import config from './utils/config';
 import apiRoutes from './api';
 import logger from './utils/logger';
 

@@ -19,8 +19,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^7.0.10",
-    "zod": "^3.25.67"
+    "nodemailer": "^7.0.10"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

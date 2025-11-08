@@ -1,8 +1,4 @@
-import { config } from 'dotenv'
-import { resolve } from 'path'
-
-// Load environment variables from monorepo root
-config({ path: resolve(process.cwd(), '../../.env') })
+import dotenv from 'dotenv';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -13,7 +9,10 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
-  }
+  },
 }
+
+// Load environment variables from root .env file
+dotenv.config({ path: '../../.env' });
 
 export default nextConfig

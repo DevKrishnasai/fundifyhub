@@ -10,16 +10,16 @@ import { validateFrontendEnv } from '@fundifyhub/utils'
 import logger from '@/lib/logger'
 import './globals.css'
 
-// Validate environment variables on server startup
-try {
-  validateFrontendEnv();
-  logger.info('✅ Frontend environment variables validated successfully');
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  logger.error(`❌ Frontend environment validation failed: ${errorMessage}`);
-  // In production, this would cause the build to fail
-  if (process.env.NODE_ENV === 'production') {
-    process.exit(1);
+// Validate environment variables on server startup (only in development)
+if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
+  try {
+    validateFrontendEnv();
+    logger.info('✅ Frontend environment variables validated successfully');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`❌ Frontend environment validation failed: ${errorMessage}`);
+    // In development, log error but don't exit
+    console.error('Frontend environment validation failed:', errorMessage);
   }
 }
 
