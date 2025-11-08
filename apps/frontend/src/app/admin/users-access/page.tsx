@@ -24,6 +24,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import logger from "@/lib/logger"
 import {
   Users,
   UserPlus,
@@ -114,7 +115,7 @@ export default function UsersAccessPage() {
         })
         if (mounted) setUsers(list)
       } catch (error) {
-        console.error('fetchUsers error', error)
+        logger.error('fetchUsers error', error as Error);
         toast({ title: 'Failed to load users', description: String(error), variant: 'destructive' })
       }
       finally {
@@ -301,7 +302,7 @@ export default function UsersAccessPage() {
       setIsAddDialogOpen(false)
       toast({ title: 'User created successfully' })
     } catch (error) {
-      console.error('create user error', error)
+      logger.error('create user error', error as Error);
       toast({
         title: 'Failed to create user',
         description: String(error),
@@ -382,7 +383,7 @@ export default function UsersAccessPage() {
       toast({ title: 'User updated' })
       closeEditor()
     } catch (error) {
-      console.error('save edit error', error)
+      logger.error('save edit error', error as Error);
       toast({ title: 'Update failed', description: String(error), variant: 'destructive' })
     } finally {
       setIsSaving(false)

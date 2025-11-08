@@ -13,13 +13,9 @@
     "@fundifyhub/logger": "workspace:*",
     "@fundifyhub/utils": "workspace:*",
     "dotenv": "^17.2.3",
-    "redis": "^4.7.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/node": "^22.18.11",
-    "@types/ws": "^8.5.12",
-    "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
+    "@types/ws": "^8.5.12"
   }
 }

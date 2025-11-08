@@ -30,6 +30,7 @@ import { BACKEND_API_CONFIG } from "@/lib/urls"
 import { get, post } from '@/lib/api-client'
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
+import logger from "@/lib/logger"
 
 // Service status type
 type ServiceStatus = {
@@ -89,7 +90,7 @@ export default function AdminSettingsPage() {
         setServices(data.data)
       }
     } catch (error: any) {
-      console.error('Load services error:', error)
+      logger.error('Load services error:', error);
       toast({
         variant: "destructive",
         title: "❌ Failed to load services",

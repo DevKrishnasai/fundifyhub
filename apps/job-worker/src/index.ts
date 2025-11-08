@@ -1,6 +1,13 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables FIRST
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+
 import { EmailWorker, WhatsAppWorker  } from './workers';
 import { serviceManager } from './services/service-manager';
 import { QUEUE_NAMES } from '@fundifyhub/types';
+import { validateJobWorkerEnv } from '@fundifyhub/utils';
 import logger from './utils/logger';
 
 class JobWorkerServer {
@@ -9,7 +16,10 @@ class JobWorkerServer {
 
   async start(): Promise<void> {
     try {
-      
+      // Validate environment variables before starting the server
+      validateJobWorkerEnv();
+      logger.info('✅ Environment variables validated successfully');
+
       // Initialize ServiceManager with logger
       serviceManager.initialize(logger);
 

@@ -17,7 +17,5 @@
     "lint": "eslint .",
     "clean": "rimraf dist"
   },
-  "devDependencies": {
-    "typescript": "^5.9.2"
-  }
+  "devDependencies": {}
 }

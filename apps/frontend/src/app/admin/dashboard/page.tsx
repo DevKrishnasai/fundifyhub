@@ -40,6 +40,7 @@ import Link from "next/link"
 import { get } from "@/lib/api-client"
 import { ROLES } from "@fundifyhub/types"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
+import logger from "@/lib/logger"
 
 // Data will be loaded from admin API endpoints: /admin/get-active-loans and /admin/get-pending-requests
 
@@ -165,7 +166,7 @@ export default function AdminDashboard() {
         setLoans(fetchedLoans)
         setRequests(fetchedRequests)
       } catch (err: any) {
-        console.error('Failed to load admin data', err)
+        logger.error('Failed to load admin data', err);
         setDataError(err?.message || 'Failed to load data')
       } finally {
         setIsLoadingData(false)

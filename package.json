@@ -44,17 +44,17 @@
     "pnpm": ">=10.17.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.38.0",
-    "@typescript-eslint/eslint-plugin": "^8.18.2",
-    "@typescript-eslint/parser": "^8.18.2",
-    "bullmq": "^5.61.0",
-    "eslint": "^9.38.0",
+    "@eslint/js": "^9.39.1",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
+    "@types/node": "^22.18.11",
+    "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-unused-imports": "^4.2.0",
+    "eslint-plugin-unused-imports": "^4.3.0",
     "prettier": "^3.6.2",
-    "tsx": "^4.20.5",
-    "turbo": "^2.5.8",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.18.2"
+    "tsx": "^4.20.6",
+    "turbo": "^2.6.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.3"
   }
 }

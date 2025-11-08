@@ -18,13 +18,10 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@fundifyhub/types": "workspace:*",
     "@fundifyhub/templates": "workspace:*",
-    "dotenv": "^16.4.5",
-    "bullmq": "^5.61.0"
+    "@fundifyhub/types": "workspace:*",
+    "bullmq": "^5.63.0",
+    "zod": "^3.25.67"
   },
-  "devDependencies": {
-    "typescript": "^5.9.2",
-    "@types/node": "^22.10.5"
-  }
+  "devDependencies": {}
 }

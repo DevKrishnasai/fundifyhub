@@ -19,6 +19,7 @@ import {
   Shield, 
   UserCheck 
 } from 'lucide-react';
+import logger from '@/lib/logger';
 
 export function UserMenu() {
   const { user, logout } = useAuth();
@@ -31,7 +32,7 @@ export function UserMenu() {
     try {
       await logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('Logout error:', error as Error);
     } finally {
       setIsLoggingOut(false);
     }

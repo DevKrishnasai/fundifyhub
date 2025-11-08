@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { BACKEND_API_CONFIG } from './urls';
+import logger from './logger';
 
 /**
  * Axios API client
@@ -23,7 +24,7 @@ const createApiClient = (): AxiosInstance => {
   instance.interceptors.response.use(
     (resp) => resp,
     (error) => {
-      console.error('API Error:', error);
+      logger.error('API Error:', error);
       return Promise.reject(error);
     }
   );

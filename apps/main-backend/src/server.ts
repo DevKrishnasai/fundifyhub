@@ -1,14 +1,23 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import { validateMainBackendEnv } from '@fundifyhub/utils';
 import config from './utils/env-config';
 import apiRoutes from './api';
 import logger from './utils/logger';
 
+// Validate environment variables before starting the server
+try {
+  validateMainBackendEnv();
+  logger.info('✅ Environment variables validated successfully');
+} catch (error) {
+  logger.error('❌ Environment validation failed:', error as Error);
+  process.exit(1);
+}
+
 const app = express();
 
 // TODO [P-2]: add rate limiting, security headers, request logging, etc.
-// TODO [P-1]: validation of env variables before starting the server 
 
 app.use(cors({
   origin: config.server.cors.origins,

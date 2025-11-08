@@ -7,6 +7,7 @@ import {
 import { ROLES, UserType } from '@fundifyhub/types';
 import { BACKEND_API_CONFIG, FRONTEND_API_CONFIG, FrontendPublicRoutes } from '@/lib/urls';
 import { get } from '@/lib/api-client';
+import logger from '@/lib/logger';
 
 interface AuthContextType {
   user: UserType | null;
@@ -181,7 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Validate session with server every 5 minutes
       const serverUser = await validateWithServer();
       if (!serverUser) {
-        console.log('Session expired, logging out');
+        logger.info('Session expired, logging out');
         handleLogout();
       }
     }, 5 * 60 * 1000);
