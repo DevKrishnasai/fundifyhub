@@ -28,10 +28,11 @@ FundifyHub is a production-ready full-stack financial application that includes:
 ## 🛠 Tech Stack
 
 ### Frontend
-- **Next.js 14** - React framework with App Router
+- **Next.js 15** - React framework with App Router
 - **TypeScript** - Type-safe JavaScript
-- **Minimal CSS** - Clean, fast-loading UI with inline styles
-- **Real-time Data** - Live users and payments dashboard
+- **Tailwind CSS 4** - Modern utility-first CSS framework with shadcn/ui components
+- **React Hook Form** - Performant form validation
+- **Real-time Data** - Live dashboard with WebSocket integration
 
 ### Backend Services
 - **Express.js** - Fast API server with CORS configuration
@@ -130,7 +131,7 @@ pnpm dev
 
 **✅ Your services are now running:**
 - **Frontend Dashboard**: http://localhost:3000
-- **API Backend**: http://localhost:3001
+- **API Backend**: http://localhost:3001/api/v1
 - **WebSocket Server**: ws://localhost:3002
 - **Redis Management UI**: http://localhost:5540 (RedisInsight)
 - **Database UI**: Run `pnpm db:ui` to open Prisma Studio
@@ -220,7 +221,7 @@ pnpm dev
 
 **✅ Your services are now running:**
 - **Frontend Dashboard**: http://localhost:3000
-- **API Backend**: http://localhost:3001
+- **API Backend**: http://localhost:3001/api/v1
 - **WebSocket Server**: ws://localhost:3002
 - **Redis Management UI**: Launch RedisInsight app
 - **Database UI**: Run `pnpm db:ui` to open Prisma Studio
@@ -274,21 +275,22 @@ pnpm format:check    # Check code formatting
 ```
 fundifyhub/
 ├── apps/                          # Applications
-│   ├── frontend/                  # 📱 Next.js dashboard (Port: 3000)
-│   │   └── src/app/page.tsx      # 🎨 Clean UI showing live data
+│   ├── frontend/                  # 📱 Next.js 15 dashboard (Port: 3000)
+│   │   └── src/                  # 🎨 App router, components, contexts
 │   ├── main-backend/             # 🔗 Express API server (Port: 3001)
-│   │   └── src/data-service.ts   # 📊 Real database operations
+│   │   └── src/                  # 📊 API routes, middleware, services
 │   ├── live-sockets/             # 🌐 WebSocket server (Port: 3002)
-│   └── job-worker/               # ⚡ Background job processor
-│       └── src/prisma-jobs.ts    # 💳 Payment & notification jobs
+│   └── job-worker/               # ⚡ Background job processor (BullMQ)
+│       └── src/                  # � Email & WhatsApp workers
 │
 ├── packages/                      # Shared packages
 │   ├── logger/                   # 🎯 Logging utility
 │   ├── prisma/                   # 🗄️ Database schema & client
-│   │   ├── schema.prisma         # 📋 Database schema definition
-│   │   └── seed.ts               # 🌱 Sample data seeding
-│   ├── types/                    # 🔷 Shared TypeScript types
-│   └── utils/                    # 🛠️ Shared utilities
+│   │   ├── prisma/schema.prisma  # 📋 Database schema definition
+│   │   └── prisma/seed.ts        # 🌱 Sample data seeding
+│   ├── templates/                # 📨 Email & message templates
+│   ├── types/                    # 🔷 Shared TypeScript types & constants
+│   └── utils/                    # 🛠️ Shared utilities & queue client
 │
 ├── infra/                        # Infrastructure
 │   └── docker-compose.yml        # 🐳 PostgreSQL, Redis, RedisInsight
@@ -304,54 +306,49 @@ fundifyhub/
 ### Default Configuration (.env)
 ```bash
 # =============================================================================
+# Application Configuration
+# =============================================================================
+NODE_ENV=development
+LOG_LEVEL=info
+
+# =============================================================================
 # Database Configuration
 # =============================================================================
 DATABASE_URL="postgresql://user:pass@localhost:5432/fundifyhub"
-POSTGRES_USER=user
-POSTGRES_PASSWORD=pass
-POSTGRES_DB=fundifyhub
+SEED_USER_PASSWORD="Password123!"
 
 # =============================================================================
 # Redis Configuration  
 # =============================================================================
-REDIS_URL="redis://localhost:6379"
 REDIS_HOST=localhost
 REDIS_PORT=6379
-
-# =============================================================================
-# Application Configuration
-# =============================================================================
-NODE_ENV=development
-LOG_LEVEL=debug
-
-# =============================================================================
-# Backend Services Configuration
-# =============================================================================
-API_PORT=3001
-API_URL="http://localhost:3001"
-WS_PORT=3002
-WS_URL="ws://localhost:3002"
-
-# =============================================================================
-# Frontend Configuration (CORS & API Communication)
-# =============================================================================
-FRONTEND_URL="http://localhost:3000"
-FRONTEND_URL_ALT="http://127.0.0.1:3000"
-NEXT_PUBLIC_API_URL="http://localhost:3001"
-NEXT_PUBLIC_WS_URL="ws://localhost:3002"
-
-# =============================================================================
-# Development/Debugging
-# =============================================================================
-FORCE_COLOR=1
-COLORTERM=truecolor
-PRISMA_HIDE_UPDATE_MESSAGE=true
+REDIS_URL="redis://localhost:6379"
 
 # =============================================================================
 # Authentication & Security
 # =============================================================================
 JWT_SECRET="your-super-secret-jwt-key-change-in-production"
 JWT_EXPIRES_IN="7d"
+JWT_REFRESH_EXPIRES_IN="30d"
+
+# =============================================================================
+# Backend Services Configuration
+# =============================================================================
+# Main API Backend
+API_PORT=3001
+API_HOST=localhost
+
+# CORS Configuration
+FRONTEND_URL="http://localhost:3000"
+
+# WebSocket Server
+WS_PORT=3002
+
+# =============================================================================
+# Frontend Configuration (Next.js Public Variables)
+# =============================================================================
+NEXT_PUBLIC_API_URL="http://localhost:3001"
+NEXT_PUBLIC_WS_URL="ws://localhost:3002"
 ```
 
 ## 🔍 Troubleshooting (Windows)
@@ -361,9 +358,9 @@ JWT_EXPIRES_IN="7d"
 1. **Frontend Shows "Failed to fetch data from backend"**
    ```powershell
    # Check if backend is running and accessible
-   curl.exe http://localhost:3001/health
+   curl.exe http://localhost:3001/api/v1/auth/health
    
-   # Verify CORS configuration in main-backend/src/index.ts
+   # Verify CORS configuration in main-backend/src/server.ts
    # Ensure .env has correct FRONTEND_URL and NEXT_PUBLIC_API_URL
    ```
 
@@ -420,11 +417,10 @@ JWT_EXPIRES_IN="7d"
 ### 🚀 **Quick Health Check**
 ```powershell
 # Verify all services are working
-curl.exe http://localhost:3001/health      # Backend health
-curl.exe http://localhost:3001/users       # API data
-curl.exe http://localhost:3000             # Frontend (in browser)
-redis-cli ping                             # Redis connection
-pnpm db:status                            # Database status
+curl.exe http://localhost:3001/api/v1/auth/health  # Backend health
+curl.exe http://localhost:3000                     # Frontend (in browser)
+redis-cli ping                                     # Redis connection
+pnpm db:status                                     # Database status
 ```
 
 ### 📞 **Need Help?**
@@ -432,3 +428,15 @@ pnpm db:status                            # Database status
 - Verify your `.env` file matches the template above
 - Ensure all prerequisites are installed (Node.js 22+, pnpm 10+)
 - For Docker users: make sure Docker Desktop is running
+
+##  Contributing
+
+For detailed coding guidelines and standards for this monorepo, please read [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+Key points for contributors and coding agents:
+- All types and constants go in `@fundifyhub/types`
+- Reusable utilities go in `@fundifyhub/utils`
+- Follow TypeScript project reference structure
+- Use `workspace:*` protocol for internal dependencies
+- Run `pnpm build` to rebuild everything in correct order
+
