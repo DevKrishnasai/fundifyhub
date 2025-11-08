@@ -5,10 +5,9 @@
   "private": true,
   "scripts": {
     "dev": "pnpm run db:generate && turbo run dev",
-    "build": "turbo run build",
+    "build": "pnpm run db:generate && turbo run build",
     "lint": "turbo run lint",
-    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/.next apps/*/dist apps/*/build packages/*/dist packages/*/build .turbo && pnpm store prune",
-    "clean:windows": "if exist node_modules rmdir /s /q node_modules && if exist .turbo rmdir /s /q .turbo && for /d %i in (apps\\*) do (if exist \"%i\\node_modules\" rmdir /s /q \"%i\\node_modules\" && if exist \"%i\\.next\" rmdir /s /q \"%i\\.next\" && if exist \"%i\\dist\" rmdir /s /q \"%i\\dist\" && if exist \"%i\\build\" rmdir /s /q \"%i\\build\") && for /d %i in (packages\\*) do (if exist \"%i\\node_modules\" rmdir /s /q \"%i\\node_modules\" && if exist \"%i\\dist\" rmdir /s /q \"%i\\dist\" && if exist \"%i\\build\" rmdir /s /q \"%i\\build\")",
+    "clean": "node scripts/clean.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "setup": "node setup.js",
@@ -47,9 +46,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/node": "^22.18.11",
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.46.3",
-    "@types/node": "^22.18.11",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-unused-imports": "^4.3.0",
@@ -58,5 +57,8 @@
     "turbo": "^2.6.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3"
+  },
+  "dependencies": {
+    "rimraf": "^6.0.1"
   }
 }
