@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -b --force",
     "dev": "tsc --watch",
     "lint": "eslint .",
     "clean": "rimraf dist"

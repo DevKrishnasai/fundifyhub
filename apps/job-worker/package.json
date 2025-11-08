@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc -b --force",
     "start": "node dist/index.js",
     "lint": "eslint .",
     "cleanup:whatsapp": "node scripts/cleanup-whatsapp-session.js",
