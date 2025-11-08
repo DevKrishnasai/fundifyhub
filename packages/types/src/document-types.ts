@@ -8,6 +8,14 @@ export interface UploadedFile {
   signedUrl?: string;
 }
 
+// Asset photo data received from frontend for asset requests
+export interface AssetPhotoData {
+  fileKey: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+}
+
 export interface DocumentMetadata {
   fileKey: string;
   fileName: string;

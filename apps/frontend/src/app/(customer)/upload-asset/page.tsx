@@ -11,80 +11,23 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
-import { Progress } from "@/components/ui/progress"
 import toast from "react-hot-toast"
-import { Upload, X, Camera, FileText, MapPin, CreditCard, ArrowLeft, CheckCircle } from "lucide-react"
+import { Camera, CreditCard, ArrowLeft, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
 import { post } from '@/lib/api-client'
 import { AssetUpload } from "@/lib/uploadthing"
-const assetTypes = [
-  { value: "LAPTOP", label: "Laptop" },
-  { value: "TABLET", label: "Tablet" },
-  { value: "CAMERA", label: "Camera" },
-  { value: "GAMING CONSOLE", label: "Gaming Console" },
-  { value: "MOTORCYCLE", label: "Motorcycle" },
-  { value: "CAR", label: "Car" },
-  { value: "JEWELRY", label: "Jewelry" },
-  { value: "OTHER", label: "Other" },
-]
-
-const assetConditions = [
-  { value: "EXCELLENT", label: "Excellent - Like new" },
-  { value: "GOOD", label: "Good - Minor wear" },
-  { value: "FAIR", label: "Fair - Visible wear" },
-  { value: "POOR", label: "Poor - Significant wear" },
-]
-
-const districts = [
-  "Mumbai",
-  "Delhi",
-  "Bangalore",
-  "Hyderabad",
-  "Chennai",
-  "Kolkata",
-  "Pune",
-  "Ahmedabad",
-  "Jaipur",
-  "Lucknow",
-  "Kanpur",
-  "Nagpur",
-  "Indore",
-  "Thane",
-  "Bhopal",
-  "Visakhapatnam",
-  "Pimpri-Chinchwad",
-  "Patna",
-  "Vadodara",
-  "Ghaziabad",
-  "Ludhiana",
-  "Agra",
-  "Nashik",
-  "Faridabad",
-]
-
-interface AssetPhoto {
-  id: string
-  file: File
-  preview: string
-}
-
-interface IDProof {
-  id: string
-  file: File
-  preview: string
-  type: string
-}
+import type { UploadedFile } from "@fundifyhub/types"
+import { ASSET_TYPE_OPTIONS, ASSET_CONDITION_OPTIONS } from "@fundifyhub/types"
 
 export default function UploadAssetPage() {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState(1)
-  const [assetPhotos, setAssetPhotos] = useState<{ url: string; name: string; fileKey?: string }[]>([])
+  const [assetPhotos, setAssetPhotos] = useState<UploadedFile[]>([])
   // Removed ID proof state
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
   const [purchaseYearError, setPurchaseYearError] = useState("")
   const currentYear = new Date().getFullYear()
 
@@ -94,12 +37,11 @@ export default function UploadAssetPage() {
     assetModel: "",
     assetCondition: "",
     purchaseYear: "",
-    description: "",
-    district: "",
+    AdditionalDescription: "",
     requestedAmount: null,
   })
 
-  const handleAssetUploadComplete = (files: { url: string; name: string; fileKey?: string }[]) => {
+  const handleAssetUploadComplete = (files: UploadedFile[]) => {
     setAssetPhotos(files);
   };
 
@@ -132,14 +74,14 @@ export default function UploadAssetPage() {
 
   const handleSubmit = async () => {
     setIsSubmitting(true)
-    setUploadProgress(0)
 
-    // Prepare assetPhotos with both URLs and fileKeys for private files
+    // Prepare assetPhotos with full metadata (backend expects array of objects)
     const assetPhotoData = assetPhotos.map((photo) => ({
-      url: photo.url,
       fileKey: photo.fileKey,
-      name: photo.name,
-    }));
+      fileName: photo.fileName,
+      fileSize: photo.fileSize,
+      fileType: photo.fileType,
+    })).filter((photo) => photo.fileKey && photo.fileName);
 
     // Prepare payload
     const payload = {
@@ -163,7 +105,6 @@ export default function UploadAssetPage() {
     } catch (error: any) {
       toast.error(`Upload failed: ${error.message || "Something went wrong. Please try again."}`);
       setIsSubmitting(false);
-      setUploadProgress(0);
     }
   }
 
@@ -278,7 +219,7 @@ export default function UploadAssetPage() {
                   Upload Asset Photos
                 </CardTitle>
                 <p className="text-sm sm:text-base text-muted-foreground">
-                  Upload at least 2 clear photos of your asset from different angles
+                  Upload at least 2 clear photos of your asset from different angles. You can select multiple images at once.
                 </p>
               </CardHeader>
               <CardContent>
@@ -288,11 +229,6 @@ export default function UploadAssetPage() {
                   maxFiles={5}
                 />
 
-                {assetPhotos.length < 2 && (
-                  <p className="text-xs sm:text-sm text-muted-foreground">
-                    Please upload at least 2 photos to continue
-                  </p>
-                )}
               </CardContent>
             </Card>
 
@@ -311,7 +247,7 @@ export default function UploadAssetPage() {
                         <SelectValue placeholder="Select asset type" />
                       </SelectTrigger>
                       <SelectContent>
-                        {assetTypes.map((type) => (
+                        {ASSET_TYPE_OPTIONS.map((type) => (
                           <SelectItem key={type.value} value={type.value}>
                             {type.label}
                           </SelectItem>
@@ -404,7 +340,7 @@ export default function UploadAssetPage() {
                       <SelectValue placeholder="Select condition" />
                     </SelectTrigger>
                     <SelectContent>
-                      {assetConditions.map((condition) => (
+                      {ASSET_CONDITION_OPTIONS.map((condition) => (
                         <SelectItem key={condition.value} value={condition.value}>
                           {condition.label}
                         </SelectItem>
@@ -428,14 +364,14 @@ export default function UploadAssetPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="description" className="text-sm sm:text-base">
+                  <Label htmlFor="AdditionalDescription" className="text-sm sm:text-base">
                     Additional Description
                   </Label>
                   <Textarea
-                    id="description"
+                    id="AdditionalDescription"
                     placeholder="Any additional details about your asset (accessories, warranty, etc.)"
-                    value={formData.description}
-                    onChange={(e) => handleInputChange("description", e.target.value)}
+                    value={formData.AdditionalDescription}
+                    onChange={(e) => handleInputChange("AdditionalDescription", e.target.value)}
                     rows={3}
                     className="resize-none"
                   />
@@ -478,7 +414,7 @@ export default function UploadAssetPage() {
                       <div>
                         <p className="text-xs sm:text-sm text-muted-foreground">Asset Type</p>
                         <p className="font-medium text-sm sm:text-base">
-                          {assetTypes.find((t) => t.value === formData.assetType)?.label}
+                          {ASSET_TYPE_OPTIONS.find((t) => t.value === formData.assetType)?.label}
                         </p>
                       </div>
                       <div>
@@ -490,7 +426,7 @@ export default function UploadAssetPage() {
                       <div>
                         <p className="text-xs sm:text-sm text-muted-foreground">Condition</p>
                         <p className="font-medium text-sm sm:text-base">
-                          {assetConditions.find((c) => c.value === formData.assetCondition)?.label}
+                          {ASSET_CONDITION_OPTIONS.find((c) => c.value === formData.assetCondition)?.label}
                         </p>
                       </div>
                       {formData.purchaseYear && (
@@ -526,11 +462,11 @@ export default function UploadAssetPage() {
                     </div>
                   </div>
 
-                  {formData.description && (
+                  {formData.AdditionalDescription && (
                     <div>
                       <h3 className="font-semibold text-base mb-3">Additional Notes</h3>
                       <p className="text-sm sm:text-base text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                        {formData.description}
+                        {formData.AdditionalDescription}
                       </p>
                     </div>
                   )}
@@ -547,16 +483,6 @@ export default function UploadAssetPage() {
                 Back to Details
               </Button>
               <div className="space-y-4">
-                {isSubmitting && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>Uploading your request...</span>
-                      <span>{uploadProgress}%</span>
-                    </div>
-                    <Progress value={uploadProgress} className="w-full" />
-                  </div>
-                )}
-                
                 <Button
                   onClick={handleSubmit}
                   disabled={!canSubmit || isSubmitting}

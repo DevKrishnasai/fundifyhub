@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '@fundifyhub/prisma';
-import { LOAN_STATUS, REQUEST_STATUS } from '@fundifyhub/types';
+import { LOAN_STATUS, REQUEST_STATUS, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
 import { APIResponseType } from '../../types';
 import logger from '../../utils/logger';
 
@@ -52,16 +52,7 @@ export async function getActiveLoansController(req: Request, res: Response): Pro
  */
 export async function getPendingRequestsController(req: Request, res: Response): Promise<void> {
   try {
-    const pendingStatuses = [
-      REQUEST_STATUS.PENDING,
-      REQUEST_STATUS.UNDER_REVIEW,
-      REQUEST_STATUS.OFFER_MADE,
-      REQUEST_STATUS.OFFER_ACCEPTED,
-      REQUEST_STATUS.OFFER_REJECTED,
-      REQUEST_STATUS.INSPECTION_SCHEDULED,
-      REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-      REQUEST_STATUS.INSPECTION_COMPLETED
-    ];
+    const pendingStatuses = PENDING_REQUEST_STATUSES;
 
     const pendingRequests = await prisma.request.findMany({
       where: {

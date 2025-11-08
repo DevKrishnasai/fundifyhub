@@ -21,15 +21,24 @@ export const ourFileRouter: FileRouter = {
    * @returns Metadata including userId, userEmail, userRoles, userDistrict
    * @onUploadComplete Returns file metadata without public URL (private files)
    */
-  assetImageUploader: f({ image: { maxFileSize: '4MB' } })
+  assetImageUploader: f({
+    image: { maxFileSize: '4MB', maxFileCount: 5 },
+  })
     // Set permissions and file types for this FileRoute
     .middleware(async ({ req }: { req: Request }) => {
       // This code runs on your server before upload
       // If you throw, the user will not be able to upload
 
       try {
+        // Forward cookie from incoming request to auth validation API
+        const cookie = req.headers.get('cookie');
         const validationResult = await get<AuthValidationResponse>(
-          BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE
+          BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE,
+          {
+            headers: {
+              cookie: cookie ?? '',
+            },
+          }
         );
 
         if (

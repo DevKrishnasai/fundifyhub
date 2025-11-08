@@ -15,6 +15,7 @@ export enum TEMPLATE_NAMES {
   WELCOME = 'WELCOME',
   OTP_VERIFICATION = 'OTP_VERIFICATION',
   LOGIN_ALERT = 'LOGIN_ALERT',
+  ASSET_PLEDGE = 'ASSET_PLEDGE',
 };
 
 export enum QUEUE_NAMES {
@@ -83,6 +84,71 @@ export enum ASSET_CONDITION {
   FAIR = "FAIR",
   POOR = "POOR"
 }
+
+export const ASSET_TYPE_OPTIONS = [
+  { value: "LAPTOP", label: "Laptop" },
+  { value: "TABLET", label: "Tablet" },
+  { value: "CAMERA", label: "Camera" },
+  { value: "GAMING CONSOLE", label: "Gaming Console" },
+  { value: "MOTORCYCLE", label: "Motorcycle" },
+  { value: "CAR", label: "Car" },
+  { value: "JEWELRY", label: "Jewelry" },
+  { value: "OTHER", label: "Other" },
+]
+
+export const ASSET_CONDITION_OPTIONS = [
+  { value: "EXCELLENT", label: "Excellent - Like new" },
+  { value: "GOOD", label: "Good - Minor wear" },
+  { value: "FAIR", label: "Fair - Visible wear" },
+  { value: "POOR", label: "Poor - Significant wear" },
+]
+
+export const DISTRICTS = [
+  "Mumbai",
+  "Delhi",
+  "Bangalore",
+  "Hyderabad",
+  "Chennai",
+  "Kolkata",
+  "Pune",
+  "Ahmedabad",
+  "Jaipur",
+  "Lucknow",
+  "Kanpur",
+  "Nagpur",
+  "Indore",
+  "Thane",
+  "Bhopal",
+  "Visakhapatnam",
+  "Pimpri-Chinchwad",
+  "Patna",
+  "Vadodara",
+  "Ghaziabad",
+  "Ludhiana",
+  "Agra",
+  "Nashik",
+  "Faridabad",
+]
+
+export const ADMIN_AGENT_ROLES = ["SUPER_ADMIN", "DISTRICT_ADMIN", "AGENT"];
+
+export const ALLOWED_UPDATE_STATUSES = [
+  REQUEST_STATUS.PENDING,
+  REQUEST_STATUS.OFFER_REJECTED,
+  REQUEST_STATUS.REJECTED,
+  REQUEST_STATUS.CANCELLED
+];
+
+export const PENDING_REQUEST_STATUSES = [
+  REQUEST_STATUS.PENDING,
+  REQUEST_STATUS.UNDER_REVIEW,
+  REQUEST_STATUS.OFFER_MADE,
+  REQUEST_STATUS.OFFER_ACCEPTED,
+  REQUEST_STATUS.OFFER_REJECTED,
+  REQUEST_STATUS.INSPECTION_SCHEDULED,
+  REQUEST_STATUS.INSPECTION_IN_PROGRESS,
+  REQUEST_STATUS.INSPECTION_COMPLETED
+];
 
 export enum DOCUMENT_CATEGORY {
   ASSET = "ASSET",                    // Asset photos, receipts

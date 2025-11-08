@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { generateUploadButton } from "@uploadthing/react";
+import { generateReactHelpers } from "@uploadthing/react";
 import type { OurFileRouter } from "./uploadthing";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { X } from "lucide-react";
 import Image from "next/image";
 import { BACKEND_API_CONFIG } from "@/lib/urls";
 import { useAuth } from "@/contexts/AuthContext";
 import type { UploadedFile } from "@fundifyhub/types";
 
-const UploadButton = generateUploadButton<OurFileRouter>();
+const { useUploadThing } = generateReactHelpers<OurFileRouter>();
 
 /**
  * Represents an uploaded file with its metadata and display state
@@ -24,6 +25,10 @@ interface UploadedFilePreview {
   fileKey?: string;
   /** Generated signed URL for private file access */
   signedUrl?: string;
+  /** File size in bytes */
+  fileSize?: number;
+  /** MIME type of the file */
+  fileType?: string;
 }
 
 /**
@@ -150,7 +155,45 @@ export function AssetUpload({
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFilePreview[]>([]);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
+  const [errorMsg, setErrorMsg] = useState<string>("");
   const { user } = useAuth();
+
+  const { startUpload, isUploading } = useUploadThing("assetImageUploader", {
+    onClientUploadComplete: (res) => {
+      setErrorMsg("");
+      const newFiles: UploadedFilePreview[] = res.map(file => ({
+        url: file.url || "",
+        name: file.name,
+        fileKey: file.key,
+        signedUrl: "",
+        fileSize: file.size,
+        fileType: file.type,
+      }));
+
+      const updatedFiles = [...uploadedFiles, ...newFiles];
+      if (updatedFiles.length > maxFiles) {
+        setErrorMsg(`You can upload a maximum of ${maxFiles} images.`);
+        return;
+      }
+      setUploadedFiles(updatedFiles);
+
+      // Convert to UploadedFile[] for the callback with proper metadata
+      const uploadedFileResults: UploadedFile[] = updatedFiles.map(file => ({
+        fileKey: file.fileKey || "",
+        fileName: file.name,
+        fileSize: file.fileSize || 0,
+        fileType: file.fileType || "",
+        url: file.url,
+      }));
+
+      onUploadComplete(uploadedFileResults);
+    },
+    onUploadError: (error) => {
+      console.error("Upload error:", error);
+      setErrorMsg("Upload failed. Please try again.");
+      onUploadError?.(error);
+    },
+  });
 
   // Generate signed URLs on-demand for display
   /**
@@ -187,20 +230,9 @@ export function AssetUpload({
     setLoadingKeys(prev => new Set(prev).add(fileKey));
 
     try {
-      const url = `${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.GET_SIGNED_URL_BY_FILEKEY(fileKey)}?expiresIn=900`;
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
+      const url = BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.GET_SIGNED_URL_BY_FILEKEY(fileKey) + '?expiresIn=900';
+      // Use shared axios get method (sends cookies automatically)
+      const data = await import('../api-client').then(mod => mod.get<any>(url));
 
       if (data.success && data.data?.url) {
         setSignedUrls(prev => ({ ...prev, [fileKey]: data.data.url }));
@@ -220,99 +252,106 @@ export function AssetUpload({
   }, [signedUrls, loadingKeys]);
 
   /**
-   * Handle successful file upload completion
-   *
-   * Processes UploadThing response and updates component state with uploaded files.
-   * Converts UploadThing metadata to component's UploadedFilePreview format.
-   *
-   * @param res - Array of uploaded file objects from UploadThing
-   */
-  const handleUploadComplete = async (res: any[]) => {
-    const newFiles: UploadedFilePreview[] = [];
-
-    for (const file of res) {
-      newFiles.push({
-        url: "", // Will be set when signed URL is generated
-        name: file.fileName || file.name,
-        fileKey: file.fileKey || file.key,
-        signedUrl: "",
-      });
-    }
-
-    const updatedFiles = [...uploadedFiles, ...newFiles];
-    setUploadedFiles(updatedFiles);
-
-    // Convert to UploadedFile[] for the callback
-    const uploadedFileResults: UploadedFile[] = newFiles.map(file => ({
-      fileKey: file.fileKey || "",
-      fileName: file.name,
-      fileSize: 0, // Will be set from UploadThing response if available
-      fileType: "",
-      url: file.url,
-    }));
-
-    onUploadComplete(uploadedFileResults);
-  };
-
-  /**
-   * Handle upload error
-   *
-   * Logs error and calls optional error callback
-   *
-   * @param error - Upload error object
-   */
-  const handleUploadError = (error: Error) => {
-    console.error("Upload error:", error);
-    onUploadError?.(error);
-  };
-
-  /**
    * Remove a file from the uploaded files list
    *
    * @param index - Index of file to remove
    */
   const removeFile = (index: number) => {
+    setErrorMsg("");
     const updatedFiles = uploadedFiles.filter((_, i) => i !== index);
     setUploadedFiles(updatedFiles);
-
-    // Convert to UploadedFile[] for the callback
+    // Convert to UploadedFile[] for the callback with proper metadata
     const uploadedFileResults: UploadedFile[] = updatedFiles.map(file => ({
       fileKey: file.fileKey || "",
       fileName: file.name,
-      fileSize: 0,
-      fileType: "",
+      fileSize: file.fileSize || 0,
+      fileType: file.fileType || "",
       url: file.url,
     }));
-
     onUploadComplete(uploadedFileResults);
   };
 
   return (
     <div className={`space-y-4 ${className}`}>
+      {/* Top instructional section is handled by parent or page, not here */}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {uploadedFiles.map((file, index) => (
-          <UploadedFilePreview 
-            key={index} 
-            file={file} 
+          <UploadedFilePreview
+            key={index}
+            file={file}
             onRemove={() => removeFile(index)}
             getSignedUrl={getSignedUrl}
           />
         ))}
 
         {uploadedFiles.length < maxFiles && (
-          <UploadButton
-            endpoint="assetImageUploader"
-            onClientUploadComplete={handleUploadComplete}
-            onUploadError={handleUploadError}
-            className="border-2 border-dashed border-border rounded-lg p-3 sm:p-4 h-24 sm:h-32 flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors ut-button:bg-transparent ut-button:text-muted-foreground ut-button:hover:text-primary"
-          />
+          <div className={`border-2 border-dashed rounded-lg p-3 sm:p-4 h-24 sm:h-32 flex flex-col items-center justify-center cursor-pointer transition-colors ${
+            isUploading
+              ? 'border-muted bg-muted/50 cursor-not-allowed'
+              : 'border-border hover:border-primary'
+          }`}>
+            {isUploading ? (
+              <div className="flex flex-col items-center gap-2">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                <div className="text-sm text-muted-foreground">Uploading...</div>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (files.length === 0) return;
+
+                    // Filter to only PNG and JPEG
+                    const allowedFiles = files.filter(file =>
+                      file.type === 'image/png' || file.type === 'image/jpeg'
+                    );
+
+                    if (allowedFiles.length !== files.length) {
+                      setErrorMsg("Only PNG and JPEG images are allowed.");
+                      e.target.value = '';
+                      return;
+                    }
+
+                    // Check total file count before upload
+                    const totalFiles = uploadedFiles.length + allowedFiles.length;
+                    if (totalFiles > maxFiles) {
+                      setErrorMsg(`You can upload a maximum of ${maxFiles} images.`);
+                      e.target.value = '';
+                      return;
+                    }
+
+                    setErrorMsg("");
+                    startUpload(allowedFiles);
+                    e.target.value = '';
+                  }}
+                  className="hidden"
+                  id="file-upload"
+                  disabled={isUploading}
+                />
+                <label htmlFor="file-upload" className={`cursor-pointer text-center ${isUploading ? 'pointer-events-none' : ''}`}>
+                  <div className="text-muted-foreground text-sm">
+                    Click to select multiple images
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    PNG, JPEG only (max {maxFiles})
+                  </div>
+                </label>
+              </>
+            )}
+          </div>
         )}
       </div>
 
-      {uploadedFiles.length === 0 && (
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Please upload at least 2 photos to continue
-        </p>
+      {errorMsg && (
+        <Alert variant="destructive" className="mt-2">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
       )}
     </div>
   );
