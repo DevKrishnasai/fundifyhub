@@ -193,8 +193,10 @@ async function main() {
       prisma.document.create({
         data: {
           requestId: req.id,
-          url: `https://example.com/documents/${i + 1}.pdf`,
-          mimeType: "application/pdf",
+          fileKey: `demo-file-key-${i + 1}`,
+          fileName: `document-${i + 1}.pdf`,
+          fileSize: 1024000,
+          fileType: "application/pdf",
           documentType: "id_proof",
           documentCategory: "KYC",
           uploadedBy: customer.id,

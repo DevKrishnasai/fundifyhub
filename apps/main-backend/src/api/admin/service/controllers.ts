@@ -18,7 +18,7 @@ export async function getAllServicesController(req: Request, res: Response): Pro
     const SUPPORTED_SERVICES = Object.values(SERVICE_NAMES);
     
     for (const serviceName of SUPPORTED_SERVICES) {
-      if (!configs.find((cfg: any) => cfg.serviceName === serviceName)) {
+      if (!configs.find((cfg) => cfg.serviceName === serviceName)) {
         await prisma.serviceConfig.upsert({
           where: { serviceName },
           update: {},
@@ -36,18 +36,18 @@ export async function getAllServicesController(req: Request, res: Response): Pro
     }
     
     configs = await prisma.serviceConfig.findMany({ orderBy: { serviceName: 'asc' } });
-    const serviceStatuses = configs.map((cfg: any) => {
+    const serviceStatuses = configs.map((cfg) => {
       let transformedConfig = cfg.config;
       
       if (cfg.serviceName === 'EMAIL' && cfg.config && typeof cfg.config === 'object') {
-        const emailConfig = cfg.config as any;
+        const emailConfig = cfg.config as Record<string, unknown>;
         transformedConfig = {
           host: emailConfig.smtpHost,
           port: emailConfig.smtpPort,
           user: emailConfig.smtpUser,
           password: emailConfig.smtpPass,
           from: emailConfig.from,
-        };
+        } as any;
       }
       
       return {

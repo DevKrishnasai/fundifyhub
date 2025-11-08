@@ -34,6 +34,17 @@ export const BACKEND_API_CONFIG = {
       PENDING_LOANS_COUNT: '/api/v1/user/pending-loans-count',
       TOTAL_BORROW: '/api/v1/user/total-borrow'
     },
+    DOCUMENTS: {
+      CREATE: '/api/v1/documents',
+      CREATE_BULK: '/api/v1/documents/bulk',
+      LIST: '/api/v1/documents',
+      GET_BY_ID: (id: string) => `/api/v1/documents/${id}`,
+      GET_SIGNED_URL: (id: string) => `/api/v1/documents/${id}/url`,
+      GET_SIGNED_URL_BY_FILEKEY: (fileKey: string) => `/api/v1/documents/signed-url-by-filekey/${fileKey}`,
+      GET_BULK_SIGNED_URLS: '/api/v1/documents/signed-urls',
+      DELETE: (id: string) => `/api/v1/documents/${id}`,
+      VERIFY: (id: string) => `/api/v1/documents/${id}/verify`,
+    },
   }
 }
 

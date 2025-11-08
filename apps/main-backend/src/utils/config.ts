@@ -35,7 +35,11 @@ export const config = {
     url: env.REDIS_URL
   },
 
-  // Environment
+  storage: {
+    uploadthingToken: env.UPLOADTHING_TOKEN
+  },
+
+  // Environment Configuration
   env: {
     isDevelopment: env.NODE_ENV === 'development',
     logLevel: env.LOG_LEVEL || 'info'

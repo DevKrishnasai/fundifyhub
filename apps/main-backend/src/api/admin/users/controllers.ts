@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { APIResponseType } from '../../../types';
 import logger from '../../../utils/logger';
-import { prisma } from '@fundifyhub/prisma';
+import { Prisma, prisma } from '@fundifyhub/prisma';
 import bcrypt from 'bcrypt';
 import { checkUserExists } from './utils';
 
@@ -29,7 +29,7 @@ export async function createUserController(req: Request, res: Response): Promise
     const tempPassword = Math.random().toString(36).slice(-12);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    const userData: any = {
+    const userData: Prisma.UserCreateInput = {
       email: email.toLowerCase(),
       firstName,
       lastName,
@@ -96,7 +96,7 @@ export async function listUsersController(req: Request, res: Response): Promise<
 export async function updateUserController(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const payload = req.body as any;
+    const payload = req.body;
 
     if (!id) {
       res.status(400).json({ success: false, message: 'User id is required' } as APIResponseType);
@@ -127,7 +127,7 @@ export async function updateUserController(req: Request, res: Response): Promise
       }
     }
 
-    const allowed: any = {};
+    const allowed: Partial<Prisma.UserUpdateInput> = {};
     if (typeof payload.isActive === 'boolean') allowed.isActive = payload.isActive;
     if (Array.isArray(payload.roles)) allowed.roles = payload.roles;
     if (payload.firstName !== undefined) allowed.firstName = payload.firstName;

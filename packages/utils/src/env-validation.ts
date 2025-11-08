@@ -31,6 +31,8 @@ export const frontendEnvSchema = z.object({
   ...commonEnvSchema.shape,
   NEXT_PUBLIC_API_URL: z.string().url('NEXT_PUBLIC_API_URL must be a valid URL'),
   NEXT_PUBLIC_WS_URL: z.string().url('NEXT_PUBLIC_WS_URL must be a valid URL'),
+  // UploadThing configuration (frontend also needs token for client-side uploads)
+  UPLOADTHING_TOKEN: z.string().min(1, 'UPLOADTHING_TOKEN is required'),
 });
 
 // Main backend environment variables
@@ -46,6 +48,9 @@ export const mainBackendEnvSchema = z.object({
 
   // CORS configuration
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL'),
+
+  // UploadThing configuration
+  UPLOADTHING_TOKEN: z.string().min(1, 'UPLOADTHING_TOKEN is required'),
 });
 
 // Live sockets environment variables

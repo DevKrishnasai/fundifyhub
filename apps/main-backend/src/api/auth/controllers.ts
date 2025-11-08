@@ -365,8 +365,8 @@ export async function register(
             },
           },
         } as APIResponseType);
-    } catch (err: any) {
-      if (err?.code === 'P2002')
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002')
         return res
           .status(409)
           .json({
@@ -400,36 +400,42 @@ export async function register(
 export async function login(
   req: Request,
   res: Response
-): Promise<any> {
+): Promise<void> {
   try {
     const { email, password } = req.body;
-    if (!email || !password)
-      return res
+    if (!email || !password) {
+      res
         .status(400)
         .json({
           success: false,
           message: 'Email and password required',
         } as APIResponseType);
+      return;
+    }
 
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
-    if (!user || !user.password)
-      return res
+    if (!user || !user.password) {
+      res
         .status(401)
         .json({
           success: false,
           message: 'Invalid email or password',
         } as APIResponseType);
+      return;
+    }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid)
-      return res
+    if (!isPasswordValid) {
+      res
         .status(401)
         .json({
           success: false,
           message: 'Invalid email or password',
         } as APIResponseType);
+      return;
+    }
 
     await prisma.user.update({
       where: { id: user.id },
@@ -481,7 +487,7 @@ export async function login(
       }
     })();
 
-    return res
+    res
       .status(200)
       .json({
         success: true,
@@ -497,7 +503,7 @@ export async function login(
       } as APIResponseType);
   } catch (error) {
     logger.error('Login error:', error as Error);
-    return res
+    res
       .status(500)
       .json({ success: false, message: 'Login failed' } as APIResponseType);
   }
@@ -517,9 +523,9 @@ export async function login(
 export async function logout(
   req: Request,
   res: Response
-): Promise<any> {
+): Promise<void> {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (userId) {
       await prisma.user.update({
         where: { id: userId },
@@ -533,7 +539,7 @@ export async function logout(
       sameSite: 'lax',
       path: '/',
     });
-    return res
+    res
       .status(200)
       .json({
         success: true,
@@ -541,7 +547,7 @@ export async function logout(
       } as APIResponseType);
   } catch (error) {
     logger.error('Logout error:', error as Error);
-    return res
+    res
       .status(500)
       .json({ success: false, message: 'Logout failed' } as APIResponseType);
   }

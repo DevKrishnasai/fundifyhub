@@ -12,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 import { Progress } from "@/components/ui/progress"
-import { useToast } from "@/hooks/use-toast"
+import toast from "react-hot-toast"
 import { Upload, X, Camera, FileText, MapPin, CreditCard, ArrowLeft, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
 import { post } from '@/lib/api-client'
+import { AssetUpload } from "@/lib/uploadthing"
 const assetTypes = [
   { value: "LAPTOP", label: "Laptop" },
   { value: "TABLET", label: "Tablet" },
@@ -78,9 +79,8 @@ interface IDProof {
 
 export default function UploadAssetPage() {
   const router = useRouter()
-  const { toast } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
-  const [assetPhotos, setAssetPhotos] = useState<AssetPhoto[]>([])
+  const [assetPhotos, setAssetPhotos] = useState<{ url: string; name: string; fileKey?: string }[]>([])
   // Removed ID proof state
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
@@ -99,30 +99,13 @@ export default function UploadAssetPage() {
     requestedAmount: null,
   })
 
-  const handleAssetPhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
+  const handleAssetUploadComplete = (files: { url: string; name: string; fileKey?: string }[]) => {
+    setAssetPhotos(files);
+  };
 
-    Array.from(files).forEach((file) => {
-      if (file.type.startsWith("image/")) {
-        const id = Math.random().toString(36).substr(2, 9)
-        const preview = URL.createObjectURL(file)
-        setAssetPhotos((prev) => [...prev, { id, file, preview }])
-      }
-    })
-  }
-
-  // Removed ID proof upload handler
-
-  const removeAssetPhoto = (id: string) => {
-    setAssetPhotos((prev) => {
-      const photo = prev.find((p) => p.id === id)
-      if (photo) URL.revokeObjectURL(photo.preview)
-      return prev.filter((p) => p.id !== id)
-    })
-  }
-
-  // Removed ID proof remove handler
+  const handleAssetUploadError = (error: Error) => {
+    toast.error(`Upload failed: ${error.message}`);
+  };
 
   const handleInputChange = (field: string, value: string) => {
     // Validate purchase year when that field changes
@@ -151,21 +134,18 @@ export default function UploadAssetPage() {
     setIsSubmitting(true)
     setUploadProgress(0)
 
-
-    // Prepare assetPhotos URLs (dummy for now, but structure for real upload)
-    // If you implement upload, replace this with actual upload logic
-    const assetPhotoUrls = assetPhotos.length > 0
-      ? assetPhotos.map((_, i) => `https://images.unsplash.com/photo-1519125323398-675f0ddb6308?dummy=${i}`)
-      : [
-          "https://images.unsplash.com/photo-1519125323398-675f0ddb6308",
-          "https://images.unsplash.com/photo-1526178613658-3f1622045544"
-        ];
+    // Prepare assetPhotos with both URLs and fileKeys for private files
+    const assetPhotoData = assetPhotos.map((photo) => ({
+      url: photo.url,
+      fileKey: photo.fileKey,
+      name: photo.name,
+    }));
 
     // Prepare payload
     const payload = {
       ...formData,
-  requestedAmount: parseFloat(formData.requestedAmount ?? "") || 0,
-      assetPhotos: assetPhotoUrls,
+      requestedAmount: parseFloat(formData.requestedAmount ?? "") || 0,
+      assetPhotos: assetPhotoData, // Now includes fileKey for signed URL generation
     };
 
     try {
@@ -176,19 +156,12 @@ export default function UploadAssetPage() {
       }
 
       setIsSubmitted(true);
-      toast({
-        title: "Loan request submitted!",
-        description: "Your asset has been uploaded successfully. We'll review your request within 24 hours.",
-      });
+      toast.success("Loan request submitted! Your asset has been uploaded successfully. We'll review your request within 24 hours.");
       setTimeout(() => {
         router.push("/dashboard");
       }, 3000);
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Upload failed",
-        description: error.message || "Something went wrong. Please try again.",
-      });
+      toast.error(`Upload failed: ${error.message || "Something went wrong. Please try again."}`);
       setIsSubmitting(false);
       setUploadProgress(0);
     }
@@ -309,31 +282,11 @@ export default function UploadAssetPage() {
                 </p>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
-                  {assetPhotos.map((photo) => (
-                    <div key={photo.id} className="relative group">
-                      <img
-                        src={photo.preview || "/placeholder.svg"}
-                        alt="Asset photo"
-                        className="w-full h-24 sm:h-32 object-cover rounded-lg border"
-                      />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-1 right-1 w-5 h-5 sm:w-6 sm:h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => removeAssetPhoto(photo.id)}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ))}
-
-                  <label className="border-2 border-dashed border-border rounded-lg p-3 sm:p-4 h-24 sm:h-32 flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors">
-                    <Upload className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground mb-1 sm:mb-2" />
-                    <span className="text-xs sm:text-sm text-muted-foreground text-center">Click to upload</span>
-                    <input type="file" multiple accept="image/*" className="hidden" onChange={handleAssetPhotoUpload} />
-                  </label>
-                </div>
+                <AssetUpload
+                  onUploadComplete={handleAssetUploadComplete}
+                  onUploadError={handleAssetUploadError}
+                  maxFiles={5}
+                />
 
                 {assetPhotos.length < 2 && (
                   <p className="text-xs sm:text-sm text-muted-foreground">

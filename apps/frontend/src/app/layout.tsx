@@ -4,7 +4,7 @@ import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/contexts/AuthContext'
-import { Toaster } from 'sonner'
+import { Toaster } from 'react-hot-toast'
 import { Toaster as RadixToaster } from '@/components/ui/toaster'
 import { validateFrontendEnv } from '@fundifyhub/utils'
 import logger from '@/lib/logger'
@@ -82,11 +82,8 @@ export default function RootLayout({
         >
           <AuthProvider>
             {children}
-            <Toaster 
+            <Toaster
               position="top-right"
-              expand={false}
-              richColors
-              closeButton
               toastOptions={{
                 duration: 4000,
                 style: {

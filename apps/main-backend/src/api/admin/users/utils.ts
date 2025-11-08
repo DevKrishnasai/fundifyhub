@@ -1,4 +1,4 @@
-import { prisma } from '@fundifyhub/prisma';
+import { Prisma, prisma } from '@fundifyhub/prisma';
 import logger from '../../../utils/logger';
 
 /**
@@ -7,7 +7,7 @@ import logger from '../../../utils/logger';
  */
 export async function checkUserExists(email?: string, phoneNumber?: string, excludeUserId?: string) {
   try {
-    const where: any = {};
+    const where: Prisma.UserWhereInput = {};
 
     if (excludeUserId) {
       where.id = { not: excludeUserId };

@@ -1,19 +1,19 @@
 import { Request, Response } from 'express';
-import { prisma } from '@fundifyhub/prisma';
-import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS } from '@fundifyhub/types';
+import { Prisma, prisma } from '@fundifyhub/prisma';
+import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 
 /**
  * Adds new asset photos to the request (does not delete existing)
  */
-async function updateAssetPhotos(tx: any, requestId: string, assetPhotos: any, customerId: string, res: Response) {
+async function updateAssetPhotos(tx: Prisma.TransactionClient, requestId: string, assetPhotos: string[], customerId: string, res: Response) {
   const parsedPhotos = validateAssetPhotos(assetPhotos, res);
   if (parsedPhotos === null || parsedPhotos.length === 0) return false;
   await Promise.all(parsedPhotos.map((url: string) =>
     tx.document.create({
       data: {
         requestId,
-        url,
+        fileKey: url, // Assuming url contains the file key from UploadThing
         documentType: 'asset_photo',
         documentCategory: DOCUMENT_CATEGORY.ASSET,
         uploadedBy: customerId,
@@ -131,7 +131,13 @@ export async function debugAuthController(req: Request, res: Response): Promise<
 /**
  * Validates required fields for asset request
  */
-function validateAssetFields(fields: any, res: Response): boolean {
+function validateAssetFields(fields: {
+  district?: string;
+  assetType?: string;
+  assetBrand?: string;
+  assetModel?: string;
+  assetCondition?: string;
+}, res: Response): boolean {
   const requiredFields = {
     district: { value: fields.district, message: 'district is required' },
     assetType: { value: fields.assetType, message: 'assetType is required' },
@@ -181,7 +187,7 @@ function validateAssetEnums(assetType: string, assetCondition: string, res: Resp
 /**
  * Validates and parses asset photos array
  */
-function validateAssetPhotos(assetPhotos: any, res: Response): string[] | null {
+function validateAssetPhotos(assetPhotos: string[] | undefined, res: Response): string[] | null {
   if (assetPhotos === undefined) return [];
   
   if (!Array.isArray(assetPhotos)) {
@@ -189,20 +195,31 @@ function validateAssetPhotos(assetPhotos: any, res: Response): string[] | null {
     return null;
   }
   
-  return assetPhotos.filter((p: any) => typeof p === 'string' && p.trim() !== '');
+  return assetPhotos.filter((p: string) => typeof p === 'string' && p.trim() !== '');
 }
 
 /**
  * Builds request data object from input fields
  */
-function buildRequestData(fields: any): any {
-  const requestData: any = {
+function buildRequestData(fields: {
+  district: string;
+  assetType: string;
+  assetBrand: string;
+  assetModel: string;
+  assetCondition: string;
+  purchaseYear?: number;
+  requestedAmount?: number;
+  AdditionalDescription?: string;
+  customerId: string;
+}): Prisma.RequestUncheckedCreateInput {
+  const requestData: Prisma.RequestUncheckedCreateInput = {
     district: fields.district,
     assetType: fields.assetType,
     assetBrand: fields.assetBrand,
     assetModel: fields.assetModel,
     assetCondition: fields.assetCondition,
     requestedAmount: typeof fields.requestedAmount === 'number' ? fields.requestedAmount : 0,
+    customerId: fields.customerId,
   };
 
   if (typeof fields.purchaseYear === 'number') {
@@ -219,7 +236,7 @@ function buildRequestData(fields: any): any {
 /**
  * Handles document creation/update in a transaction
  */
-async function handleDocuments(tx: any, requestId: string, photos: string[], customerId: string) {
+async function handleDocuments(tx: Prisma.TransactionClient, requestId: string, photos: string[], customerId: string) {
   if (photos.length === 0) return;
   
   // Delete existing asset photos
@@ -233,7 +250,7 @@ async function handleDocuments(tx: any, requestId: string, photos: string[], cus
       tx.document.create({
         data: {
           requestId,
-          url,
+          fileKey: url, // Assuming url contains the file key from UploadThing
           documentType: 'asset_photo',
           documentCategory: DOCUMENT_CATEGORY.ASSET,
           uploadedBy: customerId,
@@ -310,11 +327,11 @@ export async function addAssetController(req: Request, res: Response): Promise<v
       purchaseYear,
       requestedAmount,
       AdditionalDescription,
+      customerId,
     });
-    requestData.customerId = customerId;
 
     // Create request and documents in transaction
-    const createdRequest = await prisma.$transaction(async (tx: any) => {
+    const createdRequest = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const reqCreated = await tx.request.create({ data: requestData });
       await handleDocuments(tx, reqCreated.id, photos, customerId);
       return reqCreated;
@@ -459,7 +476,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
     updateData.currentStatus = REQUEST_STATUS.PENDING;
 
     // Update request and asset photos in transaction
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.request.update({ where: { id: requestId }, data: updateData });
       if (assetPhotos !== undefined) {
         await updateAssetPhotos(tx, requestId, assetPhotos, customerId, res);
@@ -485,7 +502,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
  */
 export async function getUserProfile(userId: string): Promise<{
   success: boolean;
-  data?: any;
+  data?: { user: UserType };
   message: string;
 }> {
   try {
@@ -542,7 +559,7 @@ export async function validateUserAuth(userId: string): Promise<{
   success: boolean;
   data?: {
     isAuthenticated: boolean;
-    user?: any;
+    user?: UserType;
   };
   message: string;
 }> {
@@ -566,6 +583,7 @@ export async function validateUserAuth(userId: string): Promise<{
         lastName: true,
         roles: true,
         isActive: true,
+        district: true,
       },
     });
 
@@ -604,10 +622,18 @@ export async function validateUserAuth(userId: string): Promise<{
  */
 export async function debugAuth(
   userId: string,
-  tokenData: any
+  tokenData: Partial<UserType>
 ): Promise<{
   success: boolean;
-  data?: any;
+  data?: {
+    tokenData: Record<string, unknown>;
+    databaseData: Record<string, unknown>;
+    comparison: {
+      rolesMatch: boolean;
+      tokenRoles: unknown;
+      dbRoles: unknown;
+    };
+  };
   message: string;
 }> {
   if (process.env.NODE_ENV === 'production') {

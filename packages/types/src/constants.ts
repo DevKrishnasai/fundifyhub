@@ -90,8 +90,30 @@ export enum DOCUMENT_CATEGORY {
   IDENTITY = "IDENTITY",              // ID proofs, address proofs
   INCOME = "INCOME",                  // Salary slips, bank statements
   LEGAL = "LEGAL",                    // Agreements, policies
+  PAYMENT = "PAYMENT",                // EMI receipts, payment proofs
+  LOAN = "LOAN",                      // Loan agreements, documents
+  PROFILE = "PROFILE",                // User profile pictures
   TRANSFER_PROOF = "TRANSFER_PROOF",  // Amount transfer proofs
   OTHER = "OTHER"                     // Miscellaneous
+}
+
+export enum DOCUMENT_TYPE {
+  ASSET_PHOTO = "ASSET_PHOTO",
+  PURCHASE_RECEIPT = "PURCHASE_RECEIPT",
+  ID_PROOF = "ID_PROOF",
+  ADDRESS_PROOF = "ADDRESS_PROOF",
+  INSPECTION_PHOTO = "INSPECTION_PHOTO",
+  EMI_RECEIPT = "EMI_RECEIPT",
+  TRANSFER_PROOF = "TRANSFER_PROOF",
+  LOAN_AGREEMENT = "LOAN_AGREEMENT",
+  PROFILE_PICTURE = "PROFILE_PICTURE",
+  OTHER = "OTHER"
+}
+
+export enum DOCUMENT_STATUS {
+  ACTIVE = "ACTIVE",
+  ARCHIVED = "ARCHIVED",
+  DELETED = "DELETED"
 }
 
 export enum LOAN_STATUS {

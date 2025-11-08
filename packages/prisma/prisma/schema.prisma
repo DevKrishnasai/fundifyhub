@@ -210,28 +210,49 @@ model Payment {
   @@map("payments")
 }
 
-// Document model with categories
+// Document model - Unified file storage with UploadThing integration
 model Document {
-  id               String           @id @default(cuid())
-  requestId        String
-  url              String
-  fileSize         Int?
-  mimeType         String?
-  documentType     String           // "asset_photo", "id_proof", "purchase_receipt", etc.
-  documentCategory String   @default("OTHER")
-  uploadedBy       String?          // User ID who uploaded
-  isVerified       Boolean          @default(false)
-  verifiedBy       String?          // Admin/Agent ID who verified
-  verifiedAt       DateTime?
-  description      String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  id                String    @id @default(cuid())
+  
+  // UploadThing Integration
+  fileKey           String    @unique @default("") // UploadThing file key (used for signed URL generation)
+  fileName          String    @default("unknown") // Original file name
+  fileSize          Int       @default(0) // File size in bytes
+  fileType          String    @default("application/octet-stream") // MIME type (image/png, application/pdf, etc.)
+  
+  // Document Classification
+  documentType      String    // "ASSET_PHOTO", "ID_PROOF", "PURCHASE_RECEIPT", "EMI_RECEIPT", "TRANSFER_PROOF", "PROFILE_PICTURE", etc.
+  documentCategory  String    @default("OTHER") // "IDENTITY", "ASSET", "PAYMENT", "LOAN", "PROFILE", "OTHER"
+  
+  requestId         String?   // Direct relation to Request (most common)
+  
+  // Access Control
+  uploadedBy        String    // User ID who uploaded
+  isPublic          Boolean   @default(false) // If true, no auth needed to access
+  
+  // Verification & Status
+  isVerified        Boolean   @default(false)
+  verifiedBy        String?   // Admin/Agent ID who verified
+  verifiedAt        DateTime?
+  status            String    @default("ACTIVE") // "ACTIVE", "ARCHIVED", "DELETED"
+  
+  // Metadata
+  description       String?   // Optional description/notes
+  displayOrder      Int?      // For ordering multiple documents of same type
+  metadata          Json?     // Additional flexible metadata (dimensions, exif, etc.)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   // Relations
-  request          Request          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request           Request?  @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  @@index([requestId])
+  @@index([fileKey])
+  @@index([documentType])
   @@index([documentCategory])
+  @@index([requestId])
+  @@index([uploadedBy])
+  @@index([status])
   @@map("documents")
 }
 // Need a better understanding of the comments model.
