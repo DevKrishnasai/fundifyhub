@@ -22,6 +22,8 @@ export const BACKEND_API_CONFIG = {
       SERVICE_DISABLE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disable`,
       SERVICE_DISCONNECT: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disconnect`,
       SERVICE_CONFIGURE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/configure`,
+      GET_ACTIVE_LOANS: '/api/v1/admin/active-loans-count',
+      GET_PENDING_REQUESTS: '/api/v1/admin/pending-loans-count',
     },
     USER: {
       PROFILE: '/api/v1/user/profile',

@@ -13,24 +13,17 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
+import { WelcomePayloadType } from '@fundifyhub/types';
 
-/* ------------------------------- INTERFACE ------------------------------- */
-interface WelcomeEmailProps {
-  customerName: string;
-  companyName: string;
-  companyUrl: string;
-  supportUrl: string;
-  logoUrl: string;
-}
-
-/* --------------------------------- EMAIL --------------------------------- */
 const WelcomeEmail = ({
-  customerName = 'User',
+  email,
+  phoneNumber,
+  customerName,
   companyName,
   companyUrl,
   supportUrl,
   logoUrl,
-}: WelcomeEmailProps) => (
+}: WelcomePayloadType) => (
   <Html lang="en">
     <Head />
     <Preview>
@@ -108,9 +101,11 @@ const WelcomeEmail = ({
 );
 
 /* --------------------------- RENDER FUNCTION ---------------------------- */
-export const renderEmail = (vars: Record<string, any>) => {
-  const props: WelcomeEmailProps = {
-    customerName: vars.customerName || vars.userName || 'User',
+export const renderEmail = (vars: WelcomePayloadType) => {
+  const props: WelcomePayloadType = {
+    email: vars.email,
+    phoneNumber: vars.phoneNumber,
+    customerName: vars.customerName,
     companyName: vars.companyName,
     companyUrl: vars.companyUrl,
     supportUrl: vars.supportUrl,

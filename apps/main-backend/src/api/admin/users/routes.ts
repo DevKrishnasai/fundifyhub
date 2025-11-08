@@ -1,6 +1,4 @@
 import { Router, type Router as ExpressRouter } from 'express';
-import { requireAuth, requireRole } from '../../auth';
-const requireAdmin = requireRole('ADMIN', 'SUPER_ADMIN');
 import {
   listUsersController,
   updateUserController,
@@ -14,23 +12,23 @@ const router: ExpressRouter = Router();
  * GET /admin/users
  * List all users
  */
-router.get('/', requireAuth, requireAdmin, listUsersController);
+router.get('/', listUsersController);
 
 /**
  * POST /admin/users
  * Create new user
  */
-router.post('/', requireAuth, requireAdmin, createUserController);
+router.post('/', createUserController);
 
 /**
  * PATCH /admin/users/:id
  * Update user (roles, isActive, name)
  */
-router.patch('/:id', requireAuth, requireAdmin, updateUserController);
+router.patch('/:id', updateUserController);
 
 /**
  * DELETE /admin/users/:id
  */
-router.delete('/:id', requireAuth, requireAdmin, deleteUserController);
+router.delete('/:id', deleteUserController);
 
 export default router;

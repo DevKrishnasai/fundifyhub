@@ -19,6 +19,7 @@ import {
   Shield, 
   UserCheck 
 } from 'lucide-react';
+import logger from '@/lib/logger';
 
 export function UserMenu() {
   const { user, logout } = useAuth();
@@ -31,7 +32,7 @@ export function UserMenu() {
     try {
       await logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('Logout error:', error as Error);
     } finally {
       setIsLoggingOut(false);
     }
@@ -42,7 +43,7 @@ export function UserMenu() {
   };
 
   const getRoleIcon = () => {
-    const roles = user.roles?.map(r => r.toLowerCase()) || [];
+    const roles = user.roles?.map((r: string) => r.toLowerCase()) || [];
     if (roles.includes('admin') || roles.includes('super_admin')) {
       return <Shield className="w-4 h-4" />;
     }

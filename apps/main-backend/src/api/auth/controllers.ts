@@ -1,30 +1,11 @@
 import { Request, Response } from 'express';
-import type { APIResponse } from '../../types';
-import { logger } from '../../utils/logger';
-import { prisma } from '@fundifyhub/prisma';
 import bcrypt from 'bcrypt';
+import { prisma } from '@fundifyhub/prisma';
+import { LoginAlertPayloadType, OTPVerificationPayloadType, TEMPLATE_NAMES, WelcomePayloadType } from '@fundifyhub/types';
+import logger from '../../utils/logger';
+import { APIResponseType } from '../../types';
+import queueClient from '../../utils/queues';
 import { generateAccessToken } from '../../utils/jwt';
-import { enqueue, EMAIL_TEMPLATES, WHATSAPP_TEMPLATES } from '@fundifyhub/utils';
-import type { OTPJobData } from '@fundifyhub/types';
-import { OTPType, OTPTemplateType, ServiceName } from '@fundifyhub/types';
-
-/**
- * Authentication Controllers
- *
- * This module handles user authentication including:
- * - Email/Phone availability checking
- * - OTP generation and sending
- * - OTP verification
- * - User registration with dual verification
- * - User login/logout
- *
- * Security Features:
- * - OTP-based verification for both email and phone
- * - Password hashing with bcrypt
- * - JWT token-based authentication
- * - Rate limiting considerations (TODO)
- * - Input validation (TODO)
- */
 
 /**
  * Check if email/phone is available for registration
@@ -36,10 +17,10 @@ import { OTPType, OTPTemplateType, ServiceName } from '@fundifyhub/types';
  * Checks if the provided email or phone number is already registered.
  * At least one of email or phone must be provided.
  */
-export async function checkAvailabilityController(
+export async function checkAvailability(
   req: Request,
   res: Response
-): Promise<any> {
+): Promise<APIResponseType | void> {
   try {
     const { email, phone } = req.body;
 
@@ -49,7 +30,7 @@ export async function checkAvailabilityController(
         .json({
           success: false,
           message: 'Email or phone required',
-        } as APIResponse);
+        });
       return;
     }
 
@@ -62,8 +43,8 @@ export async function checkAvailabilityController(
           .status(409)
           .json({
             success: false,
-            message: 'Email already exists',
-          } as APIResponse);
+            message: 'Email already exists'
+          });
         return;
       }
     }
@@ -78,7 +59,7 @@ export async function checkAvailabilityController(
           .json({
             success: false,
             message: 'Phone already exists',
-          } as APIResponse);
+          });
         return;
       }
     }
@@ -87,9 +68,9 @@ export async function checkAvailabilityController(
       .status(200)
       .json({
         success: true,
-        message: 'Email/phone available',
+        message: 'Available for registration',
         data: { available: true },
-      } as APIResponse);
+      });
   } catch (error) {
     const contextLogger = logger.child('[check-availability]');
     contextLogger.error('Failed to check availability:', error as Error);
@@ -98,7 +79,7 @@ export async function checkAvailabilityController(
       .json({
         success: false,
         message: 'Failed to check availability',
-      } as APIResponse);
+      });
   }
 }
 
@@ -113,10 +94,10 @@ export async function checkAvailabilityController(
  * and enqueues a job to send it via email or WhatsApp.
  * Returns a sessionId for OTP verification.
  */
-export async function sendOTPController(
+export async function sendOTP(
   req: Request,
   res: Response
-): Promise<any> {
+): Promise<APIResponseType | void> {
   try {
     const { email, phone } = req.body;
 
@@ -126,7 +107,7 @@ export async function sendOTPController(
         .json({
           success: false,
           message: 'Email or phone required',
-        } as APIResponse);
+        } as APIResponseType);
       return;
     }
 
@@ -145,20 +126,21 @@ export async function sendOTPController(
       },
     });
 
-    // Enqueue OTP delivery job using template-driven helper.
     try {
-      const jobPayload: OTPJobData = {
-        recipient: identifier,
-        otp,
-        userName: identifier,
-        type: email ? OTPType.EMAIL : OTPType.WHATSAPP,
-        serviceType: email ? ServiceName.EMAIL : ServiceName.WHATSAPP,
-        templateType: OTPTemplateType.VERIFICATION,
+      const jobPayload: OTPVerificationPayloadType = {
+        email: email || '',
+        phoneNumber: phone || '',
+        otpCode: otp,
+        expiresInMinutes: 10,
+        companyName: 'Dummy Hub', 
+        supportUrl: 'https://support.fundifyhub.com', 
+        verifyUrl: 'https://app.fundifyhub.com/verify-otp', 
+        companyUrl: 'https://fundifyhub.com', 
+        logoUrl: 'https://fundifyhub.com/logo.png', 
       };
-      // Determine template name and target service
-      const templateName = EMAIL_TEMPLATES.OTP; // both email and whatsapp use same template key internally
-      const services = jobPayload.serviceType ? [jobPayload.serviceType] as any : undefined;
-      await enqueue(templateName, jobPayload as unknown as Record<string, unknown>, { services });
+
+      queueClient.addAJob(TEMPLATE_NAMES.OTP_VERIFICATION, jobPayload);
+
     } catch (err) {
       logger.error('OTP enqueue error:', err as Error);
     }
@@ -169,12 +151,12 @@ export async function sendOTPController(
         success: true,
         message: 'OTP sent successfully',
         data: { sessionId: otpRecord.id },
-      } as APIResponse);
+      } as APIResponseType);
   } catch (error) {
     logger.error('Send OTP error:', error as Error);
     res
       .status(500)
-      .json({ success: false, message: 'Failed to send OTP' } as APIResponse);
+      .json({ success: false, message: 'Failed to send OTP' } as APIResponseType);
   }
 }
 
@@ -189,7 +171,7 @@ export async function sendOTPController(
  * Marks the OTP as verified if correct and not expired.
  * Tracks failed attempts and enforces max attempts limit.
  */
-export async function verifyOTPController(
+export async function verifyOTP(
   req: Request,
   res: Response
 ): Promise<any> {
@@ -201,7 +183,7 @@ export async function verifyOTPController(
         .json({
           success: false,
           message: 'Session ID and OTP required',
-        } as APIResponse);
+        } as APIResponseType);
 
     const otpRecord = await prisma.oTPVerification.findUnique({
       where: { id: sessionId },
@@ -212,19 +194,19 @@ export async function verifyOTPController(
         .json({
           success: false,
           message: 'OTP session not found',
-        } as APIResponse);
+        } as APIResponseType);
 
     if (otpRecord.expiresAt < new Date())
       return res
         .status(400)
-        .json({ success: false, message: 'OTP expired' } as APIResponse);
+        .json({ success: false, message: 'OTP expired' } as APIResponseType);
     if (otpRecord.attempts >= otpRecord.maxAttempts)
       return res
         .status(429)
         .json({
           success: false,
           message: 'Maximum OTP attempts exceeded',
-        } as APIResponse);
+        } as APIResponseType);
 
     if (otpRecord.code !== otp) {
       await prisma.oTPVerification.update({
@@ -233,7 +215,7 @@ export async function verifyOTPController(
       });
       return res
         .status(400)
-        .json({ success: false, message: 'Invalid OTP code' } as APIResponse);
+        .json({ success: false, message: 'Invalid OTP code' } as APIResponseType);
     }
 
     await prisma.oTPVerification.update({
@@ -247,12 +229,12 @@ export async function verifyOTPController(
         success: true,
         message: 'OTP verified successfully',
         data: { sessionId, verified: true },
-      } as APIResponse);
+      } as APIResponseType);
   } catch (error) {
     logger.error('Verify OTP error:', error as Error);
     res
       .status(500)
-      .json({ success: false, message: 'Failed to verify OTP' } as APIResponse);
+      .json({ success: false, message: 'Failed to verify OTP' } as APIResponseType);
   }
 }
 
@@ -261,7 +243,7 @@ export async function verifyOTPController(
  * Needs: { email, phoneNumber, firstName, lastName, password }
  * Returns: { success, user }
  */
-export async function registerController(
+export async function register(
   req: Request,
   res: Response
 ): Promise<any> {
@@ -273,7 +255,7 @@ export async function registerController(
         .json({
           success: false,
           message: 'Missing required fields: email, phoneNumber, firstName, lastName, password',
-        } as APIResponse);
+        } as APIResponseType);
 
     // TODO: Validate password strength and user inputs. Consider using a schema validator
     // and provide structured validation errors.
@@ -300,7 +282,7 @@ export async function registerController(
     if (!emailOtpRecord || !phoneOtpRecord)
       return res
         .status(400)
-        .json({ success: false, message: 'Both email and phone must be verified with OTP before registration' } as APIResponse);
+        .json({ success: false, message: 'Both email and phone must be verified with OTP before registration' } as APIResponseType);
 
     const existing = await prisma.user.findFirst({
       where: {
@@ -316,7 +298,7 @@ export async function registerController(
         .json({
           success: false,
           message: 'Email or phone already registered',
-        } as APIResponse);
+        } as APIResponseType);
 
     const hashedPassword = await bcrypt.hash(password, 10);
     // TODO: Make bcrypt salt rounds configurable via env (e.g. BCRYPT_ROUNDS). Consider
@@ -351,13 +333,16 @@ export async function registerController(
 
       if (email.toLowerCase()) {
         try {
-          // Use central EMAIL_TEMPLATES for the welcome email content.
-          await enqueue(EMAIL_TEMPLATES.WELCOME_EMAIL, {
-            recipient: user.email,
-            userId: user.id,
-            templateKey: 'WELCOME',
-            template: EMAIL_TEMPLATES.WELCOME,
-          });
+          const welcomePayload: WelcomePayloadType = {
+            email: email.toLowerCase(),
+            phoneNumber: phoneNumber,
+            customerName: firstName,
+            supportUrl: 'https://support.fundifyhub.com',
+            logoUrl: 'https://fundifyhub.com/logo.png',
+            companyName: 'Dummy Hub',
+            companyUrl: 'https://fundifyhub.com'
+          };
+          await queueClient.addAJob(TEMPLATE_NAMES.WELCOME, welcomePayload);
         } catch (err) {
           // TODO: Emit metric/alert for failed welcome email enqueue. Consider retries
           // and not blocking registration on welcome-email delivery.
@@ -379,7 +364,7 @@ export async function registerController(
               lastName: user.lastName,
             },
           },
-        } as APIResponse);
+        } as APIResponseType);
     } catch (err: any) {
       if (err?.code === 'P2002')
         return res
@@ -387,7 +372,7 @@ export async function registerController(
           .json({
             success: false,
             message: 'Email or phone already registered',
-          } as APIResponse);
+          } as APIResponseType);
       throw err;
     }
   } catch (error) {
@@ -397,7 +382,7 @@ export async function registerController(
       .json({
         success: false,
         message: 'Failed to complete registration',
-      } as APIResponse);
+      } as APIResponseType);
   }
 }
 
@@ -412,7 +397,7 @@ export async function registerController(
  * Authenticates user credentials and issues JWT access token.
  * Updates last login timestamp on successful authentication.
  */
-export async function loginController(
+export async function login(
   req: Request,
   res: Response
 ): Promise<any> {
@@ -424,7 +409,7 @@ export async function loginController(
         .json({
           success: false,
           message: 'Email and password required',
-        } as APIResponse);
+        } as APIResponseType);
 
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
@@ -435,7 +420,7 @@ export async function loginController(
         .json({
           success: false,
           message: 'Invalid email or password',
-        } as APIResponse);
+        } as APIResponseType);
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid)
@@ -444,7 +429,7 @@ export async function loginController(
         .json({
           success: false,
           message: 'Invalid email or password',
-        } as APIResponse);
+        } as APIResponseType);
 
     await prisma.user.update({
       where: { id: user.id },
@@ -478,29 +463,19 @@ export async function loginController(
         const ip =
           (req.headers['x-forwarded-for'] as string) || req.ip || req.socket?.remoteAddress || '';
         const userAgent = String(req.headers['user-agent'] || '');
-        const loginPayload = {
-          recipient: user.email,
-          phone: user.phoneNumber, // Add phone number for WhatsApp
-          userId: user.id,
+        const alertPayload: LoginAlertPayloadType = {
+          email: user.email,
+          phoneNumber: user.phoneNumber!,
           customerName: user.firstName,
-          lastName: user.lastName,
           time: new Date().toISOString(),
           location: ip,
           device: userAgent,
-          supportUrl: 'https://support.fundifyhub.com', // TODO: Make configurable
-          resetPasswordUrl: 'https://app.fundifyhub.com/reset-password', // TODO: Make configurable
-          companyName: 'Dummy Hub', // TODO: Make configurable
-        } as Record<string, unknown>;
-
-
-        const services: Array<ServiceName> = [];
-        if (user.email) services.push(ServiceName.EMAIL);
-        if (user.phoneNumber) services.push(ServiceName.WHATSAPP);
-
-        // Enqueue without awaiting to avoid delaying the HTTP response.
-        enqueue(EMAIL_TEMPLATES.LOGIN_ALERT, loginPayload, { services }).catch((err: unknown) => {
-          logger.error('Failed to enqueue login alert (background):', err as Error);
-        });
+          supportUrl: 'https://support.fundifyhub.com',
+          resetPasswordUrl: 'https://app.fundifyhub.com/reset-password',
+          companyName: 'Dummy Hub',
+        };
+        
+        await queueClient.addAJob(TEMPLATE_NAMES.LOGIN_ALERT, alertPayload);
       } catch (err) {
         logger.error('Failed preparing login alert payload:', err as Error);
       }
@@ -519,12 +494,12 @@ export async function loginController(
             lastName: user.lastName,
           },
         },
-      } as APIResponse);
+      } as APIResponseType);
   } catch (error) {
     logger.error('Login error:', error as Error);
     return res
       .status(500)
-      .json({ success: false, message: 'Login failed' } as APIResponse);
+      .json({ success: false, message: 'Login failed' } as APIResponseType);
   }
 }
 
@@ -539,7 +514,7 @@ export async function loginController(
  * Clears the access token cookie and optionally invalidates refresh tokens.
  * Requires authentication middleware to populate req.user.
  */
-export async function logoutController(
+export async function logout(
   req: Request,
   res: Response
 ): Promise<any> {
@@ -563,12 +538,12 @@ export async function logoutController(
       .json({
         success: true,
         message: 'Logged out successfully',
-      } as APIResponse);
+      } as APIResponseType);
   } catch (error) {
     logger.error('Logout error:', error as Error);
     return res
       .status(500)
-      .json({ success: false, message: 'Logout failed' } as APIResponse);
+      .json({ success: false, message: 'Logout failed' } as APIResponseType);
   }
 }
 

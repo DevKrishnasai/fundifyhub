@@ -1,17 +1,9 @@
-/**
- * ServiceManager - Singleton
- * 
- * Centralized service instance manager that:
- * 1. Periodically checks database for enabled services
- * 2. Provides access to WhatsApp client and Email transporter
- * 3. Used by OTP worker to check service availability before processing
- */
-
 import { Client } from 'whatsapp-web.js';
 import type { Transporter } from 'nodemailer';
 import nodemailer from 'nodemailer';
 import { prisma } from '@fundifyhub/prisma';
 import { SimpleLogger } from '@fundifyhub/logger';
+import { CONNECTION_STATUS, SERVICE_NAMES } from '@fundifyhub/types';
 
 interface ServiceState {
   whatsappClient: Client | null;
@@ -42,6 +34,7 @@ class ServiceManager {
 
   private constructor() {}
 
+  // Get singleton instance
   public static getInstance(): ServiceManager {
     if (!ServiceManager.instance) {
       ServiceManager.instance = new ServiceManager();
@@ -114,21 +107,21 @@ class ServiceManager {
       const services = await prisma.serviceConfig.findMany({
         where: {
           serviceName: {
-            in: ['EMAIL', 'WHATSAPP']
+            in: Object.values(SERVICE_NAMES)
           }
         }
       });
 
       for (const service of services) {
-        if (service.serviceName === 'WHATSAPP' && service.isEnabled && !this.state.whatsappClient) {
+        if (service.serviceName === SERVICE_NAMES.WHATSAPP && service.isEnabled && !this.state.whatsappClient) {
           const contextLogger = this.logger.child('[whatsapp-service]');
           contextLogger.info('Auto-starting enabled service');
-          
-          const { startWhatsAppService } = await import('./whatsapp-service');;
+
+          const { startWhatsAppService } = await import('./whatsapp-service');
           await startWhatsAppService();
         }
         
-        if (service.serviceName === 'EMAIL') {
+        if (service.serviceName === SERVICE_NAMES.EMAIL) {
           if (service.isEnabled && this.state.emailTransporter) {
             const contextLogger = this.logger.child('[email-service]');
             contextLogger.info('Service enabled and ready');
@@ -152,14 +145,14 @@ class ServiceManager {
       const services = await prisma.serviceConfig.findMany({
         where: {
           serviceName: {
-            in: ['EMAIL', 'WHATSAPP']
+            in: Object.values(SERVICE_NAMES)
           }
         }
       });
 
       for (const service of services) {
         // Handle Email Service
-        if (service.serviceName === 'EMAIL') {
+        if (service.serviceName === SERVICE_NAMES.EMAIL) {
           const contextLogger = this.logger.child('[email-service]');
           
           if (service.isEnabled) {
@@ -212,7 +205,7 @@ class ServiceManager {
         }
         
         // Handle WhatsApp Service
-        if (service.serviceName === 'WHATSAPP') {
+        if (service.serviceName === SERVICE_NAMES.WHATSAPP) {
           const contextLogger = this.logger.child('[whatsapp-service]');
           
           if (service.isEnabled) {
@@ -272,7 +265,7 @@ class ServiceManager {
   public async isWhatsAppAvailable(): Promise<boolean> {
     try {
       const service = await prisma.serviceConfig.findUnique({
-        where: { serviceName: 'WHATSAPP' }
+        where: { serviceName: SERVICE_NAMES.WHATSAPP }
       });
       
       // Check if service is enabled, client exists, AND client is ready
@@ -285,8 +278,8 @@ class ServiceManager {
       }
       
       // Check if client is in a ready state
-      const clientState = await this.state.whatsappClient.getState();
-      return clientState === 'CONNECTED';
+      const clientState = await this.state.whatsappClient.getState() as string;
+      return clientState === CONNECTION_STATUS.CONNECTED;
     } catch (error) {
       this.logger.error('Failed to check WhatsApp availability:', error);
       return false;
@@ -299,7 +292,7 @@ class ServiceManager {
   public async isEmailAvailable(): Promise<boolean> {
     try {
       const service = await prisma.serviceConfig.findUnique({
-        where: { serviceName: 'EMAIL' }
+        where: { serviceName: SERVICE_NAMES.EMAIL }
       });
       // Consider email available only when it's enabled in DB and a transporter is registered
       return !!(service?.isEnabled && this.state.emailTransporter);

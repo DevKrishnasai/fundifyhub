@@ -13,28 +13,21 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-
-/* ------------------------------- INTERFACE ------------------------------- */
-interface OtpEmailProps {
-  otpCode: string;
-  expiresInMinutes?: number;
-  companyName: string;
-  supportUrl: string;
-  verifyUrl: string;
-  logoUrl: string;
-  companyUrl?: string;
-}
+import { OTPVerificationPayloadType } from '@fundifyhub/types';
 
 /* --------------------------------- EMAIL --------------------------------- */
 const OtpEmail = ({
+  email,
+  phoneNumber,
   otpCode,
-  expiresInMinutes = 10,
+  expiresInMinutes,
   companyName,
   supportUrl,
   verifyUrl,
   logoUrl,
   companyUrl,
-}: OtpEmailProps) => (
+
+}: OTPVerificationPayloadType) => (
   <Html lang="en">
     <Head />
     <Preview>
@@ -104,14 +97,17 @@ const OtpEmail = ({
 );
 
 /* --------------------------- RENDER FUNCTION ---------------------------- */
-export const renderEmail = (vars: Record<string, any>) => {
-  const props: OtpEmailProps = {
-    otpCode: vars.otp || '',
-    expiresInMinutes: vars.expiryMinutes ?? 10,
+export const renderEmail = (vars: OTPVerificationPayloadType) => {
+  const props: OTPVerificationPayloadType = {
+    email: vars.email,
+    phoneNumber: vars.phoneNumber,
+    otpCode: vars.otpCode,
+    expiresInMinutes: vars.expiresInMinutes,
     companyName: vars.companyName,
     supportUrl: vars.supportUrl,
     verifyUrl: vars.verifyUrl,
     logoUrl: vars.logoUrl,
+    companyUrl: vars.companyUrl,
   };
 
   return render(<OtpEmail {...props} />);

@@ -1,28 +1,27 @@
 import { Request, Response } from 'express';
-import { APIResponse } from '../../../types';
-import { logger } from '../../../utils/logger';
+import { APIResponseType } from '../../../types';
+import logger from '../../../utils/logger';
 import { prisma } from '@fundifyhub/prisma';
 import bcrypt from 'bcrypt';
-// import { enqueue, QUEUE_NAMES, JOB_NAMES, EMAIL_TEMPLATES } from '@fundifyhub/utils';
-import { createUser, checkUserExists } from './services';
+import { checkUserExists } from './utils';
 
 export async function createUserController(req: Request, res: Response): Promise<void> {
   try {
     const { email, firstName, lastName, phoneNumber, district, roles, isActive } = req.body;
 
     if (!email || !firstName) {
-      res.status(400).json({ success: false, message: 'Email and firstName are required' } as APIResponse);
+      res.status(400).json({ success: false, message: 'Email and firstName are required' } as APIResponseType);
       return;
     }
 
-    // Check if user already exists (reuse logic from registration)
+    // Check if user already exists (reuse logic from registration) 
     const existing = await checkUserExists(email, phoneNumber);
 
     if (existing) {
       res.status(409).json({
         success: false,
         message: 'User with this email or phone already exists'
-      } as APIResponse);
+      } as APIResponseType);
       return;
     }
 
@@ -59,30 +58,14 @@ export async function createUserController(req: Request, res: Response): Promise
       },
     });
 
-    // Send welcome email to new user with account setup instructions
-    try {
-    //   await enqueue(QUEUE_NAMES.EMAIL, JOB_NAMES.WELCOME_EMAIL, {
-    //     recipient: user.email,
-    //     subject: EMAIL_TEMPLATES.WELCOME.subject,
-    //     template: EMAIL_TEMPLATES.WELCOME.body,
-    //     templateData: {
-    //       firstName: user.firstName,
-    //     },
-    //   });
-      logger.info(`Welcome email queued for new user: ${user.email}`);
-    } catch (err) {
-      logger.error('Failed to enqueue welcome email for admin-created user:', err as Error);
-      // Don't fail the request if email fails
-    }
-
     res.status(201).json({
       success: true,
       message: 'User created successfully',
       data: user
-    } as APIResponse);
+    } as APIResponseType);
   } catch (error) {
     logger.error('createUserController error:', error as Error);
-    res.status(500).json({ success: false, message: 'Failed to create user' } as APIResponse);
+    res.status(500).json({ success: false, message: 'Failed to create user' } as APIResponseType);
   }
 }
 
@@ -103,10 +86,10 @@ export async function listUsersController(req: Request, res: Response): Promise<
         updatedAt: true,
       },
     });
-    res.status(200).json({ success: true, message: 'Users retrieved', data: users } as APIResponse);
+    res.status(200).json({ success: true, message: 'Users retrieved', data: users } as APIResponseType);
   } catch (error) {
     logger.error('listUsersController error:', error as Error);
-    res.status(500).json({ success: false, message: 'Failed to retrieve users' } as APIResponse);
+    res.status(500).json({ success: false, message: 'Failed to retrieve users' } as APIResponseType);
   }
 }
 
@@ -116,7 +99,7 @@ export async function updateUserController(req: Request, res: Response): Promise
     const payload = req.body as any;
 
     if (!id) {
-      res.status(400).json({ success: false, message: 'User id is required' } as APIResponse);
+      res.status(400).json({ success: false, message: 'User id is required' } as APIResponseType);
       return;
     }
 
@@ -127,7 +110,7 @@ export async function updateUserController(req: Request, res: Response): Promise
     });
 
     if (!currentUser) {
-      res.status(404).json({ success: false, message: 'User not found' } as APIResponse);
+      res.status(404).json({ success: false, message: 'User not found' } as APIResponseType);
       return;
     }
 
@@ -139,7 +122,7 @@ export async function updateUserController(req: Request, res: Response): Promise
         res.status(409).json({
           success: false,
           message: 'Email or phone number already exists for another user'
-        } as APIResponse);
+        } as APIResponseType);
         return;
       }
     }
@@ -168,30 +151,11 @@ export async function updateUserController(req: Request, res: Response): Promise
         updatedAt: true,
       },
     });
-
-    // Send email notification when user status changes
-    if (typeof payload.isActive === 'boolean' && currentUser.isActive !== payload.isActive) {
-      try {
-        // const template = payload.isActive ? EMAIL_TEMPLATES.USER_ACTIVATED : EMAIL_TEMPLATES.USER_DEACTIVATED;
-        // await enqueue(QUEUE_NAMES.EMAIL, JOB_NAMES.WELCOME_EMAIL, {
-        //   recipient: updated.email,
-        //   subject: template.subject,
-        //   template: template.body,
-        //   templateData: {
-        //     firstName: updated.firstName,
-        //   },
-        // });
-        logger.info(`${payload.isActive ? 'Activation' : 'Deactivation'} email queued for user: ${updated.email}`);
-      } catch (err) {
-        logger.error(`Failed to enqueue ${payload.isActive ? 'activation' : 'deactivation'} email:`, err as Error);
-        // Don't fail the request if email fails
-      }
-    }
-
-    res.status(200).json({ success: true, message: 'User updated', data: updated } as APIResponse);
+    
+    res.status(200).json({ success: true, message: 'User updated', data: updated } as APIResponseType);
   } catch (error) {
     logger.error('updateUserController error:', error as Error);
-    res.status(500).json({ success: false, message: 'Failed to update user' } as APIResponse);
+    res.status(500).json({ success: false, message: 'Failed to update user' } as APIResponseType);
   }
 }
 
@@ -199,14 +163,14 @@ export async function deleteUserController(req: Request, res: Response): Promise
   try {
     const { id } = req.params;
     if (!id) {
-      res.status(400).json({ success: false, message: 'User id is required' } as APIResponse);
+      res.status(400).json({ success: false, message: 'User id is required' } as APIResponseType);
       return;
     }
 
     await prisma.user.delete({ where: { id } });
-    res.status(200).json({ success: true, message: 'User deleted' } as APIResponse);
+    res.status(200).json({ success: true, message: 'User deleted' } as APIResponseType);
   } catch (error) {
     logger.error('deleteUserController error:', error as Error);
-    res.status(500).json({ success: false, message: 'Failed to delete user' } as APIResponse);
+    res.status(500).json({ success: false, message: 'Failed to delete user' } as APIResponseType);
   }
 }

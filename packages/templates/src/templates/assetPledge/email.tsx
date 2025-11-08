@@ -13,19 +13,11 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-
-interface AssetPledgeEmailProps {
-  customerName: string;
-  assetName: string;
-  amount: number | string;
-  district: string;
-  requestId: string;
-  companyName?: string;
-  timestamp?: string;
-  additionalDescription?: string;
-}
+import { AssetPledgePayloadType } from '@fundifyhub/types';
 
 const AssetPledgeEmail = ({
+  email,
+  phoneNumber,
   customerName,
   assetName,
   amount,
@@ -33,8 +25,9 @@ const AssetPledgeEmail = ({
   requestId,
   companyName,
   timestamp,
-  additionalDescription,
-}: AssetPledgeEmailProps) => (
+  adminDashboardUrl,
+  supportUrl
+}: AssetPledgePayloadType) => (
   <Html lang="en">
     <Head />
     <Preview>New asset pledge by {customerName} — {assetName}</Preview>
@@ -62,12 +55,12 @@ const AssetPledgeEmail = ({
             <Text style={muted}>District</Text>
             <Text style={infoItem}>{district}</Text>
 
-            {additionalDescription && (
+            {/* {additionalDescription && (
               <>
                 <Text style={muted}>Notes</Text>
                 <Text style={infoItem}>{additionalDescription}</Text>
               </>
-            )}
+            )} */}
 
             <Text style={muted}>Request ID</Text>
             <Text style={infoItem}>{requestId}</Text>
@@ -85,16 +78,19 @@ const AssetPledgeEmail = ({
   </Html>
 );
 
-export const renderEmail = (vars: Record<string, any>) => {
-  const props: AssetPledgeEmailProps = {
-    customerName: vars.customerName || `${vars.firstName || ''} ${vars.lastName || ''}`.trim() || 'User',
-    assetName: vars.assetName || `${vars.assetBrand || ''} ${vars.assetModel || ''}`.trim() || 'Asset',
-    amount: vars.amount ?? vars.requestedAmount ?? 0,
-    district: vars.district || 'Unknown',
-    requestId: vars.requestId || vars.request?.id || 'N/A',
+export const renderEmail = (vars: AssetPledgePayloadType) => {
+  const props: AssetPledgePayloadType = {
+    email: vars.email,
+    phoneNumber: vars.phoneNumber,
+    customerName: vars.customerName,
+    assetName: vars.assetName,
+    amount: vars.amount,
+    district: vars.district,
+    requestId: vars.requestId,
     companyName: vars.companyName,
     timestamp: vars.timestamp,
-    additionalDescription: vars.additionalDescription || vars.AdditionalDescription,
+    adminDashboardUrl: vars.adminDashboardUrl,
+    supportUrl: vars.supportUrl,
   };
 
   return render(<AssetPledgeEmail {...props} />);

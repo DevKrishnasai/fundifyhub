@@ -1,84 +1,69 @@
 import { Job } from 'bullmq';
-import { BaseWorker } from './base-worker';
+import { BaseWorker } from '../utils/base-worker-class';
 import { SimpleLogger } from '@fundifyhub/logger';
-import { getTemplate } from '@fundifyhub/templates';
 import { sendWhatsApp } from '../services/whatsapp-service';
 import { serviceManager } from '../services/service-manager';
-import { ServiceControlJobData, ServiceControlAction } from '@fundifyhub/types';
 import { startWhatsAppService, stopWhatsAppService } from '../services/whatsapp-service';
+import { AddJobType, AddServiceControlJobType, QUEUE_NAMES, SERVICE_CONTROL_ACTIONS, TEMPLATE_NAMES } from '@fundifyhub/types';
+import { createWhatsAppProcessor } from '../utils/template-processor';
 
-export class WhatsAppWorker extends BaseWorker<any> {
-  constructor(queueName: string, logger: SimpleLogger) {
+export class WhatsAppWorker extends BaseWorker<AddJobType<TEMPLATE_NAMES> | AddServiceControlJobType> {
+  constructor(queueName: QUEUE_NAMES, logger: SimpleLogger) {
     super(queueName, logger);
   }
 
-  protected async processJob(job: Job<any>): Promise<any> {
-    const data = job.data || {};
-    
+  protected async processJob(job: Job<AddJobType<TEMPLATE_NAMES> | AddServiceControlJobType>): Promise<{ success: boolean; error?: string; }> {
+    const data = job.data;
+
     // Check if this is a service control job
-    if (data.action) {
-      return this.handleServiceControl(job, data as ServiceControlJobData);
+    if ('action' in data) {
+      return this.handleServiceControl(data);
     }
 
-    // Regular template job
+    // Otherwise, it's a regular WhatsApp job
     const { templateName, variables } = data;
-
-    const template = getTemplate(templateName);
-    if (!template) {
-      const contextLogger = this.logger.child('[whatsapp-worker]');
-      contextLogger.error(`Template not found: ${templateName}`);
-      throw new Error('Template not found');
-    }
 
     try {
       const available = await serviceManager.isWhatsAppAvailable();
-      if (!available) {
-        const contextLogger = this.logger.child(`[Job ${job.id}] [whatsapp-worker]`);
-        contextLogger.warn('WhatsApp service not available - will retry automatically');
-        // Throw error to trigger BullMQ's built-in retry mechanism
-        throw new Error('WhatsApp service not available - will retry automatically');
-      }
-      const text = template.renderWhatsApp ? await template.renderWhatsApp(variables) : '';
-      const to = variables.phone || variables.recipient;
+      if (!available)
+        throw new Error('WhatsApp service not available');
 
-      await sendWhatsApp({ to, text });
-      // Success - logged at completion
-      return true;
+      const processor = createWhatsAppProcessor(templateName);
+      const { to, content } = await processor.process(variables);
+
+      await sendWhatsApp({ to, text: content });
+
+      return { success: true };
     } catch (err) {
-      const contextLogger = this.logger.child(`[Job ${job.id}] [whatsapp-worker]`);
-      contextLogger.error(`Failed to process WhatsApp job (template: ${data.templateName}, recipient: ${variables.phone || variables.recipient}):`, err as Error);
-      throw err;
+      throw { success: false, error: (err as Error).message };
     }
   }
 
-  private async handleServiceControl(job: Job<any>, data: ServiceControlJobData): Promise<any> {
-    const { action, serviceName } = data;
-    const contextLogger = this.logger.child(`[Job ${job.id}] [whatsapp-service-control]`);
+  private async handleServiceControl(data: AddServiceControlJobType): Promise<{ success: boolean; error?: string; action?: SERVICE_CONTROL_ACTIONS }> {
+    const { action } = data;
 
     try {
       switch (action) {
-        case ServiceControlAction.START:
+        case SERVICE_CONTROL_ACTIONS.START:
           await startWhatsAppService();
-          return { success: true, action: ServiceControlAction.START };
+          return { success: true, action: SERVICE_CONTROL_ACTIONS.START };
 
-        case ServiceControlAction.STOP:
-        case ServiceControlAction.DISCONNECT:
+        case SERVICE_CONTROL_ACTIONS.STOP:
+        case SERVICE_CONTROL_ACTIONS.DISCONNECT:
           await stopWhatsAppService();
           return { success: true, action };
 
-        case ServiceControlAction.RESTART:
+        case SERVICE_CONTROL_ACTIONS.RESTART:
           await stopWhatsAppService();
           await new Promise(resolve => setTimeout(resolve, 1000));
           await startWhatsAppService();
-          return { success: true, action: ServiceControlAction.RESTART };
+          return { success: true, action: SERVICE_CONTROL_ACTIONS.RESTART };
 
         default:
-          contextLogger.warn(`Unknown service control action: ${action}`);
           return { success: false, error: 'Unknown action' };
       }
     } catch (err) {
-      contextLogger.error('Service control failed:', err as Error);
-      throw err;
+      throw { success: false, error: (err as Error).message };
     }
   }
 }

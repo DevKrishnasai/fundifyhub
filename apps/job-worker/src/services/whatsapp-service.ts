@@ -1,8 +1,8 @@
 import { serviceManager } from './service-manager';
-import { ConnectionStatus } from '@fundifyhub/types';
+import { CONNECTION_STATUS } from '@fundifyhub/types';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import { prisma } from '@fundifyhub/prisma';
-import { logger } from '../logger';
+import logger from '../utils/logger';
 
 export const sendWhatsApp = async (opts: { to: string; text: string }) => {
   const client = serviceManager.getWhatsAppClient();
@@ -66,14 +66,14 @@ export const startWhatsAppService = async () => {
     await prisma.serviceConfig.upsert({
       where: { serviceName: 'WHATSAPP' },
       update: {
-        connectionStatus: ConnectionStatus.INITIALIZING,
+        connectionStatus: CONNECTION_STATUS.INITIALIZING,
         lastError: null,
       },
       create: {
         serviceName: 'WHATSAPP',
         isEnabled: true,
         isActive: false,
-        connectionStatus: ConnectionStatus.INITIALIZING,
+        connectionStatus: CONNECTION_STATUS.INITIALIZING,
         config: {},
       }
     });
@@ -114,13 +114,13 @@ export const startWhatsAppService = async () => {
           where: { serviceName: 'WHATSAPP' },
           update: {
             qrCode: qrCodeDataUrl,
-            connectionStatus: ConnectionStatus.WAITING_FOR_QR_SCAN,
+            connectionStatus: CONNECTION_STATUS.WAITING_FOR_QR_SCAN,
           },
           create: {
             serviceName: 'WHATSAPP',
             isEnabled: true,
             isActive: false,
-            connectionStatus: ConnectionStatus.WAITING_FOR_QR_SCAN,
+            connectionStatus: CONNECTION_STATUS.WAITING_FOR_QR_SCAN,
             config: {},
             qrCode: qrCodeDataUrl,
           }
@@ -141,7 +141,7 @@ export const startWhatsAppService = async () => {
         where: { serviceName: 'WHATSAPP' },
         update: {
           isActive: true,
-          connectionStatus: ConnectionStatus.CONNECTED,
+          connectionStatus: CONNECTION_STATUS.CONNECTED,
           lastConnectedAt: new Date(),
           lastError: null,
           qrCode: null,
@@ -150,7 +150,7 @@ export const startWhatsAppService = async () => {
           serviceName: 'WHATSAPP',
           isEnabled: true,
           isActive: true,
-          connectionStatus: ConnectionStatus.CONNECTED,
+          connectionStatus: CONNECTION_STATUS.CONNECTED,
           config: {},
           lastConnectedAt: new Date(),
         }
@@ -161,14 +161,14 @@ export const startWhatsAppService = async () => {
       await prisma.serviceConfig.upsert({
         where: { serviceName: 'WHATSAPP' },
         update: {
-          connectionStatus: ConnectionStatus.AUTHENTICATED,
+          connectionStatus: CONNECTION_STATUS.AUTHENTICATED,
           qrCode: null,
         },
         create: {
           serviceName: 'WHATSAPP',
           isEnabled: true,
           isActive: false,
-          connectionStatus: ConnectionStatus.AUTHENTICATED,
+          connectionStatus: CONNECTION_STATUS.AUTHENTICATED,
           config: {},
         }
       });
@@ -181,7 +181,7 @@ export const startWhatsAppService = async () => {
         where: { serviceName: 'WHATSAPP' },
         update: {
           isActive: false,
-          connectionStatus: ConnectionStatus.ERROR,
+          connectionStatus: CONNECTION_STATUS.ERROR,
           lastError: 'Authentication failed',
           qrCode: null,
         },
@@ -189,7 +189,7 @@ export const startWhatsAppService = async () => {
           serviceName: 'WHATSAPP',
           isEnabled: true,
           isActive: false,
-          connectionStatus: ConnectionStatus.ERROR,
+          connectionStatus: CONNECTION_STATUS.ERROR,
           config: {},
           lastError: 'Authentication failed',
         }
@@ -206,14 +206,14 @@ export const startWhatsAppService = async () => {
         where: { serviceName: 'WHATSAPP' },
         update: {
           isActive: false,
-          connectionStatus: ConnectionStatus.DISCONNECTED,
+          connectionStatus: CONNECTION_STATUS.DISCONNECTED,
           qrCode: null,
         },
         create: {
           serviceName: 'WHATSAPP',
           isEnabled: false,
           isActive: false,
-          connectionStatus: ConnectionStatus.DISCONNECTED,
+          connectionStatus: CONNECTION_STATUS.DISCONNECTED,
           config: {},
         }
       });
@@ -233,7 +233,7 @@ export const startWhatsAppService = async () => {
       where: { serviceName: 'WHATSAPP' },
       update: {
         isActive: false,
-        connectionStatus: ConnectionStatus.ERROR,
+        connectionStatus: CONNECTION_STATUS.ERROR,
         lastError: (error as Error).message,
         qrCode: null,
       },
@@ -241,7 +241,7 @@ export const startWhatsAppService = async () => {
         serviceName: 'WHATSAPP',
         isEnabled: false,
         isActive: false,
-        connectionStatus: ConnectionStatus.ERROR,
+        connectionStatus: CONNECTION_STATUS.ERROR,
         config: {},
         lastError: (error as Error).message,
       }
@@ -267,14 +267,14 @@ export const stopWhatsAppService = async () => {
       where: { serviceName: 'WHATSAPP' },
       update: {
         isActive: false,
-        connectionStatus: ConnectionStatus.DISCONNECTED,
+        connectionStatus: CONNECTION_STATUS.DISCONNECTED,
         qrCode: null,
       },
       create: {
         serviceName: 'WHATSAPP',
         isEnabled: false,
         isActive: false,
-        connectionStatus: ConnectionStatus.DISCONNECTED,
+        connectionStatus: CONNECTION_STATUS.DISCONNECTED,
         config: {},
         qrCode: null,
       }

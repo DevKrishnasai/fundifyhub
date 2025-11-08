@@ -1,3 +1,8 @@
+import { Request, Response } from 'express';
+import { prisma } from '@fundifyhub/prisma';
+import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS } from '@fundifyhub/types';
+import logger from '../../utils/logger';
+
 /**
  * Adds new asset photos to the request (does not delete existing)
  */
@@ -10,25 +15,14 @@ async function updateAssetPhotos(tx: any, requestId: string, assetPhotos: any, c
         requestId,
         url,
         documentType: 'asset_photo',
-        documentCategory: DocumentCategory.ASSET,
+        documentCategory: DOCUMENT_CATEGORY.ASSET,
         uploadedBy: customerId,
       },
     })
   ));
   return true;
 }
-/**
- * User Controllers
- * Handles HTTP requests and responses for user operations
- * Business logic is delegated to user services
- */
 
-import { prisma } from '@fundifyhub/prisma';
-import { Request, Response } from 'express';
-import { createLogger } from '@fundifyhub/logger';
-import { isValidAssetType, isValidAssetCondition, DocumentCategory,RequestStatus, LoanStatus, ServiceName } from '@fundifyhub/types';
-import { enqueue } from '@fundifyhub/utils';
-const logger = createLogger({ serviceName: 'user-controllers' });
 /**
  * GET /user/profile
  * Get current user profile (protected)
@@ -159,6 +153,13 @@ function validateAssetFields(fields: any, res: Response): boolean {
  * Validates enum values for asset type and condition
  */
 function validateAssetEnums(assetType: string, assetCondition: string, res: Response): boolean {
+  const isValidAssetType = (type: string) => {
+    return Object.values(ASSET_TYPE).includes(type as ASSET_TYPE);
+  };
+  const isValidAssetCondition = (condition: string) => {
+    return Object.values(ASSET_CONDITION).includes(condition as ASSET_CONDITION);
+  };
+
   if (!isValidAssetType(assetType)) {
     res.status(400).json({ 
       success: false, 
@@ -234,7 +235,7 @@ async function handleDocuments(tx: any, requestId: string, photos: string[], cus
           requestId,
           url,
           documentType: 'asset_photo',
-          documentCategory: DocumentCategory.ASSET,
+          documentCategory: DOCUMENT_CATEGORY.ASSET,
           uploadedBy: customerId,
         },
       })
@@ -364,7 +365,8 @@ export async function addAssetController(req: Request, res: Response): Promise<v
           recipient: recipientEmail,
         };
 
-        await enqueue(templateName, jobPayload, { services: [ServiceName.EMAIL] });
+        //TODO: uncomment when enqueue is ready
+        // await enqueue(templateName, jobPayload, { services: [ServiceName.EMAIL] });
       } catch (err) {
         // Log errors but do not affect the already-sent response
         logger.error('Failed to enqueue assetPledge job:', err as Error);
@@ -409,8 +411,8 @@ export async function addAssetController(req: Request, res: Response): Promise<v
  * - Replaces all existing asset photos with new ones if provided
  * - Uses transactions to ensure atomicity
  */
-// Make sure you have RequestStatus enum imported, e.g.:
-// import { RequestStatus } from '@prisma/client';
+// Make sure you have REQUEST_STATUS enum imported, e.g.:
+// import { REQUEST_STATUS } from '@prisma/client';
 // (Or wherever your enum is defined)
 
 export async function updateAssetController(req: Request, res: Response): Promise<void> {
@@ -440,12 +442,12 @@ export async function updateAssetController(req: Request, res: Response): Promis
     }
 
     const allowedUpdateStatuses = [
-      RequestStatus.PENDING,
-      RequestStatus.OFFER_REJECTED,
-      RequestStatus.REJECTED,
-      RequestStatus.CANCELLED
+      REQUEST_STATUS.PENDING,
+      REQUEST_STATUS.OFFER_REJECTED,
+      REQUEST_STATUS.REJECTED,
+      REQUEST_STATUS.CANCELLED
     ];
-    if (!allowedUpdateStatuses.includes(existing.currentStatus as RequestStatus)) {
+    if (!allowedUpdateStatuses.includes(existing.currentStatus as REQUEST_STATUS)) {
       res.status(400).json({
         success: false,
         message: 'This request cannot be updated as it has already been processed or is in a locked state.'
@@ -454,7 +456,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
     }
 
     // Always set status to PENDING on update
-    updateData.currentStatus = RequestStatus.PENDING;
+    updateData.currentStatus = REQUEST_STATUS.PENDING;
 
     // Update request and asset photos in transaction
     await prisma.$transaction(async (tx: any) => {
@@ -679,7 +681,7 @@ export async function countActiveLoans(userId: string): Promise<number> {
   try {
     return await prisma.loan.count({
       where: {
-        status: LoanStatus.ACTIVE,
+        status: LOAN_STATUS.ACTIVE,
         request: { customerId: userId },
       },
     });
@@ -708,7 +710,7 @@ export async function countPendingLoans(userId: string): Promise<number> {
   try {
     return await prisma.request.count({
       where: {
-        currentStatus: RequestStatus.PENDING,
+        currentStatus: REQUEST_STATUS.PENDING,
         customerId: userId,
       },
     });
@@ -743,7 +745,7 @@ export async function getTotalBorrowStats(userId: string): Promise<{ totalBorrow
   try {
     const result = await prisma.loan.aggregate({
       where: {
-        status: LoanStatus.ACTIVE,
+        status: LOAN_STATUS.ACTIVE,
         request: {
           customerId: userId,
         },

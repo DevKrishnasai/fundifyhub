@@ -24,6 +24,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import logger from "@/lib/logger"
 import {
   Users,
   UserPlus,
@@ -38,7 +39,7 @@ import {
 
 import { useToast } from '@/hooks/use-toast'
 import { Spinner } from '@/components/ui/spinner'
-import { UserRole, ApiResponse } from '@fundifyhub/types'
+import { ROLES } from "@fundifyhub/types"
 
 type UserStatus = "active" | "inactive";
 
@@ -90,7 +91,7 @@ export default function UsersAccessPage() {
       setIsLoading(true)
       try {
 
-          const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS) as ApiResponse<any>
+          const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS);
 
         const list = (data.data || []).map((u: any) => {
           const firstName = u.firstName || ''
@@ -114,7 +115,7 @@ export default function UsersAccessPage() {
         })
         if (mounted) setUsers(list)
       } catch (error) {
-        console.error('fetchUsers error', error)
+        logger.error('fetchUsers error', error as Error);
         toast({ title: 'Failed to load users', description: String(error), variant: 'destructive' })
       }
       finally {
@@ -301,7 +302,7 @@ export default function UsersAccessPage() {
       setIsAddDialogOpen(false)
       toast({ title: 'User created successfully' })
     } catch (error) {
-      console.error('create user error', error)
+      logger.error('create user error', error as Error);
       toast({
         title: 'Failed to create user',
         description: String(error),
@@ -325,7 +326,7 @@ export default function UsersAccessPage() {
   } | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  const AVAILABLE_ROLES = Object.values(UserRole)
+  const AVAILABLE_ROLES = Object.values(ROLES)
 
   // open editor
   const openEditor = (u: User) => {
@@ -382,7 +383,7 @@ export default function UsersAccessPage() {
       toast({ title: 'User updated' })
       closeEditor()
     } catch (error) {
-      console.error('save edit error', error)
+      logger.error('save edit error', error as Error);
       toast({ title: 'Update failed', description: String(error), variant: 'destructive' })
     } finally {
       setIsSaving(false)

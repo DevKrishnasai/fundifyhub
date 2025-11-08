@@ -13,28 +13,20 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-
-/* ------------------------------- INTERFACE ------------------------------- */
-interface LoginAlertEmailProps {
-  customerName?: string;
-  device?: string;
-  location?: string;
-  time?: string;
-  supportUrl: string;
-  resetPasswordUrl: string;
-  companyName: string;
-}
+import { LoginAlertPayloadType } from '@fundifyhub/types';
 
 /* --------------------------------- EMAIL --------------------------------- */
 const LoginAlertEmail = ({
+  email,
+  phoneNumber,
   customerName,
-  device = 'Unknown Device',
-  location = 'Unknown Location',
-  time = new Date().toLocaleString(),
+  device,
+  location,
+  time,
   supportUrl,
   resetPasswordUrl,
   companyName
-}: LoginAlertEmailProps) => (
+}: LoginAlertPayloadType) => (
   <Html lang="en">
     <Head />
     <Preview>
@@ -94,12 +86,14 @@ const LoginAlertEmail = ({
 );
 
 /* --------------------------- RENDER FUNCTION ---------------------------- */
-export const renderEmail = (vars: Record<string, any>) => {
-  const props: LoginAlertEmailProps = {
-    customerName: vars.customerName || 'User',
-    device: vars.device || 'Unknown Device',
-    location: vars.location || 'Unknown Location',
-    time: vars.time || new Date().toLocaleString(),
+export const renderEmail = (vars: LoginAlertPayloadType) => {
+  const props: LoginAlertPayloadType = {
+    email: vars.email,
+    phoneNumber: vars.phoneNumber,
+    customerName: vars.customerName,
+    device: vars.device,
+    location: vars.location,
+    time: vars.time,
     supportUrl: vars.supportUrl,
     resetPasswordUrl: vars.resetPasswordUrl,
     companyName: vars.companyName,

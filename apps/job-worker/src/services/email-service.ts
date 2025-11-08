@@ -1,8 +1,8 @@
 import { serviceManager } from './service-manager';
-import { ConnectionStatus } from '@fundifyhub/types';
+import { CONNECTION_STATUS } from '@fundifyhub/types';
 import nodemailer from 'nodemailer';
 import { prisma } from '@fundifyhub/prisma';
-import { logger } from '../logger';
+import logger from '../utils/logger';
 
 export const sendEmail = async (opts: { to: string; subject: string; html?: string; text?: string }) => {
   const transporter = serviceManager.getEmailTransporter();
@@ -46,7 +46,7 @@ export const startEmailService = async () => {
       where: { serviceName: 'EMAIL' },
       update: {
         isActive: true,
-        connectionStatus: ConnectionStatus.CONNECTED,
+        connectionStatus: CONNECTION_STATUS.CONNECTED,
         lastConnectedAt: new Date(),
         lastError: null,
       },
@@ -54,7 +54,7 @@ export const startEmailService = async () => {
         serviceName: 'EMAIL',
         isEnabled: true,
         isActive: true,
-        connectionStatus: ConnectionStatus.CONNECTED,
+        connectionStatus: CONNECTION_STATUS.CONNECTED,
         config: {},
         lastConnectedAt: new Date(),
       }
@@ -70,14 +70,14 @@ export const startEmailService = async () => {
       where: { serviceName: 'EMAIL' },
       update: {
         isActive: false,
-        connectionStatus: ConnectionStatus.ERROR,
+        connectionStatus: CONNECTION_STATUS.ERROR,
         lastError: (error as Error).message,
       },
       create: {
         serviceName: 'EMAIL',
         isEnabled: false,
         isActive: false,
-        connectionStatus: ConnectionStatus.ERROR,
+        connectionStatus: CONNECTION_STATUS.ERROR,
         config: {},
         lastError: (error as Error).message,
       }
@@ -98,13 +98,13 @@ export const stopEmailService = async () => {
       where: { serviceName: 'EMAIL' },
       update: {
         isActive: false,
-        connectionStatus: ConnectionStatus.DISCONNECTED,
+        connectionStatus: CONNECTION_STATUS.DISCONNECTED,
       },
       create: {
         serviceName: 'EMAIL',
         isEnabled: false,
         isActive: false,
-        connectionStatus: ConnectionStatus.DISCONNECTED,
+        connectionStatus: CONNECTION_STATUS.DISCONNECTED,
         config: {},
       }
     });

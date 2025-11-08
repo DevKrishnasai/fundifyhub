@@ -4,16 +4,17 @@ import { useRouter, usePathname } from 'next/navigation';
 import { 
   logout as logoutUser
 } from '@/lib/utils';
-import { ROLES, User } from '@fundifyhub/types';
+import { ROLES, UserType } from '@fundifyhub/types';
 import { BACKEND_API_CONFIG, FRONTEND_API_CONFIG, FrontendPublicRoutes } from '@/lib/urls';
 import { get } from '@/lib/api-client';
+import logger from '@/lib/logger';
 
 interface AuthContextType {
-  user: User | null;
+  user: UserType | null;
   isLoading: boolean;
   isLoggedIn: boolean;
   // Auth actions
-  login: (user: User) => void;
+  login: (user: UserType) => void;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   // Utility methods
@@ -26,7 +27,7 @@ interface AuthContextType {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastTokenCheck, setLastTokenCheck] = useState<number>(0);
   const router = useRouter();
@@ -99,10 +100,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /** 
    * Server-side authentication validation
    */
-  const validateWithServer = async (): Promise<User | null> => {
+  const validateWithServer = async (): Promise<UserType | null> => {
       const data = await get(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE);
       if (data && data.success && data.data?.user) 
-        return data.data.user as User;
+        return data.data.user as UserType;
       return null;  
   };
 
@@ -125,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Handle login
-  const handleLogin = useCallback((userData: User) => {
+  const handleLogin = useCallback((userData: UserType) => {
     setUser(userData);
     setLastTokenCheck(Date.now());
     redirectToDashboard();
@@ -181,7 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Validate session with server every 5 minutes
       const serverUser = await validateWithServer();
       if (!serverUser) {
-        console.log('Session expired, logging out');
+        logger.info('Session expired, logging out');
         handleLogout();
       }
     }, 5 * 60 * 1000);

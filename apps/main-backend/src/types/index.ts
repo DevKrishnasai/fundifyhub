@@ -1,6 +1,6 @@
-import { User } from "@fundifyhub/types";
+import { UserType } from "@fundifyhub/types";
 
-export interface APIResponse<T = any> {
+export interface APIResponseType<T = any> {
   success: boolean;
   message: string;
   data?: T;
@@ -10,7 +10,7 @@ export interface APIResponse<T = any> {
 declare global {
   namespace Express {
     interface Request {
-      user?: User;
+      user?: UserType;
     }
   }
 }

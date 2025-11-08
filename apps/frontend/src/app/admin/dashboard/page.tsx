@@ -38,7 +38,9 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { get } from "@/lib/api-client"
-import { API_CONFIG, apiUrl } from '@/lib/utils'
+import { ROLES } from "@fundifyhub/types"
+import { BACKEND_API_CONFIG } from "@/lib/urls"
+import logger from "@/lib/logger"
 
 // Data will be loaded from admin API endpoints: /admin/get-active-loans and /admin/get-pending-requests
 
@@ -107,7 +109,7 @@ export default function AdminDashboard() {
 
   // Check if user is admin
   useEffect(() => {
-    if (!isLoading && (!user || !user.roles?.some(r => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase())))) {
+    if (!isLoading && (!user || !user.roles?.some((r: string) => Object.values(ROLES).includes(r.toUpperCase())))) {
       router.push('/admin/login')
     }
   }, [user, isLoading, router])
@@ -120,8 +122,8 @@ export default function AdminDashboard() {
       setDataError(null)
       try {
         const [activeResp, pendingResp] = await Promise.all([
-          get(API_CONFIG.ENDPOINTS.ADMIN.GET_ACTIVE_LOANS),
-          get(API_CONFIG.ENDPOINTS.ADMIN.GET_PENDING_REQUESTS),
+          get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.GET_ACTIVE_LOANS),
+          get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.GET_PENDING_REQUESTS),
         ])
 
         if (!mounted) return
@@ -164,7 +166,7 @@ export default function AdminDashboard() {
         setLoans(fetchedLoans)
         setRequests(fetchedRequests)
       } catch (err: any) {
-        console.error('Failed to load admin data', err)
+        logger.error('Failed to load admin data', err);
         setDataError(err?.message || 'Failed to load data')
       } finally {
         setIsLoadingData(false)
@@ -179,7 +181,7 @@ export default function AdminDashboard() {
   }, [isLoading, user])
 
   // Show loading while checking auth
-  if (isLoading || !user || !user.roles?.some(r => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase()))) {
+  if (isLoading || !user || !user.roles?.some((r: string) => Object.values(ROLES).includes(r.toUpperCase()))) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

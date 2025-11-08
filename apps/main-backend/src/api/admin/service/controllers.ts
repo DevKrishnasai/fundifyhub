@@ -1,18 +1,21 @@
 import { Request, Response } from 'express';
 import { prisma } from '@fundifyhub/prisma';
-import { SUPPORTED_SERVICES, RequestStatus, ServiceControlAction, ConnectionStatus } from '@fundifyhub/types';
-import { ServiceControlJobData, ServiceName } from '@fundifyhub/types';
-import { enqueueServiceControl } from '@fundifyhub/utils';
-import { logger } from 'apps/main-backend/src/utils/logger';
-import { APIResponse } from 'apps/main-backend/src/types';
+import { SERVICE_NAMES, CONNECTION_STATUS, AddServiceControlJobType, SERVICE_CONTROL_ACTIONS } from '@fundifyhub/types';
+import logger from 'apps/main-backend/src/utils/logger';
+import queueClient from 'apps/main-backend/src/utils/queues';
+import { APIResponseType } from 'apps/main-backend/src/types';
+
 
 /**
  * GET /admin/services
  * Get all service configurations (auto-create if missing)
  */
+
 export async function getAllServicesController(req: Request, res: Response): Promise<void> {
   try {
     let configs = await prisma.serviceConfig.findMany({ orderBy: { serviceName: 'asc' } });
+
+    const SUPPORTED_SERVICES = Object.values(SERVICE_NAMES);
     
     for (const serviceName of SUPPORTED_SERVICES) {
       if (!configs.find((cfg: any) => cfg.serviceName === serviceName)) {
@@ -23,7 +26,7 @@ export async function getAllServicesController(req: Request, res: Response): Pro
             serviceName,
             isEnabled: false,
             isActive: false,
-            connectionStatus: ConnectionStatus.DISCONNECTED,
+            connectionStatus: CONNECTION_STATUS.DISCONNECTED,
             config: {},
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -64,14 +67,14 @@ export async function getAllServicesController(req: Request, res: Response): Pro
       success: true,
       message: 'Service configurations retrieved successfully',
       data: serviceStatuses,
-    } as APIResponse);
+    } as APIResponseType);
   } catch (error) {
     const contextLogger = logger.child('[get-services]');
     contextLogger.error('Failed to get services:', error as Error);
     res.status(500).json({
       success: false,
       message: 'Failed to get service configurations',
-    } as APIResponse);
+    } as APIResponseType);
   }
 }
 
@@ -92,7 +95,7 @@ export async function enableServiceController(req: Request, res: Response): Prom
           serviceName: serviceName.toUpperCase(),
           isEnabled: true,
           isActive: false,
-          connectionStatus: ConnectionStatus.DISCONNECTED,
+          connectionStatus: CONNECTION_STATUS.DISCONNECTED,
           config: {},
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -105,24 +108,24 @@ export async function enableServiceController(req: Request, res: Response): Prom
       });
     }
     
-    const adminUserId = (req as any).user?.id || 'unknown-admin';
-    const jobData: ServiceControlJobData = {
-      action: ServiceControlAction.START,
-      serviceName: serviceName.toUpperCase() as ServiceName,
-      triggeredBy: adminUserId,
+    const adminUser = (req as any).user?.firstName || 'unknown-admin';
+    const jobData: AddServiceControlJobType = {
+      action: SERVICE_CONTROL_ACTIONS.START,
+      serviceName: serviceName.toUpperCase() as SERVICE_NAMES,
+      triggeredBy: adminUser,
     };
-    const result = await enqueueServiceControl(jobData);
+    const result = await queueClient.addAServiceControlJob(jobData);
     
-    if (result.error) {
+    if (result?.error) {
       const contextLogger = logger.child('[enable-service]');
       contextLogger.error(`Failed to enqueue: ${result.error}`);
     }
     
-    res.status(200).json({ success: true, message: `${serviceName} enabled`, data: config } as APIResponse);
+    res.status(200).json({ success: true, message: `${serviceName} enabled`, data: config } as APIResponseType);
   } catch (error) {
     const contextLogger = logger.child('[enable-service]');
     contextLogger.error('Failed to enable service:', error as Error);
-    res.status(500).json({ success: false, message: `Failed to enable ${req.params.serviceName}` } as APIResponse);
+    res.status(500).json({ success: false, message: `Failed to enable ${req.params.serviceName}` } as APIResponseType);
   }
 }
 
@@ -137,19 +140,19 @@ export async function disableServiceController(req: Request, res: Response): Pro
     const config = await prisma.serviceConfig.findUnique({ where: { serviceName: serviceName.toUpperCase() } });
     
     if (!config) {
-      res.status(404).json({ success: false, message: `${serviceName} not found` } as APIResponse);
+      res.status(404).json({ success: false, message: `${serviceName} not found` } as APIResponseType);
       return;
     }
     
-    const adminUserId = (req as any).user?.id || 'unknown-admin';
-    const jobData: ServiceControlJobData = {
-      action: ServiceControlAction.STOP,
-      serviceName: serviceName.toUpperCase() as ServiceName,
-      triggeredBy: adminUserId,
+    const adminUser = (req as any).user?.firstName || 'unknown-admin';
+    const jobData: AddServiceControlJobType = {
+      action: SERVICE_CONTROL_ACTIONS.STOP,
+      serviceName: serviceName.toUpperCase() as SERVICE_NAMES,
+      triggeredBy: adminUser,
     };
-    const result = await enqueueServiceControl(jobData);
-    
-    if (result.error) {
+    const result = await queueClient.addAServiceControlJob(jobData);
+
+    if (result?.error) {
       logger.error(`Failed to enqueue service control: ${result.error}`);
     }
     
@@ -161,10 +164,10 @@ export async function disableServiceController(req: Request, res: Response): Pro
     res.status(200).json({ 
       success: true, 
       message: `${serviceName} disabled and deleted successfully` 
-    } as APIResponse);
+    } as APIResponseType);
   } catch (error) {
     logger.error('Error disabling service:', error as Error);
-    res.status(500).json({ success: false, message: `Failed to disable ${req.params.serviceName}` } as APIResponse);
+    res.status(500).json({ success: false, message: `Failed to disable ${req.params.serviceName}` } as APIResponseType);
   }
 }
 
@@ -178,29 +181,29 @@ export async function disconnectServiceController(req: Request, res: Response): 
     const { serviceName } = req.params;
     const config = await prisma.serviceConfig.findUnique({ where: { serviceName: serviceName.toUpperCase() } });
     if (!config) {
-      res.status(404).json({ success: false, message: `Service ${serviceName} not found` } as APIResponse);
+      res.status(404).json({ success: false, message: `Service ${serviceName} not found` } as APIResponseType);
       return;
     }
     
     // Enqueue job for worker to disconnect and cleanup service
-    const adminUserId = (req as any).user?.id || 'unknown-admin';
-    const jobData: ServiceControlJobData = {
-      action: ServiceControlAction.DISCONNECT,
-      serviceName: serviceName.toUpperCase() as ServiceName,
-      triggeredBy: adminUserId,
+    const adminUser = (req as any).user?.firstName || 'unknown-admin';
+    const jobData: AddServiceControlJobType = {
+      action: SERVICE_CONTROL_ACTIONS.DISCONNECT,
+      serviceName: serviceName.toUpperCase() as SERVICE_NAMES,
+      triggeredBy: adminUser,
     };
-    const result = await enqueueServiceControl(jobData);
-    
-    if (result.error) {
+    const result = await queueClient.addAServiceControlJob(jobData);
+
+    if (result?.error) {
       logger.error(`Failed to enqueue service control: ${result.error}`);
     }
     
     await prisma.serviceConfig.delete({ where: { serviceName: serviceName.toUpperCase() } });
     
-    res.status(200).json({ success: true, message: `${serviceName} disconnected and cleaned up` } as APIResponse);
+    res.status(200).json({ success: true, message: `${serviceName} disconnected and cleaned up` } as APIResponseType);
   } catch (error) {
     logger.error('Error disconnecting service:', error as Error);
-    res.status(500).json({ success: false, message: `Failed to disconnect ${req.params.serviceName}` } as APIResponse);
+    res.status(500).json({ success: false, message: `Failed to disconnect ${req.params.serviceName}` } as APIResponseType);
   }
 }
 
@@ -212,14 +215,15 @@ export async function configureServiceController(req: Request, res: Response): P
   try {
     const { serviceName } = req.params;
     let configData = req.body;
+    const SUPPORTED_SERVICES = Object.values(SERVICE_NAMES);
     
     // Validate service name
-    const upperServiceName = serviceName.toUpperCase() as ServiceName;
+    const upperServiceName = serviceName.toUpperCase() as SERVICE_NAMES;
     if (!SUPPORTED_SERVICES.includes(upperServiceName)) {
       res.status(400).json({ 
         success: false, 
         message: `Invalid service name: ${serviceName}` 
-      } as APIResponse);
+      } as APIResponseType);
       return;
     }
     
@@ -274,7 +278,7 @@ export async function configureServiceController(req: Request, res: Response): P
         res.status(400).json({
           success: false,
           message: `Email configuration test failed: ${(emailError as Error).message}. Please check your SMTP settings.`,
-        } as APIResponse);
+        } as APIResponseType);
         return;
       }
     }
@@ -290,7 +294,7 @@ export async function configureServiceController(req: Request, res: Response): P
           serviceName: upperServiceName,
           isEnabled: false,
           isActive: false,
-          connectionStatus: ConnectionStatus.DISCONNECTED,
+          connectionStatus: CONNECTION_STATUS.DISCONNECTED,
           config: configData,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -310,12 +314,12 @@ export async function configureServiceController(req: Request, res: Response): P
       success: true, 
       message: `${serviceName} configuration updated`, 
       data: config 
-    } as APIResponse);
+    } as APIResponseType);
   } catch (error) {
     logger.error('Error configuring service:', error as Error);
     res.status(500).json({ 
       success: false, 
       message: `Failed to configure ${req.params.serviceName}` 
-    } as APIResponse);
+    } as APIResponseType);
   }
 }

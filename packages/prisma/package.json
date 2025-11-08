@@ -37,15 +37,11 @@
     "@fundifyhub/logger": "workspace:*",
     "@fundifyhub/utils": "workspace:*",
     "@prisma/client": "^5.22.0",
-    "@types/bcrypt": "^6.0.0",
-    "bcrypt": "^6.0.0",
-    "dotenv": "^17.2.3"
+    "bcrypt": "^6.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
+    "@types/bcrypt": "^6.0.0",
     "dotenv-cli": "^7.4.2",
-    "prisma": "^5.22.0",
-    "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
+    "prisma": "^5.22.0"
   }
 }

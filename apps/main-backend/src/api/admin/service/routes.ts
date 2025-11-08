@@ -6,7 +6,6 @@ import {
   disconnectServiceController,
   configureServiceController,
 } from './controllers';
-import { requireAuth } from '../../auth';
 
 const router: ExpressRouter = Router();
 
@@ -16,30 +15,30 @@ const router: ExpressRouter = Router();
  * GET /admin/services
  * Get all service configurations (auto-create if missing)
  */
-router.get('/', requireAuth, getAllServicesController);
+router.get('/', getAllServicesController);
 
 /**
  * POST /admin/service/:serviceName/enable
  * Enable a service
  */
-router.post('/:serviceName/enable', requireAuth, enableServiceController);
+router.post('/:serviceName/enable', enableServiceController);
 
 /**
  * POST /admin/:serviceName/disable
  * Disable a service
  */
-router.post('/:serviceName/disable', requireAuth, disableServiceController);
+router.post('/:serviceName/disable', disableServiceController);
 
 /**
  * POST /admin/:serviceName/disconnect
  * Disconnect and cleanup a service
  */
-router.post('/:serviceName/disconnect', requireAuth, disconnectServiceController);
+router.post('/:serviceName/disconnect', disconnectServiceController);
 
 /**
  * POST /admin/:serviceName/configure
  * Update service configuration (e.g., email SMTP settings)
  */
-router.post('/:serviceName/configure', requireAuth, configureServiceController);
+router.post('/:serviceName/configure', configureServiceController);
 
 export default router;

@@ -4,9 +4,11 @@
   "description": "Finance Application Monorepo with Next.js, Express, WebSocket, and Job Worker",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "pnpm run db:generate && turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/.next apps/*/dist apps/*/build packages/*/dist packages/*/build .turbo && pnpm store prune",
+    "clean:windows": "if exist node_modules rmdir /s /q node_modules && if exist .turbo rmdir /s /q .turbo && for /d %i in (apps\\*) do (if exist \"%i\\node_modules\" rmdir /s /q \"%i\\node_modules\" && if exist \"%i\\.next\" rmdir /s /q \"%i\\.next\" && if exist \"%i\\dist\" rmdir /s /q \"%i\\dist\" && if exist \"%i\\build\" rmdir /s /q \"%i\\build\") && for /d %i in (packages\\*) do (if exist \"%i\\node_modules\" rmdir /s /q \"%i\\node_modules\" && if exist \"%i\\dist\" rmdir /s /q \"%i\\dist\" && if exist \"%i\\build\" rmdir /s /q \"%i\\build\")",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "setup": "node setup.js",
@@ -44,17 +46,17 @@
     "pnpm": ">=10.17.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.38.0",
-    "@typescript-eslint/eslint-plugin": "^8.18.2",
-    "@typescript-eslint/parser": "^8.18.2",
-    "bullmq": "^5.61.0",
-    "eslint": "^9.38.0",
+    "@eslint/js": "^9.39.1",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
+    "@types/node": "^22.18.11",
+    "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-unused-imports": "^4.2.0",
+    "eslint-plugin-unused-imports": "^4.3.0",
     "prettier": "^3.6.2",
-    "tsx": "^4.20.5",
-    "turbo": "^2.5.8",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.18.2"
+    "tsx": "^4.20.6",
+    "turbo": "^2.6.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.3"
   }
 }
