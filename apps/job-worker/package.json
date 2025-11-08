@@ -4,7 +4,7 @@
   "description": "Job Worker for Finance Application",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "npx dotenv -e ../../.env -- tsx src/index.ts",
+    "dev": "npx dotenv -e ../../.env -- tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint .",

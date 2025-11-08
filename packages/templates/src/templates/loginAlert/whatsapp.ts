@@ -1,19 +1,13 @@
-interface LoginWhatsAppProps {
-  customerName?: string;
-  device?: string;
-  location?: string;
-  time?: string;
-  supportUrl?: string;
-  resetPasswordUrl?: string;
-  companyName?: string;
-}
+import { LoginAlertPayloadType } from "@fundifyhub/types";
 
-export const renderLoginWhatsApp = (vars: Record<string, any>) => {
-  const props: LoginWhatsAppProps = {
-    customerName: vars.customerName || 'User',
-    device: vars.device || 'Unknown Device',
-    location: vars.location || 'Unknown Location',
-    time: vars.time || new Date().toLocaleString(),
+export const renderLoginWhatsApp = (vars: LoginAlertPayloadType) => {
+  const props: LoginAlertPayloadType = {
+    email: vars.email,
+    phoneNumber: vars.phoneNumber,
+    customerName: vars.customerName,
+    device: vars.device,
+    location: vars.location,
+    time: vars.time,
     supportUrl: vars.supportUrl,
     resetPasswordUrl: vars.resetPasswordUrl,
     companyName: vars.companyName

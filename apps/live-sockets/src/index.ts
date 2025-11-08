@@ -1,18 +1,16 @@
 import WebSocket, { WebSocketServer } from "ws";
 import { createLogger } from "@fundifyhub/logger";
-import { appConfig, validateConfig } from "@fundifyhub/utils";
+import config from "./utils/config";
 
 const logger = createLogger({ serviceName: 'live-sockets' });
 
 const contextLogger = logger.child('[startup]');
 contextLogger.info('Initializing WebSocket server');
-validateConfig();
 contextLogger.info('Environment configuration validated');
 
-const PORT = appConfig.services.websocket.port;
 let connectionCount = 0;
 
-const wss = new WebSocketServer({ port: Number(PORT) });
+const wss = new WebSocketServer({ port: Number(config.services.port) });
 
 wss.on("connection", (ws: WebSocket, req: any) => {
   connectionCount++;
@@ -60,4 +58,4 @@ process.on('SIGINT', () => {
 });
 
 const serverLogger = logger.child('[server]');
-serverLogger.info(`Running on ws://localhost:${PORT}`);
+serverLogger.info(`Running on ws://localhost:${config.services.port}`);

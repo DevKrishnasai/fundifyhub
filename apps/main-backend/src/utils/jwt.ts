@@ -1,28 +1,16 @@
+import { Request, Response, NextFunction } from 'express';
+import { JWTPayloadType } from '@fundifyhub/types';
 import jwt from 'jsonwebtoken';
-import { logger } from './logger';
+import logger from './logger';
+import config from './env-config';
 
-// JWT configuration - Simplified (only access token needed)
-if (!process.env.JWT_SECRET || !process.env.JWT_EXPIRES_IN) {
-  throw new Error('Missing required JWT environment variables: JWT_SECRET, JWT_EXPIRES_IN');
-}
-
-const JWT_SECRET = process.env.JWT_SECRET as string;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN as string;
-
-export interface JWTPayload {
-  id: string;
-  email: string;
-  roles: string[];
-  firstName: string;
-  lastName: string;
-  district: string;
-  isActive: boolean;
-}
+const JWT_SECRET = config.jwt.secret;
+const JWT_EXPIRES_IN = config.jwt.expiresIn;
 
 /**
  * Generate JWT access token (simplified - single token only)
  */
-export function generateAccessToken(payload: JWTPayload): string {
+export function generateAccessToken(payload: JWTPayloadType): string {
   try {
     return jwt.sign(
       payload as object, 
@@ -39,9 +27,9 @@ export function generateAccessToken(payload: JWTPayload): string {
 /**
  * Verify JWT token
  */
-export function verifyToken(token: string): JWTPayload {
+export function verifyToken(token: string): JWTPayloadType {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET as jwt.Secret) as JWTPayload;
+    const decoded = jwt.verify(token, JWT_SECRET as jwt.Secret) as JWTPayloadType;
     return decoded;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
@@ -57,29 +45,68 @@ export function verifyToken(token: string): JWTPayload {
 }
 
 /**
- * Extract token from Authorization header
+ * Authentication middleware - requires valid JWT token
  */
-export function extractTokenFromHeader(authHeader: string | undefined): string | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-  
-  return authHeader.substring(7); // Remove 'Bearer ' prefix
-}
-
-/**
- * Get token expiration time
- */
-export function getTokenExpiration(token: string): Date | null {
+export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   try {
-    const decoded = jwt.decode(token) as { exp?: number };
-    if (decoded && decoded.exp) {
-      return new Date(decoded.exp * 1000);
+    // Check if token is present in the request (headers or cookies)
+    const authHeader = req.headers.authorization;
+    const headerToken = authHeader ? authHeader.replace('Bearer ', '') : '';
+    const cookieToken = req.cookies?.accessToken;
+    const token = headerToken || cookieToken;
+
+    if (!token) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required. Please provide a valid token.',
+        code: 'TOKEN_MISSING'
+      });
+      return;
     }
-    return null;
+
+    try {
+      const decoded = verifyToken(token);
+      if(!decoded) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentication required. Please provide a valid token.',
+          code: 'TOKEN_MISSING'
+        });
+        return;
+      }
+      // Convert JWTPayload to AuthPayload
+      req.user = {
+        id: decoded.id,
+        email: decoded.email,
+        roles: decoded.roles, // Store all roles
+        district: decoded.district,
+        firstName: decoded.firstName,
+        lastName: decoded.lastName,
+        isActive: decoded.isActive
+      };
+      next();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Token verification failed';
+            
+      let code = 'TOKEN_INVALID';
+      if (errorMessage.includes('expired')) {
+        code = 'TOKEN_EXPIRED';
+      }
+
+      res.status(401).json({
+        success: false,
+        message: errorMessage,
+        code
+      });
+      return;
+    }
   } catch (error) {
-    const contextLogger = logger.child('[token-expiration]');
-    contextLogger.error('Failed to decode token:', error as Error);
-    return null;
+    const contextLogger = logger.child('[auth-middleware]');
+    contextLogger.error('Authentication error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Authentication service unavailable'
+    });
+    return;
   }
 }

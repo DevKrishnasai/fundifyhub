@@ -4,21 +4,22 @@
   "description": "Live Sockets Backend for Finance Application",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint ."
   },
   "dependencies": {
-    "ws": "^8.18.0",
-    "redis": "^4.7.0",
     "@fundifyhub/logger": "workspace:*",
-    "@fundifyhub/utils": "workspace:*"
+    "@fundifyhub/utils": "workspace:*",
+    "dotenv": "^17.2.3",
+    "redis": "^4.7.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.2",
+    "@types/node": "^22.18.11",
+    "@types/ws": "^8.5.12",
     "tsx": "^4.20.5",
-    "@types/node": "^22.10.5",
-    "@types/ws": "^8.5.12"
+    "typescript": "^5.9.2"
   }
 }

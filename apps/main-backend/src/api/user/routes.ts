@@ -1,5 +1,4 @@
 import { Router, type Router as ExpressRouter } from 'express';
-import { requireAuth } from '../auth';
 import { getProfileController, validateController, debugAuthController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController } from './controllers';
 
 const router: ExpressRouter = Router();

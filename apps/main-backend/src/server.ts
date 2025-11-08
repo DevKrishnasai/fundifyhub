@@ -1,11 +1,14 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import config from './env-config';
-import { logger } from './utils/logger';
+import config from './utils/env-config';
 import apiRoutes from './api';
+import logger from './utils/logger';
 
 const app = express();
+
+// TODO [P-2]: add rate limiting, security headers, request logging, etc.
+// TODO [P-1]: validation of env variables before starting the server 
 
 app.use(cors({
   origin: config.server.cors.origins,
@@ -33,11 +36,10 @@ app.use((error: any, req: Request, res: Response, next: NextFunction) => {
   const message = config.env.isDevelopment 
     ? error.message 
     : 'Internal server error';
-
+    
   res.status(500).json({
     success: false,
-    message,
-    ...(config.env.isDevelopment && { stack: error.stack })
+    message
   });
 });
 

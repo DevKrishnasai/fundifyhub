@@ -42,7 +42,7 @@ export function UserMenu() {
   };
 
   const getRoleIcon = () => {
-    const roles = user.roles?.map(r => r.toLowerCase()) || [];
+    const roles = user.roles?.map((r: string) => r.toLowerCase()) || [];
     if (roles.includes('admin') || roles.includes('super_admin')) {
       return <Shield className="w-4 h-4" />;
     }

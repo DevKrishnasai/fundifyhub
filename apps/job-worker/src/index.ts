@@ -1,8 +1,7 @@
-import { EmailWorker } from './workers/emailWorker';
-import { WhatsAppWorker } from './workers/whatsappWorker';
+import { EmailWorker, WhatsAppWorker  } from './workers';
 import { serviceManager } from './services/service-manager';
 import { QUEUE_NAMES } from '@fundifyhub/types';
-import { logger } from './logger';
+import logger from './utils/logger';
 
 class JobWorkerServer {
   private emailWorker: EmailWorker | null = null;
@@ -15,15 +14,15 @@ class JobWorkerServer {
       serviceManager.initialize(logger);
 
       // Start workers
-      this.emailWorker = new EmailWorker(QUEUE_NAMES.EMAIL, logger);
-      this.whatsappWorker = new WhatsAppWorker(QUEUE_NAMES.WHATSAPP, logger);
+      this.emailWorker = new EmailWorker(QUEUE_NAMES.EMAIL_QUEUE, logger);
+      this.whatsappWorker = new WhatsAppWorker(QUEUE_NAMES.WHATSAPP_QUEUE, logger);
 
       const contextLogger = logger.child('[workers]');
       contextLogger.info('Email worker initialized');
       contextLogger.info('WhatsApp worker initialized');
 
     } catch (error) {
-      const contextLogger = logger.child('[startup]');
+      const contextLogger = logger.child('[startup]');  
       contextLogger.error('Failed to start server:', error as Error);
       process.exit(1);
     }

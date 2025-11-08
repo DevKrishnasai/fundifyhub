@@ -1,14 +1,15 @@
 import { Worker, Job, WorkerOptions } from 'bullmq';
-import { config } from '../config';
+import config from './config';
 import { SimpleLogger } from '@fundifyhub/logger';
+import { QUEUE_NAMES } from '@fundifyhub/types';
 
-export abstract class BaseWorker<T = any> {
+export abstract class BaseWorker<T> {
   protected worker: Worker<T>;
   protected logger: SimpleLogger;
-  protected queueName: string;
+  protected queueName: QUEUE_NAMES;
 
-  constructor(queueName: string, logger: SimpleLogger) {
-    this.logger = logger; // Use the passed logger directly (single instance)
+  constructor(queueName: QUEUE_NAMES, logger: SimpleLogger) {
+    this.logger = logger;
     this.queueName = queueName;
 
     const connection = {
@@ -18,8 +19,7 @@ export abstract class BaseWorker<T = any> {
 
     const workerOptions: WorkerOptions = {
       connection,
-      concurrency: this.getConcurrency(),
-      // Additional options can be added here
+      concurrency: this.getConcurrency(), 
     };
 
     this.worker = new Worker<T>(queueName, this.processJob.bind(this), workerOptions);

@@ -1,13 +1,12 @@
+import { SERVICE_NAMES } from '@fundifyhub/types';
 import renderEmail from './email';
 import renderWhatsApp from './whatsapp';
-import type { Template } from '@fundifyhub/types';
-import { config } from './config';
 
 const tpl = {
-  ...config,
-  renderEmail,
-  renderWhatsApp,
+  supportedServices: [SERVICE_NAMES.EMAIL, SERVICE_NAMES.WHATSAPP],
+   defaults: { priority: 2, attempts: 2, delay: 0 },
+   renderEmail,
+   renderWhatsApp,
 };
 
-export default tpl as unknown as Template;
-export { renderEmail, renderWhatsApp };
+export default tpl;

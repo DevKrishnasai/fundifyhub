@@ -12,6 +12,7 @@ const router: ExpressRouter = Router();
 // Admin service routes (related to service management)
 router.use('/service', serviceRoutes);
 
+// Admin user management routes
 router.use('/users', usersRoutes);
 
 /** GET /admin/getActiveLoans

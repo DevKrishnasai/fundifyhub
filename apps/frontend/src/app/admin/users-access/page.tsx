@@ -38,7 +38,7 @@ import {
 
 import { useToast } from '@/hooks/use-toast'
 import { Spinner } from '@/components/ui/spinner'
-import { UserRole, ApiResponse } from '@fundifyhub/types'
+import { ROLES } from "@fundifyhub/types"
 
 type UserStatus = "active" | "inactive";
 
@@ -90,7 +90,7 @@ export default function UsersAccessPage() {
       setIsLoading(true)
       try {
 
-          const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS) as ApiResponse<any>
+          const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS);
 
         const list = (data.data || []).map((u: any) => {
           const firstName = u.firstName || ''
@@ -325,7 +325,7 @@ export default function UsersAccessPage() {
   } | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  const AVAILABLE_ROLES = Object.values(UserRole)
+  const AVAILABLE_ROLES = Object.values(ROLES)
 
   // open editor
   const openEditor = (u: User) => {

@@ -1,11 +1,10 @@
-import { appConfig } from '@fundifyhub/utils';
 
-export const config = {
+const config = {
   // Redis Configuration
   redis: {
-    host: appConfig.redis.host,
-    port: appConfig.redis.port,
-    url: appConfig.redis.url || `redis://${appConfig.redis.host}:${appConfig.redis.port}`
+    host: process.env.REDIS_HOST!,
+    port: Number(process.env.REDIS_PORT!),
+    url: process.env.REDIS_URL || `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`
   },
 
   // Service Configuration
@@ -17,7 +16,6 @@ export const config = {
   // Environment
   env: {
     isDevelopment: process.env.NODE_ENV === 'development',
-    isProduction: process.env.NODE_ENV === 'production',
     logLevel: process.env.LOG_LEVEL
   }
 };

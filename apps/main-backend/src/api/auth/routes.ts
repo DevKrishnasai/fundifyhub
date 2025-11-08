@@ -1,31 +1,31 @@
 import { Router, type Router as ExpressRouter } from 'express';
 import {
-  checkAvailabilityController,
-  sendOTPController,
-  verifyOTPController,
-  registerController,
-  loginController,
-  logoutController,
+  checkAvailability,
+  sendOTP,
+  verifyOTP,
+  register,
+  login,
+  logout,
 } from './controllers';
 
 const router: ExpressRouter = Router();
 
 // Check if email/phone is available for registration
-router.post('/check-availability', checkAvailabilityController);
+router.post('/check-availability', checkAvailability);
 
 // Send OTP to email or phone for verification
-router.post('/send-otp', sendOTPController);
+router.post('/send-otp', sendOTP);
 
 // Verify OTP code against stored session
-router.post('/verify-otp', verifyOTPController);
+router.post('/verify-otp', verifyOTP);
 
 // Complete user registration (requires both email and phone OTP verification)
-router.post('/register', registerController);
+router.post('/register', register);
 
 // Authenticate user and issue access token
-router.post('/login', loginController);
+router.post('/login', login);
 
 // Logout user and clear access token
-router.post('/logout', logoutController);
+router.post('/logout', logout);
 
 export default router;

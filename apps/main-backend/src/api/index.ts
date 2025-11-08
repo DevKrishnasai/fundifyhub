@@ -1,15 +1,15 @@
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
-import { requireAuth } from './auth';
 import adminRoutes from './admin/routes';
 import authRoutes from './auth/routes';
 import userRoutes from './user/routes';
+import { authMiddleware } from '../utils/jwt';
 
 const router: ExpressRouter = Router();
 
 router.use('/auth', authRoutes);
-router.use('/admin', requireAuth, adminRoutes);
-router.use('/user', requireAuth, userRoutes);
+router.use('/admin', authMiddleware, adminRoutes);
+router.use('/user', authMiddleware, userRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

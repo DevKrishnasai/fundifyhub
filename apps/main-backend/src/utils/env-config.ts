@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
+// TODO: need to add validation for env variables if required variables are missing then throw an error so that server doesn't start with invalid config
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 export const config = {
@@ -23,11 +24,17 @@ export const config = {
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN
   },
 
+  // Redis Configuration
+  redis: {
+    host: process.env.REDIS_HOST!,
+    port: parseInt(process.env.REDIS_PORT!),
+    url: process.env.REDIS_URL
+  },
+
   // Environment
   env: {
     isDevelopment: process.env.NODE_ENV === 'development',
-    isProduction: process.env.NODE_ENV === 'production',
-    logLevel: process.env.LOG_LEVEL
+    logLevel: process.env.LOG_LEVEL || 'info'
   }
 };
 
