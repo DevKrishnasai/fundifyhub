@@ -1,5 +1,20 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { validateFrontendEnv } from '@fundifyhub/utils';
+import logger from '@/lib/logger';
+
+// Validate environment variables once when middleware is first loaded
+let envValidated = false;
+if (!envValidated) {
+  try {
+    validateFrontendEnv();
+    logger.info('✅ Frontend environment variables validated successfully');
+    envValidated = true;
+  } catch (error) {
+    logger.error('❌ Frontend environment validation failed:', error as Error);
+    throw error; // This will prevent the server from starting
+  }
+}
 
 // Public routes that don't require authentication
 const publicRoutes = [
