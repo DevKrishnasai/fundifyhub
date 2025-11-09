@@ -18,18 +18,36 @@ export const sendWhatsApp = async (opts: { to: string; text: string }) => {
     }
     
     let formattedNumber = opts.to;
-    
+
     if (!formattedNumber.includes('@c.us')) {
-      formattedNumber = formattedNumber.replace(/\D/g, '');
-      
-      if (!formattedNumber || formattedNumber.length === 0) {
+      // remove non-digits but keep the raw digits
+      let digits = formattedNumber.replace(/\D/g, '');
+
+      if (!digits || digits.length === 0) {
         throw new Error(`Invalid phone number format: "${opts.to}" contains no digits`);
       }
-      
-      formattedNumber = `${formattedNumber}@c.us`;
+
+      // Normalize to international format expected by WhatsApp (no leading 0, include country code)
+  // Allow configuration via env DEFAULT_COUNTRY_DIAL (we primarily use Indian numbers here).
+  // Fallback to '91' (India) when not provided.
+  const DEFAULT_COUNTRY_DIAL = (process.env.DEFAULT_COUNTRY_DIAL || '91').replace(/\D/g, '');
+
+      // If number starts with a leading zero (local format), replace it with country dial
+      if (digits.startsWith('0')) {
+        // local format like 0812... -> drop leading 0 and prepend country
+        digits = `${DEFAULT_COUNTRY_DIAL}${digits.slice(1)}`;
+      } else if (digits.length === 10) {
+        // For Indian numbers provided as 10 digits (e.g. 9812345678), prepend country code 91
+        digits = `${DEFAULT_COUNTRY_DIAL}${digits}`;
+      }
+
+      formattedNumber = `${digits}@c.us`;
     }
     
-    const isRegistered = await client.isRegisteredUser(formattedNumber);
+  const contextLogger = logger.child('[whatsapp-send]');
+  contextLogger.debug(`Attempting WhatsApp send: original='${opts.to}', formatted='${formattedNumber}'`);
+
+  const isRegistered = await client.isRegisteredUser(formattedNumber);
     if (!isRegistered) {
       throw new Error(`Phone number ${opts.to} is not registered on WhatsApp`);
     }

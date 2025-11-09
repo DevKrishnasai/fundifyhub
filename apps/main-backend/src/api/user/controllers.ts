@@ -61,6 +61,11 @@ export async function getProfileController(req: Request, res: Response): Promise
  */
 export async function validateController(req: Request, res: Response): Promise<void> {
   try {
+    // Prevent caching of auth validation responses
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     if (!req.user) {
       res.status(401).json({
         success: false,
@@ -88,40 +93,6 @@ export async function validateController(req: Request, res: Response): Promise<v
     res.status(500).json({
       success: false,
       message: 'Authentication validation failed',
-    });
-  }
-}
-
-/**
- * GET /user/debug-auth
- * Debug authentication - shows token data vs database data (development only)
- */
-export async function debugAuthController(req: Request, res: Response): Promise<void> {
-  if (process.env.NODE_ENV === 'production') {
-    res.status(404).json({ success: false, message: 'Not found' });
-    return;
-  }
-
-  try {
-    if (!req.user) {
-      res.status(401).json({
-        success: false,
-        message: 'Not authenticated',
-      });
-      return;
-    }
-
-    const result = await debugAuth(req.user.id, req.user);
-
-    res.json({
-      success: result.success,
-      data: result.data,
-    });
-  } catch (error) {
-    logger.error('Debug auth error:', error as Error);
-    res.status(500).json({
-      success: false,
-      message: 'Debug failed',
     });
   }
 }
@@ -648,74 +619,6 @@ export async function validateUserAuth(userId: string): Promise<{
         isAuthenticated: false,
       },
       message: 'Authentication validation failed',
-    };
-  }
-}
-
-/**
- * Debug authentication - shows token data vs database data
- */
-export async function debugAuth(
-  userId: string,
-  tokenData: Partial<UserType>
-): Promise<{
-  success: boolean;
-  data?: {
-    tokenData: Record<string, unknown>;
-    databaseData: Record<string, unknown>;
-    comparison: {
-      rolesMatch: boolean;
-      tokenRoles: unknown;
-      dbRoles: unknown;
-    };
-  };
-  message: string;
-}> {
-  if (process.env.NODE_ENV === 'production') {
-    return {
-      success: false,
-      message: 'Not available in production',
-    };
-  }
-
-  try {
-    const dbUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        roles: true,
-        emailVerified: true,
-        phoneVerified: true,
-      },
-    });
-
-    return {
-      success: true,
-      data: {
-        tokenData: {
-          ...tokenData,
-          rolesType: Array.isArray(tokenData?.roles) ? 'array' : typeof tokenData?.roles,
-        },
-        databaseData: {
-          ...dbUser,
-          rolesType: Array.isArray(dbUser?.roles) ? 'array' : typeof dbUser?.roles,
-        },
-        comparison: {
-          rolesMatch: JSON.stringify(tokenData?.roles) === JSON.stringify(dbUser?.roles),
-          tokenRoles: tokenData?.roles,
-          dbRoles: dbUser?.roles,
-        },
-      },
-      message: 'Debug data retrieved',
-    };
-  } catch (error) {
-    logger.error('Debug auth error:', error as Error);
-    return {
-      success: false,
-      message: 'Debug failed',
     };
   }
 }

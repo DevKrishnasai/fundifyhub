@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer';
 import { prisma } from '@fundifyhub/prisma';
 import { SimpleLogger } from '@fundifyhub/logger';
 import { CONNECTION_STATUS, SERVICE_NAMES } from '@fundifyhub/types';
+import EventEmitter from 'events';
 
 interface ServiceState {
   whatsappClient: Client | null;
@@ -31,6 +32,9 @@ class ServiceManager {
   private checkInterval: NodeJS.Timeout | null = null;
   private logger: any;
   private lastWhatsAppState: boolean | null = null;
+  private emitter = new EventEmitter();
+  // cached availability per service name
+  private statusMap: Record<string, boolean | null> = {};
 
   private constructor() {}
 
@@ -150,8 +154,8 @@ class ServiceManager {
         }
       });
 
-      for (const service of services) {
-        // Handle Email Service
+  for (const service of services) {
+  // Handle Email Service
         if (service.serviceName === SERVICE_NAMES.EMAIL) {
           const contextLogger = this.logger.child('[email-service]');
           
@@ -202,9 +206,9 @@ class ServiceManager {
               contextLogger.error('Error stopping email service:', err);
             }
           }
-        }
+  }
         
-        // Handle WhatsApp Service
+  // Handle WhatsApp Service
         if (service.serviceName === SERVICE_NAMES.WHATSAPP) {
           const contextLogger = this.logger.child('[whatsapp-service]');
           
@@ -237,6 +241,21 @@ class ServiceManager {
           } else if (!service.isActive && this.lastWhatsAppState !== false) {
             this.lastWhatsAppState = false;
           }
+
+        // Emit status change event if availability changed
+        try {
+          const available = await this.computeAvailabilityForService(service.serviceName as SERVICE_NAMES);
+          const prev = this.statusMap[service.serviceName] ?? null;
+          if (prev !== available) {
+            this.statusMap[service.serviceName] = available;
+            this.emitter.emit('serviceStatus', { serviceName: service.serviceName, available });
+            const statusLogger = this.logger.child('[service-manager]');
+            statusLogger.info(`Service status changed: ${service.serviceName} -> ${available ? 'available' : 'unavailable'}`);
+          }
+        } catch (emitErr) {
+          const statusLogger = this.logger.child('[service-manager]');
+          statusLogger.warn('Failed to compute/emit status for', service.serviceName, emitErr);
+        }
         }
       }
     } catch (error) {
@@ -245,11 +264,44 @@ class ServiceManager {
     }
   }
 
+  // compute availability for a specific service name (shared logic)
+  private async computeAvailabilityForService(name: SERVICE_NAMES): Promise<boolean> {
+    if (name === SERVICE_NAMES.WHATSAPP) {
+      try {
+        const service = await prisma.serviceConfig.findUnique({ where: { serviceName: SERVICE_NAMES.WHATSAPP } });
+        if (!service?.isEnabled) return false;
+        if (!this.state.whatsappClient) return false;
+        const clientState = await this.state.whatsappClient.getState() as string;
+        return clientState === CONNECTION_STATUS.CONNECTED;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    if (name === SERVICE_NAMES.EMAIL) {
+      try {
+        const service = await prisma.serviceConfig.findUnique({ where: { serviceName: SERVICE_NAMES.EMAIL } });
+        return !!(service?.isEnabled && this.state.emailTransporter);
+      } catch (err) {
+        return false;
+      }
+    }
+
+    return false;
+  }
+
   /**
    * Set WhatsApp client (called by service-control worker)
    */
   public setWhatsAppClient(client: Client | null) {
     this.state.whatsappClient = client;
+    // emit immediate change when client object changes
+    const available = !!client;
+    const prev = this.statusMap[SERVICE_NAMES.WHATSAPP] ?? null;
+    if (prev !== available) {
+      this.statusMap[SERVICE_NAMES.WHATSAPP] = available;
+      this.emitter.emit('serviceStatus', { serviceName: SERVICE_NAMES.WHATSAPP, available });
+    }
   }
 
   /**
@@ -257,6 +309,12 @@ class ServiceManager {
    */
   public setEmailTransporter(transporter: Transporter | null) {
     this.state.emailTransporter = transporter;
+    const available = !!transporter;
+    const prev = this.statusMap[SERVICE_NAMES.EMAIL] ?? null;
+    if (prev !== available) {
+      this.statusMap[SERVICE_NAMES.EMAIL] = available;
+      this.emitter.emit('serviceStatus', { serviceName: SERVICE_NAMES.EMAIL, available });
+    }
   }
 
   /**
@@ -284,6 +342,21 @@ class ServiceManager {
       this.logger.error('Failed to check WhatsApp availability:', error);
       return false;
     }
+  }
+
+  /**
+   * Subscribe to service status changes.
+   * Listener receives payload { serviceName, available }
+   */
+  public onServiceStatus(listener: (payload: { serviceName: string; available: boolean }) => void) {
+    this.emitter.on('serviceStatus', listener);
+  }
+
+  /**
+   * Get last known cached availability for a service (may be null if unknown)
+   */
+  public getCachedStatus(serviceName: SERVICE_NAMES): boolean | null {
+    return this.statusMap[serviceName] ?? null;
   }
 
   /**

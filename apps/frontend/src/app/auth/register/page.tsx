@@ -8,18 +8,21 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
-import { useToast } from "@/hooks/use-toast"
-import { Eye, EyeOff, ArrowLeft, CreditCard, User, Mail, Phone, Lock, ChevronRight, ChevronLeft, Check, X, CheckCircle, MessageSquare } from "lucide-react"
-import { post } from '@/lib/api-client'
+import toast from '@/lib/toast'
+import { Eye, EyeOff, CreditCard, User, Mail, Phone, Lock, ChevronRight, ChevronLeft, Check, X, CheckCircle } from "lucide-react"
+import { DISTRICTS } from '@fundifyhub/types'
+import { post, postWithResult } from '@/lib/api-client'
 import { BACKEND_API_CONFIG } from '@/lib/urls'
+import { z } from 'zod';
+import { sanitizePhone, isValidPhone } from '@/lib/phone'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const { toast } = useToast()
   
   // Step management
   const [currentStep, setCurrentStep] = useState(1)
@@ -35,9 +38,12 @@ export default function RegisterPage() {
   const [step1Data, setStep1Data] = useState({
     firstName: "",
     lastName: "",
+    district: "",
     password: "",
     confirmPassword: "",
   })
+  // per-field errors for step1
+  const [step1Errors, setStep1Errors] = useState<{ [k: string]: string }>({})
   
   // Step 2 form data
   const [step2Data, setStep2Data] = useState({
@@ -48,6 +54,8 @@ export default function RegisterPage() {
     emailSessionId: "", // Store sessionId from send-otp
     phoneSessionId: "", // Store sessionId from send-otp
   })
+  // server-side field errors returned from API (e.g. { email: 'already used' })
+  const [serverFieldErrors, setServerFieldErrors] = useState<{ [k: string]: string }>({})
   
   // Validation states
   const [emailValidation, setEmailValidation] = useState({ isValid: false, isChecking: false, error: "" })
@@ -59,6 +67,8 @@ export default function RegisterPage() {
   const [otpLoading, setOtpLoading] = useState({ email: false, phone: false })
   const [verifyLoading, setVerifyLoading] = useState({ email: false, phone: false })
   const [resendLoading, setResendLoading] = useState({ email: false, phone: false })
+  const [otpErrors, setOtpErrors] = useState({ email: '', phone: '' })
+  const [resendCooldown, setResendCooldown] = useState({ email: 0, phone: 0 })
 
   // Password strength checker
   const getPasswordStrength = (password: string) => {
@@ -75,30 +85,32 @@ export default function RegisterPage() {
     return { strength, checks }
   }
 
-  // Step 1 validation
+  // Replace validateStep1 with Zod validation
   const validateStep1 = () => {
-    if (!step1Data.firstName.trim() || !step1Data.lastName.trim()) {
-      setError("Please fill in all name fields")
-      return false
-    }
-    
-    if (step1Data.password.length < 8) {
-      setError("Password must be at least 8 characters long")
-      return false
-    }
-    
+    const errs: { [k: string]: string } = {}
+    if (!step1Data.firstName.trim()) errs.firstName = 'First name is required'
+    if (!step1Data.lastName.trim()) errs.lastName = 'Last name is required'
+    if (!step1Data.district) errs.district = 'Please select your district'
+    if (step1Data.password.length < 8) errs.password = 'Password must be at least 8 characters long'
     const { strength } = getPasswordStrength(step1Data.password)
-    if (strength < 3) {
-      setError("Password is too weak. Please include uppercase, lowercase, and numbers")
-      return false
-    }
-    
-    if (step1Data.password !== step1Data.confirmPassword) {
-      setError("Passwords do not match")
-      return false
-    }
-    
-    return true
+    if (step1Data.password && strength < 3) errs.password = 'Password is too weak. Include uppercase, lowercase, numbers and a special character.'
+    if (step1Data.password !== step1Data.confirmPassword) errs.confirmPassword = 'Passwords do not match'
+
+    setStep1Errors(errs)
+    setError(Object.values(errs)[0] || '')
+    // clear any server-side field errors when re-validating locally
+    setServerFieldErrors({})
+    return Object.keys(errs).length === 0
+  }
+
+  // quick readiness check to enable the Next button (doesn't set errors)
+  const isStep1Ready = () => {
+    const { firstName, lastName, district, password, confirmPassword } = step1Data
+    if (!firstName.trim() || !lastName.trim() || !district) return false
+    if (password.length < 8) return false
+    if (password !== confirmPassword) return false
+    const { strength } = getPasswordStrength(password)
+    return strength >= 3
   }
 
   // Check if email exists
@@ -126,8 +138,8 @@ export default function RegisterPage() {
   // Check if phone exists
   const checkPhoneExists = async (phone: string) => {
     const cleanPhone = phone.replace(/\D/g, '')
-    if (!cleanPhone || cleanPhone.length < 10) {
-      setPhoneValidation({ isValid: false, isChecking: false, error: "Invalid phone number" })
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setPhoneValidation({ isValid: false, isChecking: false, error: "Phone must be exactly 10 digits" })
       return
     }
 
@@ -151,29 +163,29 @@ export default function RegisterPage() {
     setOtpLoading(prev => ({ ...prev, email: true }))
     
     try {
-  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP, { email: step2Data.email })
+      const res = await postWithResult(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP, { email: step2Data.email })
 
-      if (data && data.success) {
+      if (res.ok) {
         setEmailOTPSent(true)
-        // Store sessionId for verification
-        setStep2Data(prev => ({ ...prev, emailSessionId: data.data.sessionId }))
-        toast({
-          title: "Email OTP sent!",
-          description: "Verification code sent to your email",
-        })
+        // Store sessionId for verification (postWithResult returns unwrapped `data`)
+        setStep2Data(prev => ({ ...prev, emailSessionId: res.data.sessionId }))
+        toast.success("Email OTP sent! Verification code sent to your email.")
+        // start resend cooldown
+        setResendCooldown(prev => ({ ...prev, email: 60 }))
       } else {
-        toast({
-          variant: "destructive",
-          title: "Failed to send email OTP",
-          description: data?.message,
-        })
+        // surface field errors if present
+        if (res.error?.fieldErrors) setServerFieldErrors(prev => ({ ...prev, ...res.error.fieldErrors }))
+        // If backend returned retryAfterMs, surface it and set a cooldown
+        if (res.error?.retryAfterMs) {
+          const secs = Math.ceil(res.error.retryAfterMs / 1000)
+          setResendCooldown(prev => ({ ...prev, email: secs }))
+          toast.error(res.error?.message ? `Rate limit exceeded. Try again in ${secs}s` : `Rate limit exceeded. Try again in ${secs}s`)
+        } else {
+          toast.error(res.error?.message ? `Failed to send email OTP: ${res.error.message}` : "Failed to send email OTP.")
+        }
       }
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Network error",
-        description: "Unable to send email OTP. Please try again.",
-      })
+      toast.error("Network error: Unable to send email OTP. Please try again.")
     } finally {
       setOtpLoading(prev => ({ ...prev, email: false }))
     }
@@ -184,29 +196,27 @@ export default function RegisterPage() {
     setOtpLoading(prev => ({ ...prev, phone: true }))
     
     try {
-  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP, { phone: step2Data.phoneNumber })
+      const res = await postWithResult(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP, { phone: step2Data.phoneNumber })
 
-      if (data && data.success) {
+      if (res.ok) {
         setPhoneOTPSent(true)
-        // Store sessionId for verification
-        setStep2Data(prev => ({ ...prev, phoneSessionId: data.data.sessionId }))
-        toast({
-          title: "Phone OTP sent!",
-          description: "Verification code sent to your phone",
-        })
+        // Store sessionId for verification (postWithResult returns unwrapped `data`)
+        setStep2Data(prev => ({ ...prev, phoneSessionId: res.data.sessionId }))
+        toast.success("Phone OTP sent! Verification code sent to your phone.")
+        // start resend cooldown
+        setResendCooldown(prev => ({ ...prev, phone: 60 }))
       } else {
-        toast({
-          variant: "destructive",
-          title: "Failed to send phone OTP",
-          description: data?.message,
-        })
+        if (res.error?.fieldErrors) setServerFieldErrors(prev => ({ ...prev, ...res.error.fieldErrors }))
+        if (res.error?.retryAfterMs) {
+          const secs = Math.ceil(res.error.retryAfterMs / 1000)
+          setResendCooldown(prev => ({ ...prev, phone: secs }))
+          toast.error(res.error?.message ? `Rate limit exceeded. Try again in ${secs}s` : `Rate limit exceeded. Try again in ${secs}s`)
+        } else {
+          toast.error(res.error?.message ? `Failed to send phone OTP: ${res.error.message}` : "Failed to send phone OTP.")
+        }
       }
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Network error",
-        description: "Unable to send phone OTP. Please try again.",
-      })
+      toast.error("Network error: Unable to send phone OTP. Please try again.")
     } finally {
       setOtpLoading(prev => ({ ...prev, phone: false }))
     }
@@ -216,22 +226,16 @@ export default function RegisterPage() {
   const verifyOTP = async (type: 'EMAIL' | 'PHONE') => {
     const otp = type === 'EMAIL' ? step2Data.emailOTP : step2Data.phoneOTP;
     const sessionId = type === 'EMAIL' ? step2Data.emailSessionId : step2Data.phoneSessionId;
+    // clear previous otp error for this type
+    setOtpErrors(prev => ({ ...prev, [type.toLowerCase()]: '' }))
     
     if (!sessionId) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Please send OTP first",
-      })
+      toast.error("Error: Please send OTP first.")
       return
     }
-    
+
     if (otp.length !== 6) {
-      toast({
-        variant: "destructive",
-        title: "Invalid OTP",
-        description: "Please enter a valid 6-digit OTP",
-      })
+      toast.error("Invalid OTP: Please enter a valid 6-digit OTP.")
       return
     }
 
@@ -241,32 +245,37 @@ export default function RegisterPage() {
     }))
     
     try {
-  const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VERIFY_OTP, { sessionId, otp })
+      const res = await postWithResult(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VERIFY_OTP, { sessionId, otp })
 
-      if (data && data.success) {
+      if (res.ok) {
         if (type === 'EMAIL') {
           setEmailVerified(true)
         } else {
           setPhoneVerified(true)
         }
-        
-        toast({
-          title: `${type.toLowerCase()} verified!`,
-          description: data.message,
-        })
+
+        toast.success(`${type.toLowerCase()} verified! ${res.data.message || ''}`)
+        // clear any otp error
+        setOtpErrors(prev => ({ ...prev, [type.toLowerCase()]: '' }))
       } else {
-        toast({
-          variant: "destructive",
-          title: "Verification failed",
-          description: data?.message,
-        })
+        const msg = res.error?.message || 'Verification failed.'
+        // show field-level errors if present
+        if (res.error?.fieldErrors) setServerFieldErrors(prev => ({ ...prev, ...res.error.fieldErrors }))
+        // If server provided retry info, show time until retry
+        if (res.error?.retryAfterMs) {
+          const secs = Math.ceil(res.error.retryAfterMs / 1000)
+          const retryMsg = `${msg} Try again in ${secs}s.`
+          setOtpErrors(prev => ({ ...prev, [type.toLowerCase()]: retryMsg }))
+          toast.error(retryMsg)
+        } else {
+          setOtpErrors(prev => ({ ...prev, [type.toLowerCase()]: msg }))
+          toast.error(msg)
+        }
       }
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Network error",
-        description: "Unable to verify OTP. Please try again.",
-      })
+      const msg = "Network error: Unable to verify OTP. Please try again."
+      setOtpErrors(prev => ({ ...prev, [type.toLowerCase()]: msg }))
+      toast.error(msg)
     } finally {
       setVerifyLoading(prev => ({ 
         ...prev, 
@@ -283,35 +292,34 @@ export default function RegisterPage() {
     }))
     
     try {
-      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP,
+      const res = await postWithResult(BACKEND_API_CONFIG.ENDPOINTS.AUTH.SEND_OTP,
         type === 'EMAIL' ? { email: step2Data.email } : { phone: step2Data.phoneNumber }
       )
 
-      if (data && data.success) {
-        // Clear the OTP input and store new sessionId
+      if (res.ok) {
+        // Clear the OTP input and store new sessionId (postWithResult returns unwrapped `data`)
         if (type === 'EMAIL') {
-          setStep2Data(prev => ({ ...prev, emailOTP: '', emailSessionId: data.data.sessionId }))
+          setStep2Data(prev => ({ ...prev, emailOTP: '', emailSessionId: res.data.sessionId }))
         } else {
-          setStep2Data(prev => ({ ...prev, phoneOTP: '', phoneSessionId: data.data.sessionId }))
+          setStep2Data(prev => ({ ...prev, phoneOTP: '', phoneSessionId: res.data.sessionId }))
         }
-        
-        toast({
-          title: "OTP resent!",
-          description: `Verification code sent to your ${type.toLowerCase()}`,
-        })
+
+        toast.success(`OTP resent! Verification code sent to your ${type.toLowerCase()}`)
+        // restart cooldown
+        setResendCooldown(prev => ({ ...prev, [type.toLowerCase()]: 60 }))
       } else {
-        toast({
-          variant: "destructive",
-          title: "Failed to resend OTP",
-          description: data?.message,
-        })
+        if (res.error?.fieldErrors) setServerFieldErrors(prev => ({ ...prev, ...res.error.fieldErrors }))
+        if (res.error?.retryAfterMs) {
+          const secs = Math.ceil(res.error.retryAfterMs / 1000)
+          // set global resend cooldown for the appropriate type
+          setResendCooldown(prev => ({ ...prev, [type.toLowerCase()]: secs }))
+          toast.error(res.error?.message ? `Rate limit exceeded. Try again in ${secs}s` : `Rate limit exceeded. Try again in ${secs}s`)
+        } else {
+          toast.error(res.error?.message ? `Failed to resend OTP: ${res.error.message}` : "Failed to resend OTP.")
+        }
       }
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Network error",
-        description: "Unable to resend OTP. Please try again.",
-      })
+      toast.error("Network error: Unable to resend OTP. Please try again.")
     } finally {
       setResendLoading(prev => ({ 
         ...prev, 
@@ -320,14 +328,33 @@ export default function RegisterPage() {
     }
   }
 
+  // Countdown timers for resend cooldowns
+  useEffect(() => {
+    let emailTimer: NodeJS.Timeout | null = null
+    if (resendCooldown.email > 0) {
+      emailTimer = setInterval(() => {
+        setResendCooldown(prev => ({ ...prev, email: Math.max(0, prev.email - 1) }))
+      }, 1000)
+    }
+    return () => { if (emailTimer) clearInterval(emailTimer) }
+  }, [resendCooldown.email])
+
+  useEffect(() => {
+    let phoneTimer: NodeJS.Timeout | null = null
+    if (resendCooldown.phone > 0) {
+      phoneTimer = setInterval(() => {
+        setResendCooldown(prev => ({ ...prev, phone: Math.max(0, prev.phone - 1) }))
+      }, 1000)
+    }
+    return () => { if (phoneTimer) clearInterval(phoneTimer) }
+  }, [resendCooldown.phone])
+
+  // use shared phone validation from packages/types via helpers
+
   // Complete registration after both OTPs are verified
   const completeRegistration = async () => {
     if (!emailVerified || !phoneVerified) {
-      toast({
-        variant: "destructive",
-        title: "Verification required",
-        description: "Please verify both email and phone before proceeding",
-      })
+      toast.error("Verification required: Please verify both email and phone before proceeding.")
       return
     }
 
@@ -335,36 +362,41 @@ export default function RegisterPage() {
     
     try {
       // Use the verified contact methods for registration
-      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.REGISTER, {
+      const res = await postWithResult(BACKEND_API_CONFIG.ENDPOINTS.AUTH.REGISTER, {
         email: step2Data.email,
         phoneNumber: step2Data.phoneNumber,
         firstName: step1Data.firstName,
         lastName: step1Data.lastName,
+        district: step1Data.district,
         password: step1Data.password,
       })
 
-      if (data && data.success) {
-        toast({
-          title: "Registration successful!",
-          description: "Your account has been created successfully.",
-        })
-        
+      if (res.ok) {
+        // postWithResult may return the unwrapped `data` (when the backend used { data })
+        // or the full payload when there is no `data` key. Handle both shapes.
+        const serverPayload = res.data as any;
+        const user = serverPayload?.user ?? serverPayload?.data?.user;
+        // defensive: if user missing, treat as error
+        if (!user) {
+          throw new Error('Registration succeeded but response missing user payload')
+        }
+        const safeUser = { ...user, roles: Array.isArray(user.roles) ? user.roles : ['CUSTOMER'] };
+        toast.success("Registration successful! Your account has been created successfully.")
+        // Optionally, update auth context if needed
         router.push('/dashboard')
       } else {
-        setError(data?.message || "Registration failed. Please try again.")
-        toast({
-          variant: "destructive",
-          title: "Registration failed",
-          description: data?.message,
-        })
+        // If backend provided field-level errors, show them under the inputs
+        if (res.error?.fieldErrors && Object.keys(res.error.fieldErrors).length > 0) {
+          setServerFieldErrors(res.error.fieldErrors)
+          setError(res.error.message || 'Registration failed. Please correct the highlighted fields.')
+        } else {
+          setError(res.error?.message || "Registration failed. Please try again.")
+          toast.error(res.error?.message ? `Registration failed: ${res.error.message}` : "Registration failed. Please try again.")
+        }
       }
     } catch (error) {
       setError("Network error. Please check your connection and try again.")
-      toast({
-        variant: "destructive",
-        title: "Network error",
-        description: "Unable to complete registration. Please try again.",
-      })
+      toast.error("Network error: Unable to complete registration. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -416,6 +448,12 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (step2Data.phoneNumber) {
+      // pre-validate phone before backend check
+      if (!isValidPhone(step2Data.phoneNumber)) {
+        setPhoneValidation({ isValid: false, isChecking: false, error: 'Phone must be exactly 10 digits' })
+        return
+      }
+
       const timeout = setTimeout(() => checkPhoneExists(step2Data.phoneNumber), 500)
       return () => clearTimeout(timeout)
     }
@@ -426,15 +464,6 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-linear-to-br from-background to-muted/20 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-4 sm:space-y-6">
-        <div className="flex justify-start">
-          <Button variant="ghost" size="sm" asChild className="mb-2">
-            <Link href="/auth/login">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Login
-            </Link>
-          </Button>
-        </div>
-
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center space-x-2 mb-4">
@@ -488,7 +517,6 @@ export default function RegisterPage() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-
             {/* Step 1: Basic Information */}
             {currentStep === 1 && (
               <div className="space-y-4">
@@ -506,6 +534,9 @@ export default function RegisterPage() {
                         className="pl-10"
                         required
                       />
+                      {(step1Errors.firstName || serverFieldErrors.firstName) && (
+                        <p className="text-sm text-red-600">{serverFieldErrors.firstName || step1Errors.firstName}</p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -521,8 +552,28 @@ export default function RegisterPage() {
                         className="pl-10"
                         required
                       />
+                      {(step1Errors.lastName || serverFieldErrors.lastName) && (
+                        <p className="text-sm text-red-600">{serverFieldErrors.lastName || step1Errors.lastName}</p>
+                      )}
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="district">District</Label>
+                  <Select value={step1Data.district} onValueChange={(val) => setStep1Data(prev => ({ ...prev, district: val }))}>
+                    <SelectTrigger aria-label="Select district" className="w-full">
+                      <SelectValue placeholder="Select your district" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DISTRICTS.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                    {(step1Errors.district || serverFieldErrors.district) && <p className="text-sm text-red-600">{serverFieldErrors.district || step1Errors.district}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -552,7 +603,6 @@ export default function RegisterPage() {
                       )}
                     </Button>
                   </div>
-                  
                   {/* Password Strength Indicator */}
                   {step1Data.password && (
                     <div className="mt-2">
@@ -592,6 +642,9 @@ export default function RegisterPage() {
                           </span>
                         </div>
                       </div>
+                      {(step1Errors.password || serverFieldErrors.password) && (
+                        <p className="text-sm text-red-600 mt-2">{serverFieldErrors.password || step1Errors.password}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -623,12 +676,14 @@ export default function RegisterPage() {
                       )}
                     </Button>
                   </div>
-                  {step1Data.confirmPassword && step1Data.password !== step1Data.confirmPassword && (
-                    <p className="text-sm text-red-600">Passwords do not match</p>
+                  {step1Errors.confirmPassword && (
+                    <p className="text-sm text-red-600">{step1Errors.confirmPassword}</p>
+                  )}
+                  {serverFieldErrors.confirmPassword && (
+                    <p className="text-sm text-red-600">{serverFieldErrors.confirmPassword}</p>
                   )}
                 </div>
-
-                <Button onClick={nextStep} className="w-full" size="lg">
+                <Button onClick={nextStep} className="w-full" size="lg" disabled={!isStep1Ready()}>
                   Continue
                   <ChevronRight className="w-4 h-4 ml-2" />
                 </Button>
@@ -638,265 +693,207 @@ export default function RegisterPage() {
             {/* Step 2: Contact Information & Verification */}
             {currentStep === 2 && (
               <div className="space-y-6">
-                {/* Contact Information Section */}
-                <div className="space-y-4">
-                  {/* Email Section */}
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                {/* Contact Information Section (single column stacked) */}
+                <div className="space-y-6">
+                  {/* Email Card */}
+                  <div className="border rounded-lg p-4 bg-background/50">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <Mail className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <div className="text-sm font-medium">Email</div>
+                          <div className="text-xs text-muted-foreground">Used for account recovery and notifications</div>
+                        </div>
+                      </div>
+                      {emailVerified ? (
+                        <div className="text-sm text-green-600 flex items-center"><CheckCircle className="w-4 h-4 mr-1"/> Verified</div>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
                       <Input
                         id="email"
                         type="email"
                         placeholder="your.email@example.com"
                         value={step2Data.email}
-                        onChange={(e) => setStep2Data(prev => ({ ...prev, email: e.target.value }))}
-                        className={`pl-10 pr-10 ${
-                          emailValidation.error ? 'border-red-500' : 
-                          emailValidation.isValid ? 'border-green-500' : ''
-                        }`}
-                        disabled={emailOTPSent}
+                        onChange={(e) => {
+                          setStep2Data(prev => ({ ...prev, email: e.target.value }))
+                          // clear server error for email on change
+                          setServerFieldErrors(prev => ({ ...prev, email: '' }))
+                        }}
+                        className={`w-full ${emailValidation.error ? 'border-red-500' : emailValidation.isValid ? 'border-green-500' : ''}`}
+                        disabled={emailOTPSent || emailVerified}
                       />
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        {emailValidation.isChecking ? (
-                          <Spinner size="sm" />
-                        ) : emailValidation.isValid ? (
-                          <Check className="w-4 h-4 text-green-500" />
-                        ) : emailValidation.error ? (
-                          <X className="w-4 h-4 text-red-500" />
-                        ) : null}
-                      </div>
+                      {/* Action area: show availability + controls or a simple verified view */}
+                      {emailVerified ? (
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm text-green-600 flex items-center">
+                            <CheckCircle className="w-4 h-4 mr-1" /> Verified
+                          </div>
+                          <div className="text-sm text-muted-foreground truncate" title={step2Data.email}>{step2Data.email}</div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs text-muted-foreground">
+                            {emailValidation.isChecking ? 'Checking availability...' : emailValidation.error || (emailValidation.isValid ? 'Email looks good' : 'Enter your email')}
+                          </div>
+                          {serverFieldErrors.email && (
+                            <p className="text-sm text-red-600">{serverFieldErrors.email}</p>
+                          )}
+                          <div className="flex items-center space-x-2">
+                            {emailValidation.isChecking ? (<Spinner size="sm" />) : emailValidation.isValid ? (<Check className="w-4 h-4 text-green-500" />) : emailValidation.error ? (<X className="w-4 h-4 text-red-500" />) : null}
+                            {!emailOTPSent ? (
+                              <Button size="sm" onClick={sendEmailOTP} disabled={!canSendEmailOTP() || otpLoading.email}>
+                                {otpLoading.email ? <Spinner size="sm" /> : 'Send OTP'}
+                              </Button>
+                            ) : (
+                              <div className="flex items-center space-x-2">
+                                <Button size="sm" onClick={() => verifyOTP('EMAIL')} disabled={!canVerifyEmailOTP() || verifyLoading.email}>
+                                  {verifyLoading.email ? <Spinner size="sm" /> : 'Verify'}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => resendOTP('EMAIL')} disabled={resendLoading.email || (resendCooldown.email > 0 && !emailVerified)}>
+                                  {resendLoading.email ? <Spinner size="sm" /> : (resendCooldown.email > 0 && !emailVerified ? `Resend (${resendCooldown.email}s)` : 'Resend')}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {emailOTPSent && !emailVerified && (
+                        <div className="mt-2">
+                          <Input
+                            id="emailOTP"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={6}
+                            placeholder="Enter 6-digit code"
+                            value={step2Data.emailOTP}
+                            onChange={(e) => {
+                              const digits = e.target.value.replace(/\D/g, '').slice(0,6)
+                              setStep2Data(prev => ({ ...prev, emailOTP: digits }))
+                            }}
+                          />
+                          {otpErrors.email && <p className="text-sm text-red-600 mt-1">{otpErrors.email}</p>}
+                        </div>
+                      )}
                     </div>
-                    {emailValidation.error && (
-                      <p className="text-sm text-red-600">{emailValidation.error}</p>
-                    )}
                   </div>
 
-                  {/* Phone Section */}
-                  <div className="space-y-2">
-                    <Label htmlFor="phoneNumber">Phone Number</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  {/* Phone Card */}
+                  <div className="border rounded-lg p-4 bg-background/50">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <Phone className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <div className="text-sm font-medium">Phone</div>
+                          <div className="text-xs text-muted-foreground">Used for OTP verification and SMS alerts</div>
+                        </div>
+                      </div>
+                      {phoneVerified ? (
+                        <div className="text-sm text-green-600 flex items-center"><CheckCircle className="w-4 h-4 mr-1"/> Verified</div>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
                       <Input
                         id="phoneNumber"
                         type="tel"
-                        placeholder="+1 (555) 123-4567"
+                        placeholder="1234567890"
                         value={step2Data.phoneNumber}
-                        onChange={(e) => setStep2Data(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                        className={`pl-10 pr-10 ${
-                          phoneValidation.error ? 'border-red-500' : 
-                          phoneValidation.isValid ? 'border-green-500' : ''
-                        }`}
-                        disabled={phoneOTPSent}
+                        onChange={(e) => {
+                          const cleaned = sanitizePhone(e.target.value)
+                          setStep2Data(prev => ({ ...prev, phoneNumber: cleaned }))
+                          // clear server error for phone on change
+                          setServerFieldErrors(prev => ({ ...prev, phoneNumber: '' }))
+                        }}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={10}
+                        className={`w-full ${phoneValidation.error ? 'border-red-500' : phoneValidation.isValid ? 'border-green-500' : ''}`}
+                        disabled={phoneOTPSent || phoneVerified}
                       />
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        {phoneValidation.isChecking ? (
-                          <Spinner size="sm" />
-                        ) : phoneValidation.isValid ? (
-                          <Check className="w-4 h-4 text-green-500" />
-                        ) : phoneValidation.error ? (
-                          <X className="w-4 h-4 text-red-500" />
-                        ) : null}
-                      </div>
+                      {phoneVerified ? (
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm text-green-600 flex items-center">
+                            <CheckCircle className="w-4 h-4 mr-1" /> Verified
+                          </div>
+                          <div className="text-sm text-muted-foreground truncate" title={step2Data.phoneNumber}>{step2Data.phoneNumber}</div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs text-muted-foreground">
+                            {phoneValidation.isChecking ? 'Checking availability...' : phoneValidation.error || (phoneValidation.isValid ? 'Phone looks good' : 'Enter your phone number')}
+                          </div>
+                          {serverFieldErrors.phoneNumber && (
+                            <p className="text-sm text-red-600">{serverFieldErrors.phoneNumber}</p>
+                          )}
+                          <div className="flex items-center space-x-2">
+                            {phoneValidation.isChecking ? (<Spinner size="sm" />) : phoneValidation.isValid ? (<Check className="w-4 h-4 text-green-500" />) : phoneValidation.error ? (<X className="w-4 h-4 text-red-500" />) : null}
+                            {!phoneOTPSent ? (
+                              <Button size="sm" onClick={sendPhoneOTP} disabled={!canSendPhoneOTP() || otpLoading.phone}>
+                                {otpLoading.phone ? <Spinner size="sm" /> : 'Send OTP'}
+                              </Button>
+                            ) : (
+                              <div className="flex items-center space-x-2">
+                                <Button size="sm" onClick={() => verifyOTP('PHONE')} disabled={!canVerifyPhoneOTP() || verifyLoading.phone}>
+                                  {verifyLoading.phone ? <Spinner size="sm" /> : 'Verify'}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => resendOTP('PHONE')} disabled={resendLoading.phone || (resendCooldown.phone > 0 && !phoneVerified)}>
+                                  {resendLoading.phone ? <Spinner size="sm" /> : (resendCooldown.phone > 0 && !phoneVerified ? `Resend (${resendCooldown.phone}s)` : 'Resend')}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {phoneOTPSent && !phoneVerified && (
+                        <div className="mt-2">
+                          <Input
+                            id="phoneOTP"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={6}
+                            placeholder="Enter 6-digit code"
+                            value={step2Data.phoneOTP}
+                            onChange={(e) => {
+                              const digits = e.target.value.replace(/\D/g, '').slice(0,6)
+                              setStep2Data(prev => ({ ...prev, phoneOTP: digits }))
+                            }}
+                          />
+                          {otpErrors.phone && <p className="text-sm text-red-600 mt-1">{otpErrors.phone}</p>}
+                        </div>
+                      )}
                     </div>
-                    {phoneValidation.error && (
-                      <p className="text-sm text-red-600">{phoneValidation.error}</p>
-                    )}
                   </div>
-
-
                 </div>
 
-                {/* Email Verification Section */}
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="emailOTP" className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Mail className="w-4 h-4" />
-                        <span>Email Verification</span>
-                      </div>
-                      {emailVerified && (
-                        <div className="flex items-center space-x-1 text-green-600">
-                          <CheckCircle className="w-4 h-4" />
-                          <span className="text-sm">Verified</span>
-                        </div>
-                      )}
-                    </Label>
-                    
-                    <div className="space-y-2">
-                      <div className="flex space-x-2">
-                        <Input
-                          id="emailOTP"
-                          type="text"
-                          placeholder="Enter 6-digit email OTP"
-                          value={step2Data.emailOTP}
-                          onChange={(e) => setStep2Data(prev => ({ ...prev, emailOTP: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
-                          maxLength={6}
-                          disabled={emailVerified}
-                          className="text-center text-lg tracking-widest font-mono flex-1"
-                        />
-                        <Button
-                          onClick={sendEmailOTP}
-                          disabled={!canSendEmailOTP() || otpLoading.email}
-                          variant={emailOTPSent ? "secondary" : "default"}
-                          size="sm"
-                        >
-                          {otpLoading.email ? (
-                            <Spinner size="sm" />
-                          ) : emailOTPSent ? (
-                            'Sent'
-                          ) : (
-                            'Send'
-                          )}
-                        </Button>
-                      </div>
-                      
-                      {emailOTPSent && (
-                        <div className="flex space-x-2">
-                          <Button
-                            onClick={() => verifyOTP('EMAIL')}
-                            disabled={!canVerifyEmailOTP() || verifyLoading.email || emailVerified}
-                            className="flex-1"
-                            size="sm"
-                          >
-                            {verifyLoading.email ? (
-                              <>
-                                <Spinner size="sm" className="mr-2" />
-                                Verifying...
-                              </>
-                            ) : emailVerified ? (
-                              <>
-                                <CheckCircle className="w-4 h-4 mr-2" />
-                                Verified
-                              </>
-                            ) : (
-                              'Verify Email'
-                            )}
-                          </Button>
-                          <Button
-                            onClick={() => resendOTP('EMAIL')}
-                            disabled={resendLoading.email || emailVerified}
-                            variant="outline"
-                            size="sm"
-                          >
-                            {resendLoading.email ? (
-                              <Spinner size="sm" />
-                            ) : (
-                              'Resend'
-                            )}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                {/* OTP controls are integrated into the Email/Phone cards above. */}
 
-                  {/* Phone Verification Section */}
-                  <div className="space-y-2">
-                    <Label htmlFor="phoneOTP" className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <MessageSquare className="w-4 h-4" />
-                        <span>Phone Verification</span>
-                      </div>
-                      {phoneVerified && (
-                        <div className="flex items-center space-x-1 text-green-600">
-                          <CheckCircle className="w-4 h-4" />
-                          <span className="text-sm">Verified</span>
-                        </div>
-                      )}
-                    </Label>
-                    
-                    <div className="space-y-2">
-                      <div className="flex space-x-2">
-                        <Input
-                          id="phoneOTP"
-                          type="text"
-                          placeholder="Enter 6-digit phone OTP"
-                          value={step2Data.phoneOTP}
-                          onChange={(e) => setStep2Data(prev => ({ ...prev, phoneOTP: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
-                          maxLength={6}
-                          disabled={phoneVerified}
-                          className="text-center text-lg tracking-widest font-mono flex-1"
-                        />
-                        <Button
-                          onClick={sendPhoneOTP}
-                          disabled={!canSendPhoneOTP() || otpLoading.phone}
-                          variant={phoneOTPSent ? "secondary" : "default"}
-                          size="sm"
-                        >
-                          {otpLoading.phone ? (
-                            <Spinner size="sm" />
-                          ) : phoneOTPSent ? (
-                            'Sent'
-                          ) : (
-                            'Send'
-                          )}
-                        </Button>
-                      </div>
-                      
-                      {phoneOTPSent && (
-                        <div className="flex space-x-2">
-                          <Button
-                            onClick={() => verifyOTP('PHONE')}
-                            disabled={!canVerifyPhoneOTP() || verifyLoading.phone || phoneVerified}
-                            className="flex-1"
-                            size="sm"
-                          >
-                            {verifyLoading.phone ? (
-                              <>
-                                <Spinner size="sm" className="mr-2" />
-                                Verifying...
-                              </>
-                            ) : phoneVerified ? (
-                              <>
-                                <CheckCircle className="w-4 h-4 mr-2" />
-                                Verified
-                              </>
-                            ) : (
-                              'Verify Phone'
-                            )}
-                          </Button>
-                          <Button
-                            onClick={() => resendOTP('PHONE')}
-                            disabled={resendLoading.phone || phoneVerified}
-                            variant="outline"
-                            size="sm"
-                          >
-                            {resendLoading.phone ? (
-                              <Spinner size="sm" />
-                            ) : (
-                              'Resend'
-                            )}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Terms & Conditions */}
-                  <div className="pt-4 border-t">
-                    <div className="flex items-start space-x-2">
-                      <Checkbox
-                        id="terms"
-                        checked={acceptTerms}
-                        onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
-                        className="mt-1"
-                      />
-                      <Label htmlFor="terms" className="text-sm leading-relaxed">
-                        I agree to the{" "}
-                        <Link href="/terms" className="text-primary hover:underline">
-                          Terms of Service
-                        </Link>{" "}
-                        and{" "}
-                        <Link href="/privacy" className="text-primary hover:underline">
-                          Privacy Policy
-                        </Link>
+                {/* Terms checkbox + Navigation Buttons */}
+                <div className="mt-4">
+                  <div className="flex items-start space-x-2">
+                    <Checkbox
+                      id="acceptTerms"
+                      checked={acceptTerms}
+                      onCheckedChange={(val) => setAcceptTerms(Boolean(val))}
+                      disabled={!(emailVerified && phoneVerified)}
+                    />
+                    <div className="text-sm">
+                      <Label htmlFor="acceptTerms" className="mb-0">
+                        I agree to the <a href="/terms" className="text-primary hover:underline">Terms of Service</a> and <a href="/privacy" className="text-primary hover:underline">Privacy Policy</a>.
                       </Label>
+                      {!(emailVerified && phoneVerified) && (
+                        <p className="text-xs text-muted-foreground">Verify both email and phone to enable this checkbox.</p>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Navigation Buttons */}
-                <div className="flex space-x-3">
+                <div className="flex space-x-3 mt-6">
                   <Button onClick={prevStep} variant="outline" className="flex-1">
                     <ChevronLeft className="w-4 h-4 mr-2" />
                     Back
@@ -919,9 +916,9 @@ export default function RegisterPage() {
                     )}
                   </Button>
                 </div>
+                {/* bottom back to login removed to keep flow focused */}
               </div>
             )}
-            
             <div className="text-center pt-4">
               <p className="text-sm text-muted-foreground">
                 Already have an account?{" "}
@@ -933,6 +930,6 @@ export default function RegisterPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+      </div>
   )
 }

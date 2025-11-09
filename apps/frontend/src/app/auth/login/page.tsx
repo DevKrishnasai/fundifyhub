@@ -15,12 +15,14 @@ import { Spinner } from "@/components/ui/spinner"
 import { useToast } from "@/hooks/use-toast"
 import { Eye, EyeOff, ArrowLeft, Shield, CreditCard } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
-import { post } from "@/lib/api-client"
+import { postWithResult } from "@/lib/api-client"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
+import { loginSchema } from '@fundifyhub/types';
+import { z } from 'zod';
 
 export default function LoginPage() {
   const router = useRouter()
-  const { toast } = useToast()
+  const { success: toastSuccess, error: toastError } = useToast()
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -31,58 +33,42 @@ export default function LoginPage() {
     password: "",
   })
 
+  // Replace handleSubmit with Zod validation
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError("")
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
 
-    // Basic validation
-    if (!formData.email || !formData.password) {
-      setError("Please fill in all fields")
-      setIsLoading(false)
-      return
+    // Zod validation
+    const result = loginSchema.safeParse(formData);
+    if (!result.success) {
+      setError(result.error.errors[0]?.message || "Invalid input");
+      setIsLoading(false);
+      return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      setError("Please enter a valid email address")
-      setIsLoading(false)
-      return
-    }
-
-    // API call to login endpoint using axios helper
     try {
-      const data = await post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.LOGIN, {
-        email: formData.email,
-        password: formData.password,
-      });
-
-      if (data && data.success) {
-        const { user } = data.data
-
-        toast({
-          title: "Login successful!",
-          description: `Welcome back, ${user.firstName}! You're being redirected to your dashboard.`,
-        })
-
-        // Update auth context - it will handle the redirect to /dashboard
+      const res = await postWithResult(BACKEND_API_CONFIG.ENDPOINTS.AUTH.LOGIN, result.data)
+      if (res.ok) {
+        const { user } = res.data
+  // show success and login
+  toastSuccess(`Login successful! Welcome back, ${user.firstName}! You're being redirected to your dashboard.`)
         login(user)
       } else {
-        setError(data?.message || "Login failed. Please check your credentials.")
-        toast({
-          variant: "destructive",
-          title: "Login failed",
-          description: data?.message || "Please check your credentials and try again.",
-        })
+        // map field errors if provided
+        if (res.error?.fieldErrors) {
+          // prefer showing first field error message
+          const firstMsg = Object.values(res.error.fieldErrors)[0]
+          setError(firstMsg || res.error.message || 'Login failed')
+        } else {
+          setError(res.error?.message || 'Login failed. Please check your credentials.')
+        }
+  toastError(res.error?.message || 'Login failed. Please check your credentials.')
       }
     } catch (err: any) {
-      // axios error handling
-      const message = err?.response?.data?.message || err?.message || "Network error. Please try again.";
-      setError(message)
-      toast({
-        variant: "destructive",
-        title: "Login failed",
-        description: message,
-      })
+  const message = err?.message || 'Network error. Please try again.'
+  setError(message)
+  toastError(`Login failed: ${message}`)
     }
     setIsLoading(false)
   }
@@ -97,14 +83,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-linear-to-br from-background to-muted/20 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-4 sm:space-y-6">
-        <div className="flex justify-start">
-          <Button variant="ghost" size="sm" asChild className="mb-2">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Home
-            </Link>
-          </Button>
-        </div>
+        {/* top back link removed as requested - keep header focused */}
 
         {/* Header */}
         <div className="text-center space-y-2">

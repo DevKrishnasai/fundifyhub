@@ -45,12 +45,16 @@ export abstract class BaseWorker<T> {
   private setupEventHandlers(): void {
     this.worker.on('error', (err: Error) => {
       const contextLogger = this.logger.child(`[${this.queueName}]`);
-      contextLogger.error('Worker error:', err);
+      // Ensure we log the underlying error message even if it's not an Error instance
+      const msg = err instanceof Error ? err.message : String(err);
+      contextLogger.error(`Worker error: ${msg}`);
     });
 
     this.worker.on('failed', (job, err) => {
       const contextLogger = this.logger.child(`[Job ${job?.id}] [${this.queueName}]`);
-      contextLogger.error('Failed:', err);
+      // Bull may deliver non-Error objects; normalize to a string for logging
+      const msg = err instanceof Error ? err.message : (err ? JSON.stringify(err) : 'unknown error');
+      contextLogger.error(`Failed: ${msg}`);
     });
 
     this.worker.on('completed', (job) => {

@@ -59,6 +59,8 @@
     "typescript-eslint": "^8.46.3"
   },
   "dependencies": {
-    "rimraf": "^6.0.1"
+    "react-hot-toast": "^2.6.0",
+    "rimraf": "^6.0.1",
+    "zod": "^4.1.12"
   }
 }

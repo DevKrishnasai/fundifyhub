@@ -17,5 +17,7 @@
     "lint": "eslint .",
     "clean": "rimraf dist"
   },
-  "devDependencies": {}
+  "dependencies": {
+    "zod": "^3.25.76"
+  }
 }

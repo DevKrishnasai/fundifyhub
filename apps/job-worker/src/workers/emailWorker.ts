@@ -4,12 +4,62 @@ import { sendEmail } from '../services/email-service';
 import { serviceManager } from '../services/service-manager';
 import { startEmailService, stopEmailService } from '../services/email-service';
 import { SimpleLogger } from '@fundifyhub/logger';
-import { AddJobType, AddServiceControlJobType, QUEUE_NAMES, SERVICE_CONTROL_ACTIONS, TEMPLATE_NAMES } from '@fundifyhub/types';
+import { AddJobType, AddServiceControlJobType, QUEUE_NAMES, SERVICE_CONTROL_ACTIONS, TEMPLATE_NAMES, SERVICE_NAMES } from '@fundifyhub/types';
 import { createEmailProcessor } from '../utils/template-processor';
 
 export class EmailWorker extends BaseWorker<AddJobType<TEMPLATE_NAMES> | AddServiceControlJobType> {
   constructor(queueName: QUEUE_NAMES, logger: SimpleLogger) {
     super(queueName, logger);
+
+    // Setup pause/resume lifecycle based on Email service availability
+    // Delegate to an async helper for clarity and testability
+    this.setupPauseResume(logger, queueName).catch((err) => {
+      const ctx = logger.child(`[${queueName}]`);
+      ctx.warn(String(err));
+    });
+  }
+
+  /**
+   * Setup logic to pause/resume the worker when the Email service becomes
+   * unavailable/available. Separated from the constructor to keep the
+   * constructor synchronous and the control flow easier to read.
+   */
+  private async setupPauseResume(logger: SimpleLogger, queueName: QUEUE_NAMES): Promise<void> {
+    const contextLogger = logger.child(`[${queueName}]`);
+
+    // On startup, if the service is unavailable, pause the worker so jobs
+    // don't repeatedly fail. The periodic service-manager checks will emit
+    // status changes and the registered listener will resume the worker.
+    try {
+      const available = await serviceManager.isEmailAvailable();
+      if (!available) {
+        contextLogger.info('Email service not available at startup — pausing worker until available');
+        await this.worker.pause();
+      }
+    } catch (err) {
+      contextLogger.warn(String(err));
+    }
+
+    // Subscribe to service-manager status changes and pause/resume the worker
+    serviceManager.onServiceStatus(async ({ serviceName, available }) => {
+      if (serviceName !== SERVICE_NAMES.EMAIL) return;
+
+      if (available) {
+        contextLogger.info('Email service became available — resuming worker');
+        try {
+          await this.worker.resume();
+        } catch (e: any) {
+          contextLogger.error(String(e));
+        }
+      } else {
+        contextLogger.info('Email service became unavailable — pausing worker');
+        try {
+          await this.worker.pause();
+        } catch (e: any) {
+          contextLogger.error(String(e));
+        }
+      }
+    });
   }
 
   protected async processJob(job: Job<AddJobType<TEMPLATE_NAMES> | AddServiceControlJobType>): Promise<{ success: boolean; error?: string; }> {
@@ -35,7 +85,8 @@ export class EmailWorker extends BaseWorker<AddJobType<TEMPLATE_NAMES> | AddServ
 
       return { success: true };
     } catch (err) {
-      throw { success: false, error: (err as Error).message };
+      const msg = err instanceof Error ? err.message : (err ? JSON.stringify(err) : 'Unknown error')
+      throw new Error(msg)
     }
   }
 
@@ -62,7 +113,8 @@ export class EmailWorker extends BaseWorker<AddJobType<TEMPLATE_NAMES> | AddServ
           return { success: false, error: 'Unknown action' };
       }
     } catch (err) {
-      throw { success: false, error: (err as Error).message };
+      const msg = err instanceof Error ? err.message : (err ? JSON.stringify(err) : 'Unknown error')
+      throw new Error(msg)
     }
   }
 }

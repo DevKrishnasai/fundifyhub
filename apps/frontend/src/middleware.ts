@@ -29,17 +29,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
-  // Check if user has access token cookie
-  const accessToken = request.cookies.get('accessToken')?.value;
-  
-  if (!accessToken) {
-    // No token - redirect to login
-    const loginUrl = new URL('/auth/login', request.url);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // Has token - allow access
-  // Role-based access control is handled client-side in the AuthContext and individual pages
+  // For protected routes, let AuthContext handle validation instead of checking middleware
+  // This is because httpOnly cookies with SameSite=Lax don't reach the browser on cross-origin requests
+  // The AuthContext will validate the user state with the backend and redirect accordingly
+  // Note: The cookie is still sent to the backend in all requests for backend authentication
   return NextResponse.next();
 }
 

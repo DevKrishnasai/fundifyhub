@@ -1,7 +1,11 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
+import redis from '../../utils/redis'
+import { createOtpSession, verifyOtpSession } from '../../utils/otpStore'
 import { prisma } from '@fundifyhub/prisma';
-import { LoginAlertPayloadType, OTPVerificationPayloadType, TEMPLATE_NAMES, WelcomePayloadType } from '@fundifyhub/types';
+import { LoginAlertPayloadType, OTPVerificationPayloadType, TEMPLATE_NAMES, WelcomePayloadType, SERVICE_NAMES } from '@fundifyhub/types';
+import { loginSchema, registerSchema } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 import { APIResponseType } from '../../types';
 import queueClient from '../../utils/queues';
@@ -111,36 +115,73 @@ export async function sendOTP(
       return;
     }
 
-    // Generate 6-digit OTP (TODO: Use crypto-secure random generation)
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const identifier = email?.toLowerCase() || phone;
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    // Use Redis-backed counters for rate limiting so limits apply across instances.
+    // Keys: otp:rl:{identifier}:m and otp:rl:{identifier}:h
+    const identifier = email?.toLowerCase() || phone as string;
+    if (!identifier) {
+      res.status(400).json({ success: false, message: 'Email or phone required' } as APIResponseType)
+      return
+    }
 
-    // Store OTP in database
-    const otpRecord = await prisma.oTPVerification.create({
-      data: {
-        identifier,
-        type: email ? 'EMAIL' : 'PHONE',
-        code: otp,
-        expiresAt,
-      },
-    });
+    // central limiter util (tries Redis, falls back to in-memory) for send-rate
+    try {
+      const { checkAndIncrementOtpRate, checkAndIncrementAttempts } = await import('../../utils/rateLimiter')
+      const rl = await checkAndIncrementOtpRate(identifier)
+      if (!rl.ok) {
+        const msg = rl.reason === 'minute' ? 'Too many OTP requests (per minute). Please try later.' : 'Too many OTP requests (per hour). Please try later.'
+        res.status(429).json({ success: false, message: msg } as APIResponseType)
+        return
+      }
+
+      // Policy B: count sends/resends as attempts. Enforce attempts sliding-window before issuing a new code.
+      const attemptsRes = await checkAndIncrementAttempts(identifier)
+      if (!attemptsRes.ok) {
+        const retryMs = attemptsRes.retryAfterMs ?? Number(process.env.OTP_ATTEMPTS_WINDOW_MS || 3600000)
+        const retrySeconds = Math.ceil(retryMs / 1000)
+        // set Retry-After header in seconds for clients and caches
+        res.setHeader('Retry-After', String(retrySeconds))
+        res.status(429).json({ success: false, message: 'Maximum OTP attempts exceeded', retryAfterMs: retryMs } as APIResponseType)
+        return
+      }
+    } catch (err) {
+      logger.warn('Rate limiter check failed unexpectedly: ' + String(err))
+    }
+
+    // Generate 6-digit OTP using crypto and create a Redis-backed session (hybrid: Redis + DB audit)
+  const raw = crypto.randomInt(0, 1_000_000)
+  const otp = String(raw).padStart(6, '0')
+  const { sessionId } = await createOtpSession({ identifier, type: email ? 'EMAIL' : 'PHONE', otp, ttlSeconds: 10 * 60 })
 
     try {
-      const jobPayload: OTPVerificationPayloadType = {
+      const basePayload: OTPVerificationPayloadType = {
         email: email || '',
         phoneNumber: phone || '',
         otpCode: otp,
         expiresInMinutes: 10,
-        companyName: 'Dummy Hub', 
-        supportUrl: 'https://support.fundifyhub.com', 
-        verifyUrl: 'https://app.fundifyhub.com/verify-otp', 
-        companyUrl: 'https://fundifyhub.com', 
-        logoUrl: 'https://fundifyhub.com/logo.png', 
+        companyName: 'Dummy Hub',
+        supportUrl: 'https://support.fundifyhub.com',
+        verifyUrl: 'https://app.fundifyhub.com/verify-otp',
+        companyUrl: 'https://fundifyhub.com',
+        logoUrl: 'https://fundifyhub.com/logo.png',
       };
 
-      queueClient.addAJob(TEMPLATE_NAMES.OTP_VERIFICATION, jobPayload);
+      // Enqueue per-service so template is executed only for the intended channel.
+      // If both email and phone are provided (e.g., registration), we enqueue two jobs
+      // with service-specific variables to avoid broadcasting to all supported services.
+      const enqueueResults: Promise<any>[] = []
 
+      if (email) {
+        const emailPayload = { ...basePayload, phoneNumber: '' } as OTPVerificationPayloadType
+        enqueueResults.push(queueClient.addAJob(TEMPLATE_NAMES.OTP_VERIFICATION, emailPayload, { services: [SERVICE_NAMES.EMAIL] }));
+      }
+
+      if (phone) {
+        const whatsappPayload = { ...basePayload, email: '' } as OTPVerificationPayloadType
+        // Use WHATSAPP as the channel for phone-based OTPs (template supports it)
+        enqueueResults.push(queueClient.addAJob(TEMPLATE_NAMES.OTP_VERIFICATION, whatsappPayload, { services: [SERVICE_NAMES.WHATSAPP] }));
+      }
+
+      await Promise.all(enqueueResults);
     } catch (err) {
       logger.error('OTP enqueue error:', err as Error);
     }
@@ -150,7 +191,7 @@ export async function sendOTP(
       .json({
         success: true,
         message: 'OTP sent successfully',
-        data: { sessionId: otpRecord.id },
+        data: { sessionId },
       } as APIResponseType);
   } catch (error) {
     logger.error('Send OTP error:', error as Error);
@@ -185,51 +226,25 @@ export async function verifyOTP(
           message: 'Session ID and OTP required',
         } as APIResponseType);
 
-    const otpRecord = await prisma.oTPVerification.findUnique({
-      where: { id: sessionId },
-    });
-    if (!otpRecord)
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: 'OTP session not found',
-        } as APIResponseType);
-
-    if (otpRecord.expiresAt < new Date())
-      return res
-        .status(400)
-        .json({ success: false, message: 'OTP expired' } as APIResponseType);
-    if (otpRecord.attempts >= otpRecord.maxAttempts)
-      return res
-        .status(429)
-        .json({
-          success: false,
-          message: 'Maximum OTP attempts exceeded',
-        } as APIResponseType);
-
-    if (otpRecord.code !== otp) {
-      await prisma.oTPVerification.update({
-        where: { id: sessionId },
-        data: { attempts: otpRecord.attempts + 1 },
-      });
-      return res
-        .status(400)
-        .json({ success: false, message: 'Invalid OTP code' } as APIResponseType);
+    const result = await verifyOtpSession(sessionId, otp);
+    if (result.status === 'expired') {
+      return res.status(404).json({ success: false, message: 'OTP session not found or expired' } as APIResponseType);
     }
-
-    await prisma.oTPVerification.update({
-      where: { id: sessionId },
-      data: { isVerified: true },
-    });
-
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: 'OTP verified successfully',
-        data: { sessionId, verified: true },
-      } as APIResponseType);
+    if (result.status === 'already_used') {
+      return res.status(400).json({ success: false, message: 'OTP already used' } as APIResponseType);
+    }
+    if (result.status === 'too_many_attempts') {
+      const retryMs = (result as any).retryAfterMs ?? Number(process.env.OTP_ATTEMPTS_WINDOW_MS || 3600000)
+      const retrySeconds = Math.ceil(retryMs / 1000)
+      res.setHeader('Retry-After', String(retrySeconds))
+      return res.status(429).json({ success: false, message: 'Maximum OTP attempts exceeded', retryAfterMs: retryMs } as APIResponseType);
+    }
+    if (result.status === 'invalid') {
+      return res.status(400).json({ success: false, message: 'Invalid OTP code' } as APIResponseType);
+    }
+    if (result.status === 'verified') {
+      return res.status(200).json({ success: true, message: 'OTP verified successfully', data: { sessionId, verified: true } } as APIResponseType);
+    }
   } catch (error) {
     logger.error('Verify OTP error:', error as Error);
     res
@@ -246,27 +261,42 @@ export async function verifyOTP(
 export async function register(
   req: Request,
   res: Response
-): Promise<any> {
+): Promise<void> {
   try {
-    const { email, phoneNumber, firstName, lastName, password, district } = req.body;
-    if (!email || !phoneNumber || !firstName || !lastName || !password)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: 'Missing required fields: email, phoneNumber, firstName, lastName, password',
-        } as APIResponseType);
-
-    // TODO: Validate password strength and user inputs. Consider using a schema validator
-    // and provide structured validation errors.
+    const parseResult = registerSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      // Convert zod errors into a fieldErrors map for frontend convenience
+      const fieldErrors: Record<string, string> = {};
+      for (const e of parseResult.error.errors) {
+        const key = e.path?.[0] ? String(e.path[0]) : 'form'
+        if (!fieldErrors[key]) fieldErrors[key] = e.message
+      }
+      res.status(400).json({
+        success: false,
+        message: 'Invalid registration data',
+        fieldErrors,
+      });
+      return;
+    }
+    const { email, password, firstName, lastName, district } = parseResult.data;
+    const phoneNumber = req.body.phoneNumber;
+    if (!phoneNumber) {
+      res.status(400).json({
+        success: false,
+        message: 'Missing required field: phoneNumber',
+      });
+      return;
+    }
 
     // Check for verified OTP records for both email and phone
+    // Find any OTP audit row that has been verified for the given identifier.
+    // Note: verifyOtpSession marks audit rows as `isUsed=true` when the code is verified.
+    // We only need to check `isVerified: true` here to confirm verification occurred.
     const emailOtpRecord = await prisma.oTPVerification.findFirst({
       where: {
         identifier: email.toLowerCase(),
         type: 'EMAIL',
         isVerified: true,
-        isUsed: false,
       },
     });
 
@@ -275,14 +305,13 @@ export async function register(
         identifier: phoneNumber,
         type: 'PHONE',
         isVerified: true,
-        isUsed: false,
       },
     });
 
-    if (!emailOtpRecord || !phoneOtpRecord)
-      return res
-        .status(400)
-        .json({ success: false, message: 'Both email and phone must be verified with OTP before registration' } as APIResponseType);
+    if (!emailOtpRecord || !phoneOtpRecord) {
+      res.status(400).json({ success: false, message: 'Both email and phone must be verified with OTP before registration' });
+      return;
+    }
 
     const existing = await prisma.user.findFirst({
       where: {
@@ -292,43 +321,47 @@ export async function register(
         ],
       },
     });
-    if (existing)
-      return res
-        .status(409)
-        .json({
-          success: false,
-          message: 'Email or phone already registered',
-        } as APIResponseType);
+    if (existing) {
+      res.status(409).json({
+        success: false,
+        message: 'Email or phone already registered',
+      });
+      return;
+    }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+  const saltRounds = Number(process.env.BCRYPT_ROUNDS || 10)
+  const hashedPassword = await bcrypt.hash(password, saltRounds);
     // TODO: Make bcrypt salt rounds configurable via env (e.g. BCRYPT_ROUNDS). Consider
     // using a transaction here so user creation and OTP marking are atomic.
 
     try {
-      // TODO: Use prisma.$transaction to create user and mark OTPs as used atomically.
-      const user = await prisma.user.create({
-        data: {
-          email: email.toLowerCase(),
-          phoneNumber: phoneNumber,
-          firstName,
-          lastName,
-          password: hashedPassword,
-          roles: ['CUSTOMER'],
-          emailVerified: true,
-          phoneVerified: true,
-          district: district
-        },
-      });
+      // Use a transaction so user creation and OTP marking are atomic
+      const user = await prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email: email.toLowerCase(),
+            phoneNumber: phoneNumber,
+            firstName,
+            lastName,
+            password: hashedPassword,
+            roles: ['CUSTOMER'],
+            emailVerified: true,
+            phoneVerified: true,
+            district: district
+          },
+        });
 
-      // Mark OTP records as used
-      await prisma.oTPVerification.updateMany({
-        where: {
-          OR: [
-            { id: emailOtpRecord.id },
-            { id: phoneOtpRecord.id },
-          ],
-        },
-        data: { isUsed: true, userId: user.id },
+        await tx.oTPVerification.updateMany({
+          where: {
+            OR: [
+              { id: emailOtpRecord.id },
+              { id: phoneOtpRecord.id },
+            ],
+          },
+          data: { isUsed: true, userId: created.id },
+        });
+
+        return created;
       });
 
       if (email.toLowerCase()) {
@@ -350,39 +383,40 @@ export async function register(
         }
       }
 
-      return res
-        .status(201)
-        .json({
-          success: true,
-          message: 'Registration completed successfully',
-          data: {
-            user: {
-              id: user.id,
-              email: user.email,
-              phoneNumber: user.phoneNumber,
-              firstName: user.firstName,
-              lastName: user.lastName,
-            },
+      res.status(201).json({
+        success: true,
+        message: 'Registration completed successfully',
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            phoneNumber: user.phoneNumber,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            roles: Array.isArray(user.roles) ? user.roles : ['CUSTOMER'],
+            district: user.district || '',
+            isActive: user.isActive ?? true,
           },
-        } as APIResponseType);
+        },
+      });
+      return;
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002')
-        return res
-          .status(409)
-          .json({
-            success: false,
-            message: 'Email or phone already registered',
-          } as APIResponseType);
+      if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
+        res.status(409).json({
+          success: false,
+          message: 'Email or phone already registered',
+        });
+        return;
+      }
       throw err;
     }
   } catch (error) {
     logger.error('Complete registration error:', error as Error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Failed to complete registration',
-      } as APIResponseType);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to complete registration',
+    });
+    return;
   }
 }
 
@@ -400,40 +434,41 @@ export async function register(
 export async function login(
   req: Request,
   res: Response
-): Promise<void> {
+): Promise<APIResponseType | void> {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: 'Email and password required',
-        } as APIResponseType);
+    const parseResult = loginSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string> = {}
+      for (const e of parseResult.error.errors) {
+        const key = e.path?.[0] ? String(e.path[0]) : 'form'
+        if (!fieldErrors[key]) fieldErrors[key] = e.message
+      }
+      res.status(400).json({
+        success: false,
+        message: 'Invalid login data',
+        fieldErrors,
+      });
       return;
     }
+    const { email, password } = parseResult.data;
 
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
     if (!user || !user.password) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Invalid email or password',
-        } as APIResponseType);
+      res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
+      });
       return;
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Invalid email or password',
-        } as APIResponseType);
+      res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
+      });
       return;
     }
 
@@ -460,10 +495,6 @@ export async function login(
       path: '/',
     });
 
-    // add login alert here
-    // Fire-and-forget: enqueue a template-driven login alert and don't block the
-    // login response. Template existence and required-field validation is the
-    // responsibility of the job-worker (template registry + renderer).
     (async () => {
       try {
         const ip =
@@ -480,46 +511,35 @@ export async function login(
           resetPasswordUrl: 'https://app.fundifyhub.com/reset-password',
           companyName: 'Dummy Hub',
         };
-        
         await queueClient.addAJob(TEMPLATE_NAMES.LOGIN_ALERT, alertPayload);
       } catch (err) {
         logger.error('Failed preparing login alert payload:', err as Error);
       }
     })();
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: 'Login successful',
-        data: {
-          user: {
-            id: user.id,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-          },
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          roles: Array.isArray(user.roles) ? user.roles : ['CUSTOMER'],
+          district: user.district || '',
+          isActive: user.isActive ?? true,
         },
-      } as APIResponseType);
+      },
+    });
+    return;
   } catch (error) {
     logger.error('Login error:', error as Error);
-    res
-      .status(500)
-      .json({ success: false, message: 'Login failed' } as APIResponseType);
+    res.status(500).json({ success: false, message: 'Login failed' });
+    return;
   }
 }
 
-/**
- * User logout
- *
- * POST /api/v1/auth/logout
- * Body: {} (empty)
- * Response: { success: boolean, message: string }
- * Clears: accessToken cookie
- *
- * Clears the access token cookie and optionally invalidates refresh tokens.
- * Requires authentication middleware to populate req.user.
- */
 export async function logout(
   req: Request,
   res: Response

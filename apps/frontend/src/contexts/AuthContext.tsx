@@ -55,17 +55,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * Check if user has required role(s)
    */
   const hasRole = useCallback((roles: string | string[]): boolean => {
-    if (!user) 
+    if (!user)
       return false;
-    
+
     // Use capital case for all role comparisons
     const toCapitalCase = (str: string) => str.trim().toUpperCase();
-    const userRoles = user.roles.map(toCapitalCase);
-    
+    const userRoles = Array.isArray(user.roles) ? user.roles.map(toCapitalCase) : [];
+
     const rolesToCheck = Array.isArray(roles)
       ? roles.map(toCapitalCase)
       : [toCapitalCase(roles)];
-    
+
     // Check if user has ANY of the required roles
     const hasAccess = rolesToCheck.some(role => userRoles.includes(role));
     return hasAccess;
@@ -101,10 +101,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * Server-side authentication validation
    */
   const validateWithServer = async (): Promise<UserType | null> => {
-      const data = await get(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE);
-      if (data && data.success && data.data?.user) 
-        return data.data.user as UserType;
-      return null;  
+      try {
+        const data = await get(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE);
+        // Check both possible structures
+        const user = data?.user || data?.data?.user;
+        if (user) {
+          return user as UserType;
+        }
+        return null;
+      } catch (error) {
+        return null;
+      }
   };
 
   // Initialize authentication state

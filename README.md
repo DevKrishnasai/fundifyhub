@@ -324,6 +324,12 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_URL="redis://localhost:6379"
 
+# OTP attempts policy (resends + failed verifies allowed within window)
+# Total attempts allowed (resends + failed verifies). Default: 5
+OTP_ATTEMPTS_LIMIT=5
+# Window in milliseconds for counting attempts (default 1 hour = 3600000)
+OTP_ATTEMPTS_WINDOW_MS=3600000
+
 # =============================================================================
 # Authentication & Security
 # =============================================================================

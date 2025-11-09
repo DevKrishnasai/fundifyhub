@@ -305,6 +305,7 @@ model Inspection {
 // OTP Verification model for email and phone verification
 model OTPVerification {
   id              String   @id @default(cuid())
+  sessionId       String   @unique
   userId          String?  // Optional for temporary registration OTPs
   identifier      String   // email or phone number
   type            String   // "EMAIL" or "PHONE"
@@ -312,8 +313,9 @@ model OTPVerification {
   expiresAt       DateTime // OTP expiry time
   isUsed          Boolean  @default(false)
   isVerified      Boolean  @default(false)
-  attempts        Int      @default(0) // Track failed attempts
-  maxAttempts     Int      @default(3) // Maximum allowed attempts
+  attempts        Int      @default(0) // Track failed attempts (persisted)
+  resendCount     Int      @default(0) // Track number of resends for audit/forensics
+  // Note: previous approach enforced attempt limits in Redis (Policy B). This model now persists attempts/resend counts
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -328,25 +330,8 @@ model OTPVerification {
 }
 
 // Verification Session model for multi-step registration
-model VerificationSession {
-  id              String   @id @default(cuid())
-  sessionId       String   @unique // Unique session identifier
-  email           String
-  phoneNumber     String
-  emailOTP        String
-  phoneOTP        String
-  emailVerified   Boolean  @default(false)
-  phoneVerified   Boolean  @default(false)
-  expiresAt       DateTime // Session expiry time
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([sessionId])
-  @@index([email])
-  @@index([phoneNumber])
-  @@index([expiresAt])
-  @@map("verification_sessions")
-}
+// NOTE: `VerificationSession` was removed — OTP state is tracked using Redis sessions for
+// active verification flows and `OTPVerification` audit rows in the database for persistence.
 
 // Service Configuration model for admin-configurable services
 model ServiceConfig {

@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast"
 import { ArrowLeft, CreditCard, Mail, CheckCircle } from "lucide-react"
 
 export default function ForgotPasswordPage() {
-  const { toast } = useToast()
+  const { success: toastSuccess, error: toastError } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [isEmailSent, setIsEmailSent] = useState(false)
   const [error, setError] = useState("")
@@ -39,23 +39,16 @@ export default function ForgotPasswordPage() {
     }
 
     // Simulate API call
-    setTimeout(() => {
-      try {
-        setIsEmailSent(true)
-        toast({
-          title: "Reset link sent!",
-          description: "Check your email for the password reset link.",
-        })
-      } catch (error) {
-        setError("Failed to send reset email. Please try again.")
-        toast({
-          variant: "destructive",
-          title: "Failed to send email",
-          description: "Something went wrong. Please try again.",
-        })
-      }
-      setIsLoading(false)
-    }, 1500)
+      setTimeout(() => {
+        try {
+          setIsEmailSent(true)
+    toastSuccess("Reset link sent! Check your email for the password reset link.")
+        } catch (error) {
+    setError("Failed to send reset email. Please try again.")
+    toastError("Failed to send email. Something went wrong. Please try again.")
+        }
+        setIsLoading(false)
+      }, 1500)
   }
 
   if (isEmailSent) {

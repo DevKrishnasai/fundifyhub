@@ -1,5 +1,5 @@
 import { Router, type Router as ExpressRouter } from 'express';
-import { getProfileController, validateController, debugAuthController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController } from './controllers';
+import { getProfileController, validateController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController } from './controllers';
 
 const router: ExpressRouter = Router();
 
@@ -14,12 +14,6 @@ router.get('/profile', getProfileController);
  * Validate authentication status (protected)
  */
 router.get('/validate', validateController);
-
-/**
- * GET /user/debug-auth
- * Debug authentication - shows token data vs database data (development only)
- */
-router.get('/debug-auth', debugAuthController);
 
 /**
  * POST /user/add-asset

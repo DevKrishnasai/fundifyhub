@@ -234,9 +234,11 @@ export function AssetUpload({
       // Use shared axios get method (sends cookies automatically)
       const data = await import('../api-client').then(mod => mod.get<any>(url));
 
-      if (data.success && data.data?.url) {
-        setSignedUrls(prev => ({ ...prev, [fileKey]: data.data.url }));
-        return data.data.url;
+      // `get` helper unwraps the backend envelope and returns the inner payload.
+      // Expect an object with `url` on success.
+      if (data && data.url) {
+        setSignedUrls(prev => ({ ...prev, [fileKey]: data.url }));
+        return data.url;
       } else {
         throw new Error('No URL returned from server');
       }

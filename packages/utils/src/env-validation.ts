@@ -51,6 +51,18 @@ export const mainBackendEnvSchema = z.object({
 
   // UploadThing configuration
   UPLOADTHING_TOKEN: z.string().min(1, 'UPLOADTHING_TOKEN is required'),
+  // Optional metrics (StatsD/Datadog)
+  // Optional OTP HMAC secret (if not provided, JWT_SECRET will be used)
+  OTP_HMAC_SECRET: z.string().optional(),
+  // Default country dial code for phone normalization (digits only). Defaults to '91' for India.
+  DEFAULT_COUNTRY_DIAL: z.string().regex(/^\d+$/, 'DEFAULT_COUNTRY_DIAL must be digits only').default('91'),
+  // Bcrypt rounds configurable
+  BCRYPT_ROUNDS: z.string().transform((val) => parseInt(val)).optional(),
+  // OTP attempts policy (Policy B): total attempts (resends + failed verifies) allowed in a time window
+  // NOTE: no defaults - these must be set in the environment explicitly
+  OTP_ATTEMPTS_LIMIT: z.string().transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'OTP_ATTEMPTS_LIMIT must be a positive integer'),
+  // Window for attempts in milliseconds
+  OTP_ATTEMPTS_WINDOW_MS: z.string().transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'OTP_ATTEMPTS_WINDOW_MS must be a positive integer'),
 });
 
 // Live sockets environment variables
@@ -66,6 +78,7 @@ export const jobWorkerEnvSchema = z.object({
   ...commonEnvSchema.shape,
   ...databaseEnvSchema.shape,
   ...redisEnvSchema.shape,
+  DEFAULT_COUNTRY_DIAL: z.string().regex(/^\d+$/, 'DEFAULT_COUNTRY_DIAL must be digits only').default('91'),
 });
 
 /**
