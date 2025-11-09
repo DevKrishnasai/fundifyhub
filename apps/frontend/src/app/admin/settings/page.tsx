@@ -55,7 +55,7 @@ type EmailConfig = {
 }
 
 export default function AdminSettingsPage() {
-  const { toast } = useToast()
+  const { success: toastSuccess, error: toastError, loading: toastLoading } = useToast()
   
   const [services, setServices] = useState<ServiceStatus[]>([])
   const [loading, setLoading] = useState(true)
@@ -86,16 +86,13 @@ export default function AdminSettingsPage() {
     try {
       const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICES)
 
-      if (data && data.success && data.data) {
-        setServices(data.data)
+      // `get` helper returns the unwrapped payload (array of services)
+      if (data) {
+        setServices(data)
       }
     } catch (error: any) {
       logger.error('Load services error:', error);
-      toast({
-        variant: "destructive",
-        title: "❌ Failed to load services",
-        description: error.message || 'An error occurred',
-      })
+      toastError(error.message || '❌ Failed to load services');
     } finally {
       setLoading(false)
     }
@@ -126,13 +123,9 @@ export default function AdminSettingsPage() {
     const service = services.find(s => s.serviceName === serviceName)
     
     // For email, check if config exists
-    if (serviceName === 'EMAIL') {
+      if (serviceName === 'EMAIL') {
       if (!service?.config || Object.keys(service.config).length === 0) {
-        toast({
-          variant: "destructive",
-          title: "⚠️ Configuration Required",
-          description: "Please configure email settings before enabling",
-        })
+        toastError("⚠️ Configuration Required: Please configure email settings before enabling");
         setEmailConfigMode(true)
         return
       }
@@ -143,21 +136,14 @@ export default function AdminSettingsPage() {
     try {
       const data = await post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_ENABLE(serviceName))
 
-      if (data && data.success) {
-        toast({
-          title: "✅ Service Enabled",
-          description: `${serviceName} has been enabled`,
-        })
+        if (data && data.success) {
+        toastSuccess(`✅ Service Enabled: ${serviceName} has been enabled`);
         await loadServices()
       } else {
         throw new Error(data.message)
       }
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "❌ Enable Failed",
-        description: error.message || 'An error occurred',
-      })
+      toastError(error.message || '❌ Enable Failed');
     } finally {
       setActionLoading({ ...actionLoading, [`${serviceName}-enable`]: false })
     }
@@ -175,21 +161,14 @@ export default function AdminSettingsPage() {
       const data = await post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_DISABLE(serviceName))
 
       if (data && data.success) {
-        toast({
-          title: "✅ Service Disabled",
-          description: `${serviceName} has been disabled and deleted`,
-        })
+        toastSuccess(`✅ Service Disabled: ${serviceName} has been disabled and deleted`);
         setEmailConfigMode(false) // Reset email config mode
         await loadServices()
       } else {
         throw new Error(data.message)
       }
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "❌ Disable Failed",
-        description: error.message || 'An error occurred',
-      })
+      toastError(error.message || '❌ Disable Failed');
     } finally {
       setActionLoading({ ...actionLoading, [`${serviceName}-disable`]: false })
     }
@@ -198,41 +177,27 @@ export default function AdminSettingsPage() {
   // Save email configuration
   const handleSaveEmailConfig = async () => {
     if (!emailConfig.host || !emailConfig.user || !emailConfig.password || !emailConfig.from) {
-      toast({
-        variant: "destructive",
-        title: "⚠️ Validation Error",
-        description: "Please fill in all required fields",
-      })
+      toastError("⚠️ Validation Error: Please fill in all required fields");
       return
     }
 
     setActionLoading({ ...actionLoading, 'email-config': true })
     
-    // Show testing toast
-    toast({
-      title: "🔄 Testing Configuration",
-      description: "Connecting to SMTP server and sending test email...",
-    })
+  // Show testing toast
+  toastLoading("🔄 Testing Configuration: Connecting to SMTP server and sending test email...");
     
     try {
       const data = await post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_CONFIGURE('email'), emailConfig)
 
       if (data && data.success) {
-        toast({
-          title: "✅ Configuration Saved & Tested",
-          description: "Test email sent successfully! Check your inbox to confirm.",
-        })
+        toastSuccess("✅ Configuration Saved & Tested: Test email sent successfully! Check your inbox to confirm.");
         setEmailConfigMode(false)
         await loadServices()
       } else {
         throw new Error(data.message)
       }
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "❌ Configuration Test Failed",
-        description: error.message || 'Failed to connect to SMTP server. Please check your settings.',
-      })
+      toastError(error.message || '❌ Configuration Test Failed: Failed to connect to SMTP server. Please check your settings.');
     } finally {
       setActionLoading({ ...actionLoading, 'email-config': false })
     }
@@ -298,7 +263,7 @@ export default function AdminSettingsPage() {
 
     return (
       <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200">
-        <CardHeader className="border-b bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 pb-4">
+        <CardHeader className="border-b bg-linear-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 pb-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-green-500 rounded-lg shadow-sm">
@@ -475,7 +440,7 @@ export default function AdminSettingsPage() {
 
     return (
       <Card className="overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200">
-        <CardHeader className="border-b bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 pb-4">
+        <CardHeader className="border-b bg-linear-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 pb-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-blue-500 rounded-lg shadow-sm">

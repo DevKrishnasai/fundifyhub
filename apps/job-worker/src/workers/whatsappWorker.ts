@@ -4,12 +4,58 @@ import { SimpleLogger } from '@fundifyhub/logger';
 import { sendWhatsApp } from '../services/whatsapp-service';
 import { serviceManager } from '../services/service-manager';
 import { startWhatsAppService, stopWhatsAppService } from '../services/whatsapp-service';
-import { AddJobType, AddServiceControlJobType, QUEUE_NAMES, SERVICE_CONTROL_ACTIONS, TEMPLATE_NAMES } from '@fundifyhub/types';
+import { AddJobType, AddServiceControlJobType, QUEUE_NAMES, SERVICE_CONTROL_ACTIONS, TEMPLATE_NAMES, SERVICE_NAMES } from '@fundifyhub/types';
 import { createWhatsAppProcessor } from '../utils/template-processor';
 
 export class WhatsAppWorker extends BaseWorker<AddJobType<TEMPLATE_NAMES> | AddServiceControlJobType> {
   constructor(queueName: QUEUE_NAMES, logger: SimpleLogger) {
     super(queueName, logger);
+
+    // Delegate async pause/resume setup to a helper to keep constructor sync
+    this.setupPauseResume(logger, queueName).catch((err) => {
+      const ctx = logger.child(`[${queueName}]`);
+      ctx.warn(String(err));
+    });
+  }
+
+  /**
+   * Setup logic to pause/resume the worker when the WhatsApp service
+   * becomes unavailable/available. Separated from the constructor for
+   * readability and testability.
+   */
+  private async setupPauseResume(logger: SimpleLogger, queueName: QUEUE_NAMES): Promise<void> {
+    const contextLogger = logger.child(`[${queueName}]`);
+
+    try {
+      const available = await serviceManager.isWhatsAppAvailable();
+      if (!available) {
+        contextLogger.info('WhatsApp service not available at startup — pausing worker until available');
+        await this.worker.pause();
+      }
+    } catch (err) {
+      contextLogger.warn(String(err));
+    }
+
+    // Subscribe to service status events and pause/resume accordingly
+    serviceManager.onServiceStatus(async ({ serviceName, available }) => {
+      if (serviceName !== SERVICE_NAMES.WHATSAPP) return;
+
+      if (available) {
+        contextLogger.info('WhatsApp service became available — resuming worker');
+        try {
+          await this.worker.resume();
+        } catch (e: any) {
+          contextLogger.error(String(e));
+        }
+      } else {
+        contextLogger.info('WhatsApp service became unavailable — pausing worker');
+        try {
+          await this.worker.pause();
+        } catch (e: any) {
+          contextLogger.error(String(e));
+        }
+      }
+    });
   }
 
   protected async processJob(job: Job<AddJobType<TEMPLATE_NAMES> | AddServiceControlJobType>): Promise<{ success: boolean; error?: string; }> {
@@ -35,7 +81,9 @@ export class WhatsAppWorker extends BaseWorker<AddJobType<TEMPLATE_NAMES> | AddS
 
       return { success: true };
     } catch (err) {
-      throw { success: false, error: (err as Error).message };
+      // Normalize and throw an Error so upstream logging gets the message
+      const msg = err instanceof Error ? err.message : (err ? JSON.stringify(err) : 'Unknown error')
+      throw new Error(msg)
     }
   }
 
@@ -63,7 +111,8 @@ export class WhatsAppWorker extends BaseWorker<AddJobType<TEMPLATE_NAMES> | AddS
           return { success: false, error: 'Unknown action' };
       }
     } catch (err) {
-      throw { success: false, error: (err as Error).message };
+      const msg = err instanceof Error ? err.message : (err ? JSON.stringify(err) : 'Unknown error')
+      throw new Error(msg)
     }
   }
 }

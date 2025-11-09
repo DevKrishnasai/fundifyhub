@@ -82,7 +82,7 @@ export default function UsersAccessPage() {
   const [emailValidation, setEmailValidation] = useState({ isValid: false, isChecking: false, error: "" })
   const [phoneValidation, setPhoneValidation] = useState({ isValid: false, isChecking: false, error: "" })
 
-  const { toast } = useToast()
+  const { success: toastSuccess, error: toastError } = useToast()
 
   // Fetch users from backend
   useEffect(() => {
@@ -91,9 +91,10 @@ export default function UsersAccessPage() {
       setIsLoading(true)
       try {
 
-          const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS);
+    const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS);
 
-        const list = (data.data || []).map((u: any) => {
+    // API helpers return the unwrapped payload. Expect an array of users.
+    const list = (data || []).map((u: any) => {
           const firstName = u.firstName || ''
           const lastName = u.lastName || ''
           const name = `${firstName} ${lastName}`.trim() || u.email
@@ -114,9 +115,9 @@ export default function UsersAccessPage() {
           }
         })
         if (mounted) setUsers(list)
-      } catch (error) {
-        logger.error('fetchUsers error', error as Error);
-        toast({ title: 'Failed to load users', description: String(error), variant: 'destructive' })
+        } catch (error) {
+          logger.error('fetchUsers error', error as Error);
+            toastError(String(error) || 'Failed to load users')
       }
       finally {
         if (mounted) setIsLoading(false)
@@ -125,7 +126,7 @@ export default function UsersAccessPage() {
 
     fetchUsers()
     return () => { mounted = false }
-  }, [toast])
+  }, [])
 
   // Reset validation states when dialog opens/closes
   useEffect(() => {
@@ -239,14 +240,14 @@ export default function UsersAccessPage() {
   const handleAddUser = async () => {
     // Basic validation
     if (!newUser.name.trim() || !newUser.email.trim()) {
-      toast({ title: 'Validation Error', description: 'Name and email are required', variant: 'destructive' })
+      toastError('Name and email are required')
       return
     }
 
     // Ensure first name is provided
     const nameParts = newUser.name.trim().split(/\s+/)
     if (!nameParts[0]) {
-      toast({ title: 'Validation Error', description: 'First name is required', variant: 'destructive' })
+      toastError('First name is required')
       return
     }
 
@@ -299,15 +300,11 @@ export default function UsersAccessPage() {
       })
       setEmailValidation({ isValid: false, isChecking: false, error: "" })
       setPhoneValidation({ isValid: false, isChecking: false, error: "" })
-      setIsAddDialogOpen(false)
-      toast({ title: 'User created successfully' })
+  setIsAddDialogOpen(false)
+  toastSuccess('User created successfully')
     } catch (error) {
       logger.error('create user error', error as Error);
-      toast({
-        title: 'Failed to create user',
-        description: String(error),
-        variant: 'destructive'
-      })
+      toastError(String(error) || 'Failed to create user')
     }
   }
 
@@ -380,11 +377,11 @@ export default function UsersAccessPage() {
         status: updated.isActive ? 'active' : 'inactive',
         _isActive: !!updated.isActive,
       }) : u))
-      toast({ title: 'User updated' })
+  toastSuccess('User updated')
       closeEditor()
     } catch (error) {
-      logger.error('save edit error', error as Error);
-      toast({ title: 'Update failed', description: String(error), variant: 'destructive' })
+  logger.error('save edit error', error as Error);
+  toastError(String(error) || 'Update failed')
     } finally {
       setIsSaving(false)
     }

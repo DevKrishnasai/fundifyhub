@@ -35,10 +35,22 @@ export const config = {
     url: env.REDIS_URL
   },
 
-  // Environment
+  storage: {
+    uploadthingToken: env.UPLOADTHING_TOKEN
+  },
+
+  // Environment Configuration
   env: {
     isDevelopment: env.NODE_ENV === 'development',
     logLevel: env.LOG_LEVEL || 'info'
+  }
+  ,
+  // OTP / Rate limiting configuration
+  otp: {
+    // maximum allowed attempts (resends + failed verifies) in the configured window
+    attemptsLimit: env.OTP_ATTEMPTS_LIMIT,
+    // sliding window duration in milliseconds
+    attemptsWindowMs: env.OTP_ATTEMPTS_WINDOW_MS
   }
 };
 

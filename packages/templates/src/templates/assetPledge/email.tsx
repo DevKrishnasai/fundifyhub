@@ -30,7 +30,7 @@ const AssetPledgeEmail = ({
 }: AssetPledgePayloadType) => (
   <Html lang="en">
     <Head />
-    <Preview>New asset pledge by {customerName} — {assetName}</Preview>
+    <Preview>New asset pledge by {customerName || 'Customer'} — {assetName}</Preview>
 
     <Body style={main}>
       <Container style={card}>
@@ -42,7 +42,7 @@ const AssetPledgeEmail = ({
           <Heading style={title}>New Asset Pledge Created</Heading>
 
           <Text style={text}>
-            A new asset pledge request was submitted by <strong>{customerName}</strong>.
+            A new asset pledge request was submitted by <strong>{customerName || 'Customer'}</strong>.
           </Text>
 
           <Section style={infoCard}>

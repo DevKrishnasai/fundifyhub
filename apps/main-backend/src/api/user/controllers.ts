@@ -1,19 +1,19 @@
 import { Request, Response } from 'express';
-import { prisma } from '@fundifyhub/prisma';
-import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS } from '@fundifyhub/types';
+import { Prisma, prisma } from '@fundifyhub/prisma';
+import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, AssetPledgePayloadType, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 
 /**
  * Adds new asset photos to the request (does not delete existing)
  */
-async function updateAssetPhotos(tx: any, requestId: string, assetPhotos: any, customerId: string, res: Response) {
+async function updateAssetPhotos(tx: Prisma.TransactionClient, requestId: string, assetPhotos: string[], customerId: string, res: Response) {
   const parsedPhotos = validateAssetPhotos(assetPhotos, res);
   if (parsedPhotos === null || parsedPhotos.length === 0) return false;
   await Promise.all(parsedPhotos.map((url: string) =>
     tx.document.create({
       data: {
         requestId,
-        url,
+        fileKey: url, // Assuming url contains the file key from UploadThing
         documentType: 'asset_photo',
         documentCategory: DOCUMENT_CATEGORY.ASSET,
         uploadedBy: customerId,
@@ -61,6 +61,11 @@ export async function getProfileController(req: Request, res: Response): Promise
  */
 export async function validateController(req: Request, res: Response): Promise<void> {
   try {
+    // Prevent caching of auth validation responses
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     if (!req.user) {
       res.status(401).json({
         success: false,
@@ -72,6 +77,8 @@ export async function validateController(req: Request, res: Response): Promise<v
       });
       return;
     }
+
+    logger.info(`Validating auth for user ID: ${req.user.id}`);
 
     const result = await validateUserAuth(req.user.id);
     const statusCode = result.success ? 200 : 401;
@@ -91,47 +98,19 @@ export async function validateController(req: Request, res: Response): Promise<v
 }
 
 /**
- * GET /user/debug-auth
- * Debug authentication - shows token data vs database data (development only)
- */
-export async function debugAuthController(req: Request, res: Response): Promise<void> {
-  if (process.env.NODE_ENV === 'production') {
-    res.status(404).json({ success: false, message: 'Not found' });
-    return;
-  }
-
-  try {
-    if (!req.user) {
-      res.status(401).json({
-        success: false,
-        message: 'Not authenticated',
-      });
-      return;
-    }
-
-    const result = await debugAuth(req.user.id, req.user);
-
-    res.json({
-      success: result.success,
-      data: result.data,
-    });
-  } catch (error) {
-    logger.error('Debug auth error:', error as Error);
-    res.status(500).json({
-      success: false,
-      message: 'Debug failed',
-    });
-  }
-}
-
-/**
  * Shared validation and helper functions for asset operations
  */
 
 /**
  * Validates required fields for asset request
  */
-function validateAssetFields(fields: any, res: Response): boolean {
+function validateAssetFields(fields: {
+  district?: string;
+  assetType?: string;
+  assetBrand?: string;
+  assetModel?: string;
+  assetCondition?: string;
+}, res: Response): boolean {
   const requiredFields = {
     district: { value: fields.district, message: 'district is required' },
     assetType: { value: fields.assetType, message: 'assetType is required' },
@@ -181,7 +160,7 @@ function validateAssetEnums(assetType: string, assetCondition: string, res: Resp
 /**
  * Validates and parses asset photos array
  */
-function validateAssetPhotos(assetPhotos: any, res: Response): string[] | null {
+function validateAssetPhotos(assetPhotos: string[] | undefined, res: Response): string[] | null {
   if (assetPhotos === undefined) return [];
   
   if (!Array.isArray(assetPhotos)) {
@@ -189,20 +168,31 @@ function validateAssetPhotos(assetPhotos: any, res: Response): string[] | null {
     return null;
   }
   
-  return assetPhotos.filter((p: any) => typeof p === 'string' && p.trim() !== '');
+  return assetPhotos.filter((p: string) => typeof p === 'string' && p.trim() !== '');
 }
 
 /**
  * Builds request data object from input fields
  */
-function buildRequestData(fields: any): any {
-  const requestData: any = {
+function buildRequestData(fields: {
+  district: string;
+  assetType: string;
+  assetBrand: string;
+  assetModel: string;
+  assetCondition: string;
+  purchaseYear?: number;
+  requestedAmount?: number;
+  AdditionalDescription?: string;
+  customerId: string;
+}): Prisma.RequestUncheckedCreateInput {
+  const requestData: Prisma.RequestUncheckedCreateInput = {
     district: fields.district,
     assetType: fields.assetType,
     assetBrand: fields.assetBrand,
     assetModel: fields.assetModel,
     assetCondition: fields.assetCondition,
     requestedAmount: typeof fields.requestedAmount === 'number' ? fields.requestedAmount : 0,
+    customerId: fields.customerId,
   };
 
   if (typeof fields.purchaseYear === 'number') {
@@ -219,7 +209,7 @@ function buildRequestData(fields: any): any {
 /**
  * Handles document creation/update in a transaction
  */
-async function handleDocuments(tx: any, requestId: string, photos: string[], customerId: string) {
+async function handleDocuments(tx: Prisma.TransactionClient, requestId: string, photos: string[], customerId: string) {
   if (photos.length === 0) return;
   
   // Delete existing asset photos
@@ -233,7 +223,7 @@ async function handleDocuments(tx: any, requestId: string, photos: string[], cus
       tx.document.create({
         data: {
           requestId,
-          url,
+          fileKey: url, // Assuming url contains the file key from UploadThing
           documentType: 'asset_photo',
           documentCategory: DOCUMENT_CATEGORY.ASSET,
           uploadedBy: customerId,
@@ -272,10 +262,16 @@ async function handleDocuments(tx: any, requestId: string, photos: string[], cus
  */
 export async function addAssetController(req: Request, res: Response): Promise<void> {
   try {
-    const customerId = req.user!.id;
-    const district = req.user!.district
+    const customerId = req.user?.id;
+    const district = req.user?.district;
+
+    // Enforce non-null for required user fields
+    if (!customerId || !district) {
+      res.status(400).json({ success: false, message: 'Missing customerId or district in user context.' });
+      logger.error('Asset request failed: missing customerId or district');
+      return;
+    }
     const {
-      
       assetPhotos,
       assetType,
       assetBrand,
@@ -286,52 +282,91 @@ export async function addAssetController(req: Request, res: Response): Promise<v
       AdditionalDescription,
     } = req.body || {};
 
-    // Validate required fields
+    // Step 1: Validate required fields
     if (!validateAssetFields({ district, assetType, assetBrand, assetModel, assetCondition }, res)) {
+      logger.warn('Asset request validation failed: missing required fields');
       return;
     }
 
-    // Validate enum values
+    // Step 2: Validate enums
     if (!validateAssetEnums(assetType, assetCondition, res)) {
+      logger.warn('Asset request validation failed: invalid enum values');
       return;
     }
 
-    // Validate and parse photos
-    const photos = validateAssetPhotos(assetPhotos, res);
-    if (photos === null) return;
+    // Step 3: Validate assetPhotos
+    if (!Array.isArray(assetPhotos) || assetPhotos.length < 2 || assetPhotos.length > 6) {
+      res.status(400).json({ success: false, message: 'Please upload between 2 and 6 asset photos.' });
+      logger.warn('Asset request validation failed: assetPhotos count invalid');
+      return;
+    }
 
-    // Build request data
-    const requestData = buildRequestData({
-      district,
-      assetType,
-      assetBrand,
-      assetModel,
-      assetCondition,
-      purchaseYear,
-      requestedAmount,
-      AdditionalDescription,
+    // Validate each photo has required metadata
+    const validPhotos = assetPhotos.filter((photo: AssetPhotoData) => {
+      return photo &&
+             typeof photo === 'object' &&
+             typeof photo.fileKey === 'string' &&
+             photo.fileKey.trim() !== '' &&
+             typeof photo.fileName === 'string' &&
+             photo.fileName.trim() !== '' &&
+             typeof photo.fileSize === 'number' &&
+             photo.fileSize > 0 &&
+             typeof photo.fileType === 'string' &&
+             photo.fileType.trim() !== '';
     });
-    requestData.customerId = customerId;
 
-    // Create request and documents in transaction
-    const createdRequest = await prisma.$transaction(async (tx: any) => {
+    if (validPhotos.length !== assetPhotos.length) {
+      res.status(400).json({ success: false, message: 'All asset photos must have valid metadata (fileKey, fileName, fileSize, fileType).' });
+      logger.warn('Asset request validation failed: invalid photo metadata');
+      return;
+    }
+
+    // Step 4: Build request data
+    const requestData = buildRequestData({
+  district,
+  assetType,
+  assetBrand,
+  assetModel,
+  assetCondition,
+  purchaseYear,
+  requestedAmount,
+  AdditionalDescription,
+  customerId,
+    });
+
+    // Step 5: Create request and link documents in transaction
+    const createdRequest = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Create the asset request
       const reqCreated = await tx.request.create({ data: requestData });
-      await handleDocuments(tx, reqCreated.id, photos, customerId);
+
+      // Prepare document objects for bulk creation with full metadata
+      const documentData = validPhotos.map((photo: AssetPhotoData, idx: number) => ({
+        requestId: reqCreated.id,
+        fileKey: photo.fileKey,
+        fileName: photo.fileName,
+        fileSize: photo.fileSize,
+        fileType: photo.fileType,
+        documentType: 'asset_photo',
+        documentCategory: DOCUMENT_CATEGORY.ASSET,
+        uploadedBy: customerId as string,
+        displayOrder: idx + 1,
+      }));
+      await tx.document.createMany({ data: documentData });
       return reqCreated;
     });
 
-    // Respond immediately
-    res.status(201).json({ 
-      success: true, 
-      message: 'Asset request created successfully'
+    logger.info(`Asset request created: ${createdRequest.id} with ${validPhotos.length} photos`);
+    res.status(201).json({
+      success: true,
+      message: 'Asset request created successfully',
+      data: { requestId: createdRequest.id },
     });
 
-    // Enqueue admin notification (non-blocking) using assetPledge template
+    // Step 6: Enqueue admin notification (non-blocking)
     (async () => {
       try {
         const templateName = 'assetPledge';
-        const customerName = `${(req.user as any)?.firstName || ''} ${(req.user as any)?.lastName || ''}`.trim() || undefined;
-        // Resolve district admin email from DB; fallback to any admin or env/default
+        const customerName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim() || undefined;
         let recipientEmail: string | undefined = undefined;
         try {
           const districtAdmin = await prisma.user.findFirst({
@@ -340,43 +375,36 @@ export async function addAssetController(req: Request, res: Response): Promise<v
           });
           recipientEmail = districtAdmin?.email;
         } catch (e) {
-          // If this DB lookup fails for any reason, we'll fallback below
           logger.warn('Failed to lookup district admin email, will fallback to global admin');
         }
-
         if (!recipientEmail) {
           const anyAdmin = await prisma.user.findFirst({
             where: { roles: { has: 'ADMIN' } },
             select: { email: true },
           });
-          recipientEmail = anyAdmin?.email
+          recipientEmail = anyAdmin?.email;
         }
-
-        const jobPayload: Record<string, any> = {
-          customerName,
-          assetName: `${assetBrand || ''} ${assetModel || ''}`.trim(),
-          amount: requestedAmount ?? 0,
-          district,
-          requestId: createdRequest.id,
-          companyName: process.env.COMPANY_NAME || 'Fundify',
-          timestamp: new Date().toISOString(),
-          additionalDescription: AdditionalDescription,
-          // recipient used by email worker if provided (district admin preferred)
-          recipient: recipientEmail,
-        };
-
-        //TODO: uncomment when enqueue is ready
+        // const jobPayload: AssetPledgePayloadType = {
+        //   customerName,
+        //   assetName: `${assetBrand || ''} ${assetModel || ''}`.trim(),
+        //   amount: requestedAmount ?? 0,
+        //   district,
+        //   requestId: createdRequest.id,
+        //   companyName: process.env.COMPANY_NAME || 'Fundify',
+        //   timestamp: new Date().toISOString(),
+        //   additionalDescription: AdditionalDescription,
+        //   recipient: recipientEmail,
+        // };
         // await enqueue(templateName, jobPayload, { services: [ServiceName.EMAIL] });
       } catch (err) {
-        // Log errors but do not affect the already-sent response
         logger.error('Failed to enqueue assetPledge job:', err as Error);
       }
     })();
   } catch (error) {
     logger.error('Add asset error:', error as Error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to create asset request' 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create asset request',
     });
   }
 }
@@ -435,18 +463,13 @@ export async function updateAssetController(req: Request, res: Response): Promis
       return;
     }
 // Either User or Admin/Agent can only update the request
-    const isAdminOrAgent = userRoles.includes('ADMIN') || userRoles.includes('AGENT');
+    const isAdminOrAgent = userRoles.some(role => ADMIN_AGENT_ROLES.includes(role));
     if (customerId !== existing.customerId || !isAdminOrAgent) {
       res.status(403).json({ success: false, message: 'Not authorized to update this request' });
       return;
     }
 
-    const allowedUpdateStatuses = [
-      REQUEST_STATUS.PENDING,
-      REQUEST_STATUS.OFFER_REJECTED,
-      REQUEST_STATUS.REJECTED,
-      REQUEST_STATUS.CANCELLED
-    ];
+    const allowedUpdateStatuses = ALLOWED_UPDATE_STATUSES;
     if (!allowedUpdateStatuses.includes(existing.currentStatus as REQUEST_STATUS)) {
       res.status(400).json({
         success: false,
@@ -459,7 +482,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
     updateData.currentStatus = REQUEST_STATUS.PENDING;
 
     // Update request and asset photos in transaction
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.request.update({ where: { id: requestId }, data: updateData });
       if (assetPhotos !== undefined) {
         await updateAssetPhotos(tx, requestId, assetPhotos, customerId, res);
@@ -485,7 +508,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
  */
 export async function getUserProfile(userId: string): Promise<{
   success: boolean;
-  data?: any;
+  data?: { user: UserType };
   message: string;
 }> {
   try {
@@ -542,7 +565,7 @@ export async function validateUserAuth(userId: string): Promise<{
   success: boolean;
   data?: {
     isAuthenticated: boolean;
-    user?: any;
+    user?: UserType;
   };
   message: string;
 }> {
@@ -566,6 +589,7 @@ export async function validateUserAuth(userId: string): Promise<{
         lastName: true,
         roles: true,
         isActive: true,
+        district: true,
       },
     });
 
@@ -595,66 +619,6 @@ export async function validateUserAuth(userId: string): Promise<{
         isAuthenticated: false,
       },
       message: 'Authentication validation failed',
-    };
-  }
-}
-
-/**
- * Debug authentication - shows token data vs database data
- */
-export async function debugAuth(
-  userId: string,
-  tokenData: any
-): Promise<{
-  success: boolean;
-  data?: any;
-  message: string;
-}> {
-  if (process.env.NODE_ENV === 'production') {
-    return {
-      success: false,
-      message: 'Not available in production',
-    };
-  }
-
-  try {
-    const dbUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        roles: true,
-        emailVerified: true,
-        phoneVerified: true,
-      },
-    });
-
-    return {
-      success: true,
-      data: {
-        tokenData: {
-          ...tokenData,
-          rolesType: Array.isArray(tokenData?.roles) ? 'array' : typeof tokenData?.roles,
-        },
-        databaseData: {
-          ...dbUser,
-          rolesType: Array.isArray(dbUser?.roles) ? 'array' : typeof dbUser?.roles,
-        },
-        comparison: {
-          rolesMatch: JSON.stringify(tokenData?.roles) === JSON.stringify(dbUser?.roles),
-          tokenRoles: tokenData?.roles,
-          dbRoles: dbUser?.roles,
-        },
-      },
-      message: 'Debug data retrieved',
-    };
-  } catch (error) {
-    logger.error('Debug auth error:', error as Error);
-    return {
-      success: false,
-      message: 'Debug failed',
     };
   }
 }

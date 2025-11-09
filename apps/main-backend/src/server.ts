@@ -27,6 +27,16 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    logger.info(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+  });
+  next();
+});
+
 app.use('/api/v1', apiRoutes);
 
 /* 404 handler */
@@ -38,7 +48,7 @@ app.use('*', (req, res) => {
 });
 
 /* Global error handler */
-app.use((error: any, req: Request, res: Response, next: NextFunction) => {
+app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
   const contextLogger = logger.child('[error-handler]');
   contextLogger.error('Unhandled error:', error);
 

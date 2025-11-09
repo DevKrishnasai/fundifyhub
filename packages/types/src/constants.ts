@@ -15,6 +15,7 @@ export enum TEMPLATE_NAMES {
   WELCOME = 'WELCOME',
   OTP_VERIFICATION = 'OTP_VERIFICATION',
   LOGIN_ALERT = 'LOGIN_ALERT',
+  ASSET_PLEDGE = 'ASSET_PLEDGE',
 };
 
 export enum QUEUE_NAMES {
@@ -84,14 +85,101 @@ export enum ASSET_CONDITION {
   POOR = "POOR"
 }
 
+export const ASSET_TYPE_OPTIONS = [
+  { value: "LAPTOP", label: "Laptop" },
+  { value: "TABLET", label: "Tablet" },
+  { value: "CAMERA", label: "Camera" },
+  { value: "GAMING CONSOLE", label: "Gaming Console" },
+  { value: "MOTORCYCLE", label: "Motorcycle" },
+  { value: "CAR", label: "Car" },
+  { value: "JEWELRY", label: "Jewelry" },
+  { value: "OTHER", label: "Other" },
+]
+
+export const ASSET_CONDITION_OPTIONS = [
+  { value: "EXCELLENT", label: "Excellent - Like new" },
+  { value: "GOOD", label: "Good - Minor wear" },
+  { value: "FAIR", label: "Fair - Visible wear" },
+  { value: "POOR", label: "Poor - Significant wear" },
+]
+
+export const DISTRICTS = [
+  "Mumbai",
+  "Delhi",
+  "Bangalore",
+  "Hyderabad",
+  "Chennai",
+  "Kolkata",
+  "Pune",
+  "Ahmedabad",
+  "Jaipur",
+  "Lucknow",
+  "Kanpur",
+  "Nagpur",
+  "Indore",
+  "Thane",
+  "Bhopal",
+  "Visakhapatnam",
+  "Pimpri-Chinchwad",
+  "Patna",
+  "Vadodara",
+  "Ghaziabad",
+  "Ludhiana",
+  "Agra",
+  "Nashik",
+  "Faridabad",
+]
+
+export const ADMIN_AGENT_ROLES = ["SUPER_ADMIN", "DISTRICT_ADMIN", "AGENT"];
+
+export const ALLOWED_UPDATE_STATUSES = [
+  REQUEST_STATUS.PENDING,
+  REQUEST_STATUS.OFFER_REJECTED,
+  REQUEST_STATUS.REJECTED,
+  REQUEST_STATUS.CANCELLED
+];
+
+export const PENDING_REQUEST_STATUSES = [
+  REQUEST_STATUS.PENDING,
+  REQUEST_STATUS.UNDER_REVIEW,
+  REQUEST_STATUS.OFFER_MADE,
+  REQUEST_STATUS.OFFER_ACCEPTED,
+  REQUEST_STATUS.OFFER_REJECTED,
+  REQUEST_STATUS.INSPECTION_SCHEDULED,
+  REQUEST_STATUS.INSPECTION_IN_PROGRESS,
+  REQUEST_STATUS.INSPECTION_COMPLETED
+];
+
 export enum DOCUMENT_CATEGORY {
   ASSET = "ASSET",                    // Asset photos, receipts
   INSPECTION = "INSPECTION",          // Inspection photos taken by agent
   IDENTITY = "IDENTITY",              // ID proofs, address proofs
   INCOME = "INCOME",                  // Salary slips, bank statements
   LEGAL = "LEGAL",                    // Agreements, policies
+  PAYMENT = "PAYMENT",                // EMI receipts, payment proofs
+  LOAN = "LOAN",                      // Loan agreements, documents
+  PROFILE = "PROFILE",                // User profile pictures
   TRANSFER_PROOF = "TRANSFER_PROOF",  // Amount transfer proofs
   OTHER = "OTHER"                     // Miscellaneous
+}
+
+export enum DOCUMENT_TYPE {
+  ASSET_PHOTO = "ASSET_PHOTO",
+  PURCHASE_RECEIPT = "PURCHASE_RECEIPT",
+  ID_PROOF = "ID_PROOF",
+  ADDRESS_PROOF = "ADDRESS_PROOF",
+  INSPECTION_PHOTO = "INSPECTION_PHOTO",
+  EMI_RECEIPT = "EMI_RECEIPT",
+  TRANSFER_PROOF = "TRANSFER_PROOF",
+  LOAN_AGREEMENT = "LOAN_AGREEMENT",
+  PROFILE_PICTURE = "PROFILE_PICTURE",
+  OTHER = "OTHER"
+}
+
+export enum DOCUMENT_STATUS {
+  ACTIVE = "ACTIVE",
+  ARCHIVED = "ARCHIVED",
+  DELETED = "DELETED"
 }
 
 export enum LOAN_STATUS {

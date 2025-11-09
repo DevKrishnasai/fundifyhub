@@ -4,24 +4,8 @@ import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/contexts/AuthContext'
-import { Toaster } from 'sonner'
-import { Toaster as RadixToaster } from '@/components/ui/toaster'
-import { validateFrontendEnv } from '@fundifyhub/utils'
-import logger from '@/lib/logger'
+import { Toaster } from 'react-hot-toast'
 import './globals.css'
-
-// Validate environment variables on server startup (only in development)
-if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
-  try {
-    validateFrontendEnv();
-    logger.info('✅ Frontend environment variables validated successfully');
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error(`❌ Frontend environment validation failed: ${errorMessage}`);
-    // In development, log error but don't exit
-    console.error('Frontend environment validation failed:', errorMessage);
-  }
-}
 
 export const metadata: Metadata = {
   title: {
@@ -82,21 +66,28 @@ export default function RootLayout({
         >
           <AuthProvider>
             {children}
-            <Toaster 
-              position="top-right"
-              expand={false}
-              richColors
-              closeButton
+            <Toaster
+              position="top-center"
               toastOptions={{
                 duration: 4000,
                 style: {
                   background: 'hsl(var(--background))',
                   color: 'hsl(var(--foreground))',
                   border: '1px solid hsl(var(--border))',
+                  minWidth: '220px',
+                  fontSize: '1rem',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                },
+                // Default icons for different types
+                iconTheme: {
+                  primary: '#10b981', // success
+                  secondary: '#f87171', // error
                 },
               }}
             />
-            <RadixToaster />
           </AuthProvider>
         </ThemeProvider>
         <Analytics />

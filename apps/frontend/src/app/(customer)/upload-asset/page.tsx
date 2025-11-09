@@ -11,80 +11,23 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
-import { Progress } from "@/components/ui/progress"
-import { useToast } from "@/hooks/use-toast"
-import { Upload, X, Camera, FileText, MapPin, CreditCard, ArrowLeft, CheckCircle } from "lucide-react"
+import toast from "react-hot-toast"
+import { Camera, CreditCard, ArrowLeft, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
 import { post } from '@/lib/api-client'
-const assetTypes = [
-  { value: "LAPTOP", label: "Laptop" },
-  { value: "TABLET", label: "Tablet" },
-  { value: "CAMERA", label: "Camera" },
-  { value: "GAMING CONSOLE", label: "Gaming Console" },
-  { value: "MOTORCYCLE", label: "Motorcycle" },
-  { value: "CAR", label: "Car" },
-  { value: "JEWELRY", label: "Jewelry" },
-  { value: "OTHER", label: "Other" },
-]
-
-const assetConditions = [
-  { value: "EXCELLENT", label: "Excellent - Like new" },
-  { value: "GOOD", label: "Good - Minor wear" },
-  { value: "FAIR", label: "Fair - Visible wear" },
-  { value: "POOR", label: "Poor - Significant wear" },
-]
-
-const districts = [
-  "Mumbai",
-  "Delhi",
-  "Bangalore",
-  "Hyderabad",
-  "Chennai",
-  "Kolkata",
-  "Pune",
-  "Ahmedabad",
-  "Jaipur",
-  "Lucknow",
-  "Kanpur",
-  "Nagpur",
-  "Indore",
-  "Thane",
-  "Bhopal",
-  "Visakhapatnam",
-  "Pimpri-Chinchwad",
-  "Patna",
-  "Vadodara",
-  "Ghaziabad",
-  "Ludhiana",
-  "Agra",
-  "Nashik",
-  "Faridabad",
-]
-
-interface AssetPhoto {
-  id: string
-  file: File
-  preview: string
-}
-
-interface IDProof {
-  id: string
-  file: File
-  preview: string
-  type: string
-}
+import { AssetUpload } from "@/lib/uploadthing"
+import type { UploadedFile } from "@fundifyhub/types"
+import { ASSET_TYPE_OPTIONS, ASSET_CONDITION_OPTIONS } from "@fundifyhub/types"
 
 export default function UploadAssetPage() {
   const router = useRouter()
-  const { toast } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
-  const [assetPhotos, setAssetPhotos] = useState<AssetPhoto[]>([])
+  const [assetPhotos, setAssetPhotos] = useState<UploadedFile[]>([])
   // Removed ID proof state
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
   const [purchaseYearError, setPurchaseYearError] = useState("")
   const currentYear = new Date().getFullYear()
 
@@ -94,35 +37,17 @@ export default function UploadAssetPage() {
     assetModel: "",
     assetCondition: "",
     purchaseYear: "",
-    description: "",
-    district: "",
+    AdditionalDescription: "",
     requestedAmount: null,
   })
 
-  const handleAssetPhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
+  const handleAssetUploadComplete = (files: UploadedFile[]) => {
+    setAssetPhotos(files);
+  };
 
-    Array.from(files).forEach((file) => {
-      if (file.type.startsWith("image/")) {
-        const id = Math.random().toString(36).substr(2, 9)
-        const preview = URL.createObjectURL(file)
-        setAssetPhotos((prev) => [...prev, { id, file, preview }])
-      }
-    })
-  }
-
-  // Removed ID proof upload handler
-
-  const removeAssetPhoto = (id: string) => {
-    setAssetPhotos((prev) => {
-      const photo = prev.find((p) => p.id === id)
-      if (photo) URL.revokeObjectURL(photo.preview)
-      return prev.filter((p) => p.id !== id)
-    })
-  }
-
-  // Removed ID proof remove handler
+  const handleAssetUploadError = (error: Error) => {
+    toast.error(`Upload failed: ${error.message}`);
+  };
 
   const handleInputChange = (field: string, value: string) => {
     // Validate purchase year when that field changes
@@ -149,23 +74,20 @@ export default function UploadAssetPage() {
 
   const handleSubmit = async () => {
     setIsSubmitting(true)
-    setUploadProgress(0)
 
-
-    // Prepare assetPhotos URLs (dummy for now, but structure for real upload)
-    // If you implement upload, replace this with actual upload logic
-    const assetPhotoUrls = assetPhotos.length > 0
-      ? assetPhotos.map((_, i) => `https://images.unsplash.com/photo-1519125323398-675f0ddb6308?dummy=${i}`)
-      : [
-          "https://images.unsplash.com/photo-1519125323398-675f0ddb6308",
-          "https://images.unsplash.com/photo-1526178613658-3f1622045544"
-        ];
+    // Prepare assetPhotos with full metadata (backend expects array of objects)
+    const assetPhotoData = assetPhotos.map((photo) => ({
+      fileKey: photo.fileKey,
+      fileName: photo.fileName,
+      fileSize: photo.fileSize,
+      fileType: photo.fileType,
+    })).filter((photo) => photo.fileKey && photo.fileName);
 
     // Prepare payload
     const payload = {
       ...formData,
-  requestedAmount: parseFloat(formData.requestedAmount ?? "") || 0,
-      assetPhotos: assetPhotoUrls,
+      requestedAmount: parseFloat(formData.requestedAmount ?? "") || 0,
+      assetPhotos: assetPhotoData, // Now includes fileKey for signed URL generation
     };
 
     try {
@@ -176,21 +98,13 @@ export default function UploadAssetPage() {
       }
 
       setIsSubmitted(true);
-      toast({
-        title: "Loan request submitted!",
-        description: "Your asset has been uploaded successfully. We'll review your request within 24 hours.",
-      });
+      toast.success("Loan request submitted! Your asset has been uploaded successfully. We'll review your request within 24 hours.");
       setTimeout(() => {
         router.push("/dashboard");
       }, 3000);
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Upload failed",
-        description: error.message || "Something went wrong. Please try again.",
-      });
+      toast.error(`Upload failed: ${error.message || "Something went wrong. Please try again."}`);
       setIsSubmitting(false);
-      setUploadProgress(0);
     }
   }
 
@@ -305,41 +219,16 @@ export default function UploadAssetPage() {
                   Upload Asset Photos
                 </CardTitle>
                 <p className="text-sm sm:text-base text-muted-foreground">
-                  Upload at least 2 clear photos of your asset from different angles
+                  Upload at least 2 clear photos of your asset from different angles. You can select multiple images at once.
                 </p>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
-                  {assetPhotos.map((photo) => (
-                    <div key={photo.id} className="relative group">
-                      <img
-                        src={photo.preview || "/placeholder.svg"}
-                        alt="Asset photo"
-                        className="w-full h-24 sm:h-32 object-cover rounded-lg border"
-                      />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-1 right-1 w-5 h-5 sm:w-6 sm:h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => removeAssetPhoto(photo.id)}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ))}
+                <AssetUpload
+                  onUploadComplete={handleAssetUploadComplete}
+                  onUploadError={handleAssetUploadError}
+                  maxFiles={5}
+                />
 
-                  <label className="border-2 border-dashed border-border rounded-lg p-3 sm:p-4 h-24 sm:h-32 flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors">
-                    <Upload className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground mb-1 sm:mb-2" />
-                    <span className="text-xs sm:text-sm text-muted-foreground text-center">Click to upload</span>
-                    <input type="file" multiple accept="image/*" className="hidden" onChange={handleAssetPhotoUpload} />
-                  </label>
-                </div>
-
-                {assetPhotos.length < 2 && (
-                  <p className="text-xs sm:text-sm text-muted-foreground">
-                    Please upload at least 2 photos to continue
-                  </p>
-                )}
               </CardContent>
             </Card>
 
@@ -358,7 +247,7 @@ export default function UploadAssetPage() {
                         <SelectValue placeholder="Select asset type" />
                       </SelectTrigger>
                       <SelectContent>
-                        {assetTypes.map((type) => (
+                        {ASSET_TYPE_OPTIONS.map((type) => (
                           <SelectItem key={type.value} value={type.value}>
                             {type.label}
                           </SelectItem>
@@ -451,7 +340,7 @@ export default function UploadAssetPage() {
                       <SelectValue placeholder="Select condition" />
                     </SelectTrigger>
                     <SelectContent>
-                      {assetConditions.map((condition) => (
+                      {ASSET_CONDITION_OPTIONS.map((condition) => (
                         <SelectItem key={condition.value} value={condition.value}>
                           {condition.label}
                         </SelectItem>
@@ -475,14 +364,14 @@ export default function UploadAssetPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="description" className="text-sm sm:text-base">
+                  <Label htmlFor="AdditionalDescription" className="text-sm sm:text-base">
                     Additional Description
                   </Label>
                   <Textarea
-                    id="description"
+                    id="AdditionalDescription"
                     placeholder="Any additional details about your asset (accessories, warranty, etc.)"
-                    value={formData.description}
-                    onChange={(e) => handleInputChange("description", e.target.value)}
+                    value={formData.AdditionalDescription}
+                    onChange={(e) => handleInputChange("AdditionalDescription", e.target.value)}
                     rows={3}
                     className="resize-none"
                   />
@@ -525,7 +414,7 @@ export default function UploadAssetPage() {
                       <div>
                         <p className="text-xs sm:text-sm text-muted-foreground">Asset Type</p>
                         <p className="font-medium text-sm sm:text-base">
-                          {assetTypes.find((t) => t.value === formData.assetType)?.label}
+                          {ASSET_TYPE_OPTIONS.find((t) => t.value === formData.assetType)?.label}
                         </p>
                       </div>
                       <div>
@@ -537,7 +426,7 @@ export default function UploadAssetPage() {
                       <div>
                         <p className="text-xs sm:text-sm text-muted-foreground">Condition</p>
                         <p className="font-medium text-sm sm:text-base">
-                          {assetConditions.find((c) => c.value === formData.assetCondition)?.label}
+                          {ASSET_CONDITION_OPTIONS.find((c) => c.value === formData.assetCondition)?.label}
                         </p>
                       </div>
                       {formData.purchaseYear && (
@@ -573,11 +462,11 @@ export default function UploadAssetPage() {
                     </div>
                   </div>
 
-                  {formData.description && (
+                  {formData.AdditionalDescription && (
                     <div>
                       <h3 className="font-semibold text-base mb-3">Additional Notes</h3>
                       <p className="text-sm sm:text-base text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                        {formData.description}
+                        {formData.AdditionalDescription}
                       </p>
                     </div>
                   )}
@@ -594,16 +483,6 @@ export default function UploadAssetPage() {
                 Back to Details
               </Button>
               <div className="space-y-4">
-                {isSubmitting && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>Uploading your request...</span>
-                      <span>{uploadProgress}%</span>
-                    </div>
-                    <Progress value={uploadProgress} className="w-full" />
-                  </div>
-                )}
-                
                 <Button
                   onClick={handleSubmit}
                   disabled={!canSubmit || isSubmitting}

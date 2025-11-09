@@ -7,6 +7,20 @@ export interface APIResponseType<T = any> {
   errors?: string[];
 }
 
+export interface CreateDocumentRequest {
+  fileKey: string;
+  fileName: string;
+  fileSize?: number;
+  fileType: string;
+  documentType: string;
+  documentCategory?: string;
+  requestId?: string;
+  uploadedBy: string;
+  description?: string;
+  displayOrder?: number;
+  metadata?: Record<string, unknown>;
+}
+
 declare global {
   namespace Express {
     interface Request {

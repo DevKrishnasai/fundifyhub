@@ -66,23 +66,26 @@ export interface LoginAlertPayloadType {
 }
 
 export interface AssetPledgePayloadType {
-  email: string;
-  phoneNumber: string;
-  customerName: string;
+  customerName?: string;
   assetName: string;
-  amount: string;  // or number?
+  amount: number;
   district: string;
-  supportUrl: string;
-  adminDashboardUrl: string;
-  companyName: string;
   requestId: string;
+  companyName: string;
   timestamp: string;
+  additionalDescription?: string;
+  recipient?: string;
+  email?: string;
+  phoneNumber?: string;
+  adminDashboardUrl?: string;
+  supportUrl?: string;
 }
 
 export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.OTP_VERIFICATION]: OTPVerificationPayloadType;
   [TEMPLATE_NAMES.WELCOME]: WelcomePayloadType;
   [TEMPLATE_NAMES.LOGIN_ALERT]: LoginAlertPayloadType;
+  [TEMPLATE_NAMES.ASSET_PLEDGE]: AssetPledgePayloadType;
 };
 
 // -----------TEMPLATE RELATED END-----------

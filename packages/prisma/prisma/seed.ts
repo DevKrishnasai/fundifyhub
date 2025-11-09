@@ -1,6 +1,6 @@
 import { PrismaClient, User } from "@prisma/client";
 import bcrypt from "bcrypt";
-import { randomUUID } from "crypto";
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -193,8 +193,10 @@ async function main() {
       prisma.document.create({
         data: {
           requestId: req.id,
-          url: `https://example.com/documents/${i + 1}.pdf`,
-          mimeType: "application/pdf",
+          fileKey: `demo-file-key-${i + 1}`,
+          fileName: `document-${i + 1}.pdf`,
+          fileSize: 1024000,
+          fileType: "application/pdf",
           documentType: "id_proof",
           documentCategory: "KYC",
           uploadedBy: customer.id,
@@ -245,6 +247,10 @@ async function main() {
   // ---------------------------------------
   // OTP VERIFICATIONS
   // ---------------------------------------
+  // NOTE: Schema change: `maxAttempts` and `resendCount` were removed and
+  // attempts/resend enforcement is performed via Redis sliding-window rate
+  // limiters (Policy B). The audit row only stores the hashed code and
+  // verification flags for seeded demo users below.
   await prisma.oTPVerification.createMany({
     data: users.map((user) => ({
       userId: user.id,
@@ -252,31 +258,19 @@ async function main() {
       type: "EMAIL",
       code: "123456",
       expiresAt: new Date(Date.now() + 1000 * 60 * 10),
+      // sessionId is required by the new schema — seed with a UUID per row
+      sessionId: randomUUID(),
+      // session-level attempts are tracked in Redis at runtime; seed the
+      // audit row with isUsed/isVerified for demo convenience.
       isUsed: true,
       isVerified: true,
     })),
     skipDuplicates: true,
   });
 
-  // ---------------------------------------
-  // VERIFICATION SESSIONS
-  // ---------------------------------------
-  for (const user of users) {
-    await prisma.verificationSession.upsert({
-      where: { sessionId: `session-${user.email}` },
-      update: {},
-      create: {
-        sessionId: `session-${randomUUID()}`,
-        email: user.email,
-        phoneNumber: user.phoneNumber!,
-        emailOTP: "123456",
-        phoneOTP: "654321",
-        emailVerified: true,
-        phoneVerified: true,
-        expiresAt: new Date(Date.now() + 1000 * 60 * 10),
-      },
-    });
-  }
+  // Note: verification sessions are not seeded. OTP state is tracked at runtime using
+  // Redis-backed sessions and audited in the `OTPVerification` table. The old
+  // `VerificationSession` model was removed from the schema.
 
   // ---------------------------------------
   // SERVICE CONFIGS

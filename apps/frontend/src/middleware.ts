@@ -1,5 +1,20 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { validateFrontendEnv } from '@fundifyhub/utils';
+import logger from '@/lib/logger';
+
+// Validate environment variables once when middleware is first loaded
+let envValidated = false;
+if (!envValidated) {
+  try {
+    validateFrontendEnv();
+    logger.info('✅ Frontend environment variables validated successfully');
+    envValidated = true;
+  } catch (error) {
+    logger.error('❌ Frontend environment validation failed:', error as Error);
+    throw error; // This will prevent the server from starting
+  }
+}
 
 // Public routes that don't require authentication
 const publicRoutes = [
@@ -29,17 +44,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
-  // Check if user has access token cookie
-  const accessToken = request.cookies.get('accessToken')?.value;
-  
-  if (!accessToken) {
-    // No token - redirect to login
-    const loginUrl = new URL('/auth/login', request.url);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // Has token - allow access
-  // Role-based access control is handled client-side in the AuthContext and individual pages
+  // For protected routes, let AuthContext handle validation instead of checking middleware
+  // This is because httpOnly cookies with SameSite=Lax don't reach the browser on cross-origin requests
+  // The AuthContext will validate the user state with the backend and redirect accordingly
+  // Note: The cookie is still sent to the backend in all requests for backend authentication
   return NextResponse.next();
 }
 

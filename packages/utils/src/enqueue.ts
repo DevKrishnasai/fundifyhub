@@ -55,12 +55,31 @@ export function createEnqueueClient(connection: { host: string; port: number }):
     const results: AddJobResultType[] = [];
 
     for (const svc of servicesToEnqueue) {
+      // Ensure the template actually supports this service
       if (!template.supportedServices.includes(svc)) {
-        results.push({jobId: "", error: `Service not supported by template ${svc}` });
+        results.push({ jobId: "", error: `Service not supported by template ${svc}` });
         continue;
       }
 
-      try { 
+      // Channel-specific validation: fail early if required channel fields are absent
+      if (svc === SERVICE_NAMES.EMAIL) {
+        // templates expect `variables.email` for email
+        // runtime-check because TemplatePayloadMapType is a compile-time type
+        if (!('email' in (variables as any)) || !(variables as any).email) {
+          results.push({ jobId: "", error: `Missing required field "email" for service EMAIL` });
+          continue;
+        }
+      }
+
+      if (svc === SERVICE_NAMES.WHATSAPP) {
+        // templates expect `variables.phoneNumber` for WhatsApp
+        if (!('phoneNumber' in (variables as any)) || !(variables as any).phoneNumber) {
+          results.push({ jobId: "", error: `Missing required field "phoneNumber" for service WHATSAPP` });
+          continue;
+        }
+      }
+
+      try {
         if (svc === SERVICE_NAMES.EMAIL) {
           const job = await emailQueue.add(JOB_TYPES.SEND_EMAIL, { templateName, variables }, bullmqOptions);
           results.push({ jobId: job?.id! });
