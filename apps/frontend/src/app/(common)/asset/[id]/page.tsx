@@ -122,24 +122,7 @@ export default function AssetDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center gap-3 sm:gap-4">
-          <Button variant="ghost" size="icon" asChild className="shrink-0">
-            <Link href={isAdminView ? "/admin/loans" : "/dashboard"}>
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
-              <CreditCard className="w-3 h-3 sm:w-4 sm:h-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-base sm:text-lg lg:text-xl">
-              {isAdminView ? "AssetLend Admin" : "AssetLend"}
-            </span>
-          </div>
-        </div>
-      </header>
+      {/* Header removed - global Navbar renders the header */}
 
       <div className="container mx-auto px-4 py-4 sm:py-6 lg:py-8">
         {/* Asset Header */}

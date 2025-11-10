@@ -6,20 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 export function DashboardSkeleton() {
   return (
     <div className="min-h-screen bg-background">
-      {/* Header Skeleton */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Skeleton className="w-8 h-8 rounded-lg" />
-            <Skeleton className="h-6 w-24" />
-          </div>
-          <div className="flex items-center gap-4">
-            <Skeleton className="w-8 h-8 rounded-full" />
-            <Skeleton className="w-8 h-8 rounded-full" />
-            <Skeleton className="w-8 h-8 rounded-full" />
-          </div>
-        </div>
-      </header>
+      {/* Header skeleton removed - global Navbar used for header */}
 
       <div className="container mx-auto px-4 py-6 sm:py-8">
         {/* Welcome Section Skeleton */}

@@ -173,7 +173,7 @@ export default function AdminDashboard() {
       }
     }
 
-    if (!isLoading && user && user.roles?.some((r: string) => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase()))) {
+    if (!isLoading && user && user.roles?.some((r: string) => [ROLES.DISTRICT_ADMIN, ROLES.SUPER_ADMIN].includes(String(r).toUpperCase()))) {
       fetchData()
     }
 

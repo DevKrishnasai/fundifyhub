@@ -1,72 +1,28 @@
-'use client';
+"use client";
 
 import type React from 'react';
-import Link from 'next/link';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { useAuth } from '@/contexts/AuthContext';
+import { ROLES } from '@fundifyhub/types';
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Admin area should be accessible to district admins and super admins
+  const allowed = [ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN];
+
   return (
-  <ProtectedRoute requiredRole={['ADMIN']}>
+    <ProtectedRoute requiredRole={allowed}>
       <AdminContent>{children}</AdminContent>
     </ProtectedRoute>
   );
 }
 
 function AdminContent({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
   return (
     <div className="min-h-screen bg-background">
-        <nav className="bg-card border-b border-border px-4 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold text-red-600">
-                FundifyHub Admin
-              </h1>
-              <div className="hidden md:flex gap-4">
-                <Link
-                  href="/admin/dashboard"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/admin/workers"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Worker Config
-                </Link>
-                <Link
-                  href="/admin/settings"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Settings
-                </Link>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                {user?.firstName} {user?.lastName} - Admin
-              </span>
-              <div className="w-8 h-8 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-red-600 dark:text-red-200">
-                  {user?.firstName?.charAt(0)}
-                </span>
-              </div>
-              <button
-                onClick={logout}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors ml-2"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </nav>
-      {children}
+      <main>{children}</main>
     </div>
   );
 }

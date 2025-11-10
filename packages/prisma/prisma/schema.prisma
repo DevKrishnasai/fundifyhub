@@ -54,6 +54,7 @@ model User {
 // Main Request model (simplified)
 model Request {
   id              String        @id @default(cuid())
+  requestNumber   String?       @unique
   customerId      String
   requestedAmount Float
   district        String
@@ -102,6 +103,7 @@ model Request {
 // Enhanced Loan model for EMI-based fixed loans
 model Loan {
   id              String     @id @default(cuid())
+  loanNumber      String?    @unique
   requestId       String     @unique
   
   // Fixed Loan Terms (Set by Admin - Cannot be changed)
@@ -361,4 +363,15 @@ model ServiceConfig {
   @@index([isEnabled])
   @@index([isActive])
   @@map("service_configs")
+}
+
+// Sequence counters for human-friendly serial numbers
+model SerialCounter {
+  id    String  @id // e.g. "REQUEST", "LOAN"
+  seq   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("serial_counters")
 }

@@ -138,30 +138,7 @@ export default function UploadAssetPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <Link href="/dashboard">
-                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-              </Link>
-            </Button>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <CreditCard className="w-4 h-4 text-primary-foreground" />
-              </div>
-              <span className="font-bold text-lg sm:text-xl">AssetLend</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary/10 rounded-full flex items-center justify-center">
-              <span className="text-xs sm:text-sm font-semibold">JD</span>
-            </div>
-            <span className="font-medium text-sm sm:text-base hidden sm:block">John Doe</span>
-          </div>
-        </div>
-      </header>
+      {/* Header removed - global Navbar provides the header */}
 
       <div className="container mx-auto px-4 py-6 sm:py-8 max-w-4xl">
         {/* Progress Steps */}

@@ -166,15 +166,13 @@ export default function UsersAccessPage() {
   const getRoleBadge = (role: string) => {
     const normalized = String(role).toUpperCase()
     switch (normalized) {
-      case 'SUPER_ADMIN':
+      case ROLES.SUPER_ADMIN:
         return <Badge className="bg-red-100 text-red-800">SUPER ADMIN</Badge>
-      case 'ADMIN':
-        return <Badge className="bg-purple-100 text-purple-800">ADMIN</Badge>
-      case 'AGENT':
+      case ROLES.DISTRICT_ADMIN:
+        return <Badge className="bg-purple-100 text-purple-800">District Admin</Badge>
+      case ROLES.AGENT:
         return <Badge className="bg-blue-100 text-blue-800">AGENT</Badge>
-      case 'DISTRICT_ADMIN':
-        return <Badge className="bg-indigo-100 text-indigo-800">District Admin</Badge>
-      case 'CUSTOMER':
+      case ROLES.CUSTOMER:
         return <Badge variant="outline">Customer</Badge>
       default:
         return <Badge variant="secondary">{normalized}</Badge>
@@ -682,10 +680,10 @@ export default function UsersAccessPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600 font-semibold">ADM</div>
+                  <div className="p-2 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600 font-semibold">ADM</div>
                 <div>
                   <p className="text-sm text-gray-600">Admins</p>
-                  <p className="text-lg font-semibold">{users.filter(u => Array.isArray(u.roles) && u.roles.map(r => r.toUpperCase()).includes('ADMIN')).length}</p>
+                  <p className="text-lg font-semibold">{users.filter(u => Array.isArray(u.roles) && u.roles.map(r => r.toUpperCase()).includes(ROLES.DISTRICT_ADMIN)).length}</p>
                 </div>
               </div>
             </CardContent>
@@ -739,9 +737,9 @@ export default function UsersAccessPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="agent">Agent</SelectItem>
-                  <SelectItem value="customer">Customer</SelectItem>
+                  <SelectItem value={ROLES.DISTRICT_ADMIN}>Admin</SelectItem>
+                  <SelectItem value={ROLES.AGENT}>Agent</SelectItem>
+                  <SelectItem value={ROLES.CUSTOMER}>Customer</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
