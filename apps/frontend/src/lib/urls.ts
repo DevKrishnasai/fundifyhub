@@ -30,6 +30,9 @@ export const BACKEND_API_CONFIG = {
       UPDATE_PROFILE: '/api/v1/user/profile/update',
       UPLOAD_ASSET: '/api/v1/user/add-asset',
       UPDATE_ASSET: '/api/v1/user/update-asset',
+      LIST_REQUESTS: '/api/v1/user/requests',
+  GET_REQUEST_BY_IDENTIFIER: (identifier: string) => `/api/v1/user/request/${identifier}`,
+      POST_COMMENT: (identifier: string) => `/api/v1/user/request/${identifier}/comment`,
       ACTIVE_LOANS_COUNT: '/api/v1/user/active-loans-count',
       PENDING_LOANS_COUNT: '/api/v1/user/pending-loans-count',
       TOTAL_BORROW: '/api/v1/user/total-borrow'

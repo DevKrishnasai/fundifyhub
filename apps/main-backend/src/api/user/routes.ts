@@ -1,5 +1,5 @@
 import { Router, type Router as ExpressRouter } from 'express';
-import { getProfileController, validateController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController } from './controllers';
+import { getProfileController, validateController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController, getUserRequestsController, getUserRequestController, postCommentController } from './controllers';
 
 const router: ExpressRouter = Router();
 
@@ -38,6 +38,24 @@ router.get('/active-loans-count', activeLoansCountController);
  * Returns number of loans currently in PENDING status (protected)
  */
 router.get('/pending-loans-count', pendingLoansCountController);
+
+/**
+ * GET /user/requests
+ * Paginated list of requests for the authenticated user
+ */
+router.get('/requests', getUserRequestsController);
+
+/**
+ * GET /user/request/:identifier
+ * Fetch a single request by DB id or human-friendly requestNumber (REQxxxx)
+ */
+router.get('/request/:identifier', getUserRequestController);
+
+/**
+ * POST /user/request/:identifier/comment
+ * Add a comment to a request
+ */
+router.post('/request/:identifier/comment', postCommentController);
 
 // Note: only the active loans count endpoint is exposed here per request
 

@@ -126,26 +126,7 @@ export default function InspectionPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <CreditCard className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-xl">AssetLend</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <Badge variant="outline">Inspection Process</Badge>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                <span className="text-sm font-semibold">AG</span>
-              </div>
-              <span className="font-medium">Agent</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header removed - global Navbar renders the header */}
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Progress Steps */}

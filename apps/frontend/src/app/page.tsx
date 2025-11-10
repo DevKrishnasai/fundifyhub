@@ -1,44 +1,13 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { ArrowRight, Shield, Clock, MapPin, Star, Upload, CheckCircle, CreditCard } from "lucide-react"
 import Link from "next/link"
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <CreditCard className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-xl">AssetLend</span>
-          </div>
-          <nav className="hidden lg:flex items-center gap-6">
-            <Link href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">
-              How it Works
-            </Link>
-            <Link href="#districts" className="text-muted-foreground hover:text-foreground transition-colors">
-              Districts
-            </Link>
-            <Link href="#support" className="text-muted-foreground hover:text-foreground transition-colors">
-              Support
-            </Link>
-          </nav>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <ThemeToggle />
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex" asChild>
-              <Link href="/auth/login">Login</Link>
-            </Button>
-            <Button size="sm" asChild>
-              <Link href="/auth/register">Get Started</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+      {/* header removed - global Navbar is used */}
 
       {/* Hero Section */}
       <section className="py-12 sm:py-16 lg:py-20 px-4 flex items-center min-h-[80vh]">

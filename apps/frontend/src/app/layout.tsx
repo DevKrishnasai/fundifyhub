@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { Toaster } from 'react-hot-toast'
 import './globals.css'
+import Navbar from '@/components/navbar'
 
 export const metadata: Metadata = {
   title: {
@@ -65,29 +66,33 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            {children}
-            <Toaster
-              position="top-center"
-              toastOptions={{
-                duration: 4000,
-                style: {
-                  background: 'hsl(var(--background))',
-                  color: 'hsl(var(--foreground))',
-                  border: '1px solid hsl(var(--border))',
-                  minWidth: '220px',
-                  fontSize: '1rem',
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                },
-                // Default icons for different types
-                iconTheme: {
-                  primary: '#10b981', // success
-                  secondary: '#f87171', // error
-                },
-              }}
-            />
+            <div className="min-h-screen flex flex-col">
+              <Navbar />
+              <main className="flex-1">{children}</main>
+
+              <Toaster
+                position="top-center"
+                toastOptions={{
+                  duration: 4000,
+                  style: {
+                    background: 'hsl(var(--background))',
+                    color: 'hsl(var(--foreground))',
+                    border: '1px solid hsl(var(--border))',
+                    minWidth: '220px',
+                    fontSize: '1rem',
+                    fontWeight: 500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  },
+                  // Default icons for different types
+                  iconTheme: {
+                    primary: '#10b981', // success
+                    secondary: '#f87171', // error
+                  },
+                }}
+              />
+            </div>
           </AuthProvider>
         </ThemeProvider>
         <Analytics />

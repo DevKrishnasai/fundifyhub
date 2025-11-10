@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,17 +13,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { 
-  User, 
-  Settings, 
-  LogOut, 
-  Shield, 
-  UserCheck 
+import {
+  User,
+  Settings,
+  LogOut,
+  Shield,
+  UserCheck,
 } from 'lucide-react';
 import logger from '@/lib/logger';
 
 export function UserMenu() {
-  const { user, logout } = useAuth();
+  const { user, logout, getDisplayName, isSuperAdmin, isDistrictAdmin, isAgent, isCustomer } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   if (!user) return null;
@@ -39,39 +40,18 @@ export function UserMenu() {
   };
 
   const getInitials = () => {
-    return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
-  };
-
-  const getRoleIcon = () => {
-    const roles = user.roles?.map((r: string) => r.toLowerCase()) || [];
-    if (roles.includes('admin') || roles.includes('super_admin')) {
-      return <Shield className="w-4 h-4" />;
-    }
-    if (roles.includes('agent')) {
-      return <UserCheck className="w-4 h-4" />;
-    }
-    return <User className="w-4 h-4" />;
+    const name = getDisplayName() || user.email || '';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '';
+    if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? '';
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
   const getRoleLabel = () => {
-    const roles = user.roles || [];
-    if (roles.length === 0) return 'User';
-    if (roles.length === 1) {
-      const role = roles[0].toLowerCase();
-      switch (role) {
-        case 'admin':
-        case 'super_admin':
-          return 'Administrator';
-        case 'agent':
-          return 'Agent';
-        case 'customer':
-          return 'Customer';
-        default:
-          return roles[0];
-      }
-    }
-    // Multiple roles - show them all
-    return roles.join(', ');
+    if (isSuperAdmin() || isDistrictAdmin()) return 'Administrator';
+    if (isAgent()) return 'Agent';
+    if (isCustomer()) return 'Customer';
+    return 'User';
   };
 
   return (
@@ -85,34 +65,39 @@ export function UserMenu() {
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">
-              {user.firstName} {user.lastName}
-            </p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {user.email}
-            </p>
+      <DropdownMenuContent className="w-56 p-2" align="end" forceMount>
+        <DropdownMenuLabel className="font-normal p-0">
+          <div className="flex flex-col space-y-1 px-3 pb-2">
+            <p className="text-sm font-medium leading-none">{getDisplayName() || user.email}</p>
+            <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
             <div className="flex items-center gap-2 pt-1">
-              {getRoleIcon()}
-              <span className="text-xs text-muted-foreground">
-                {getRoleLabel()}
-              </span>
+              {isSuperAdmin() || isDistrictAdmin() ? (
+                <Shield className="w-4 h-4" />
+              ) : isAgent() ? (
+                <UserCheck className="w-4 h-4" />
+              ) : (
+                <User className="w-4 h-4" />
+              )}
+              <span className="text-xs text-muted-foreground">{getRoleLabel()}</span>
             </div>
           </div>
         </DropdownMenuLabel>
+
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
-          <User className="mr-2 h-4 w-4" />
-          <span>Profile</span>
+
+        {/* Profile (full-width button style for symmetry) */}
+        <DropdownMenuItem asChild>
+          <Link href="/profile" className="w-full rounded-md px-3 py-2 text-sm bg-primary text-primary-foreground flex items-center gap-2">
+            <User className="h-4 w-4" />
+            <span>Profile</span>
+          </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem>
-          <Settings className="mr-2 h-4 w-4" />
-          <span>Settings</span>
-        </DropdownMenuItem>
+
+        {/* Keep menu focused: no Settings here (settings removed per request) */}
+
         <DropdownMenuSeparator />
-        <DropdownMenuItem 
+
+        <DropdownMenuItem
           onClick={handleLogout}
           disabled={isLoggingOut}
           className="text-red-600 focus:text-red-600"

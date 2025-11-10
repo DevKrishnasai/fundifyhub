@@ -231,16 +231,14 @@ export function AssetUpload({
 
     try {
       const url = BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.GET_SIGNED_URL_BY_FILEKEY(fileKey) + '?expiresIn=900';
-      // Use shared axios get method (sends cookies automatically)
-      const data = await import('../api-client').then(mod => mod.get<any>(url));
-
-      // `get` helper unwraps the backend envelope and returns the inner payload.
-      // Expect an object with `url` on success.
-      if (data && data.url) {
-        setSignedUrls(prev => ({ ...prev, [fileKey]: data.url }));
-        return data.url;
+      // Use getWithResult which unwraps the backend envelope (returns { ok, data })
+      const mod = await import('../api-client');
+      const resp = await mod.getWithResult<any>(url);
+      if (resp.ok && resp.data && resp.data.url) {
+        setSignedUrls(prev => ({ ...prev, [fileKey]: resp.data.url }));
+        return resp.data.url;
       } else {
-        throw new Error('No URL returned from server');
+        throw new Error(resp.ok ? 'No URL returned from server' : resp.error?.message || 'Failed to fetch signed URL');
       }
     } catch (error) {
       throw error;

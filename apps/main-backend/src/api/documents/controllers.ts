@@ -207,15 +207,26 @@ export async function getSignedUrlByFileKeyController(req: Request, res: Respons
     // Generate signed URL directly from fileKey
     const { url, expiresAt } = await generateSignedUrl(fileKey, expiresIn);
 
-    res.json({
-      success: true,
-      data: {
-        url,
-        expiresAt,
-        expiresIn,
-        fileKey,
-      },
-    } as APIResponseType);
+    // If the caller prefers JSON (e.g., API client), return JSON.
+    // If the request is coming from a browser img/src or direct navigation, redirect to the signed URL
+    const accept = String(req.headers.accept || '').toLowerCase();
+    const prefersJson = accept.includes('application/json') || accept.includes('text/json') || req.xhr;
+
+    if (prefersJson) {
+      res.json({
+        success: true,
+        data: {
+          url,
+          expiresAt,
+          expiresIn,
+          fileKey,
+        },
+      } as APIResponseType);
+      return;
+    }
+
+    // Redirect to the signed URL for browser image requests
+    res.redirect(url);
   } catch (error) {
     logger.error("Error generating signed URL by fileKey:", error as Error);
     res.status(500).json({
@@ -267,20 +278,29 @@ export async function getDocumentSignedUrlController(req: Request, res: Response
     // Generate signed URL
     const { url, expiresAt } = await generateSignedUrl(document.fileKey, expiresIn);
 
-    res.json({
-      success: true,
-      data: {
-        url,
-        expiresAt,
-        expiresIn,
-        document: {
-          id: document.id,
-          fileName: document.fileName,
-          fileSize: document.fileSize,
-          fileType: document.fileType,
+    const accept = String(req.headers.accept || '').toLowerCase();
+    const prefersJson = accept.includes('application/json') || accept.includes('text/json') || req.xhr;
+
+    if (prefersJson) {
+      res.json({
+        success: true,
+        data: {
+          url,
+          expiresAt,
+          expiresIn,
+          document: {
+            id: document.id,
+            fileName: document.fileName,
+            fileSize: document.fileSize,
+            fileType: document.fileType,
+          },
         },
-      },
-    } as APIResponseType);
+      } as APIResponseType);
+      return;
+    }
+
+    // Redirect to the signed URL for direct browser requests
+    res.redirect(url);
   } catch (error) {
     logger.error("Error generating signed URL:", error as Error);
     res.status(500).json({

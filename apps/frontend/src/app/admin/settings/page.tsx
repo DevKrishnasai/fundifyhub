@@ -27,7 +27,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
-import { get, post } from '@/lib/api-client'
+import { getWithResult, post } from '@/lib/api-client'
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
 import logger from "@/lib/logger"
@@ -84,12 +84,12 @@ export default function AdminSettingsPage() {
   // Load services from API
   const loadServices = async () => {
     try {
-      const data = await get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICES)
-
-      // `get` helper returns the unwrapped payload (array of services)
-      if (data) {
-        setServices(data)
+      const resp = await getWithResult<any[]>(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICES)
+      if (!resp.ok) {
+        throw new Error(resp.error?.message || 'Failed to load services')
       }
+      const data = resp.data
+      setServices(Array.isArray(data) ? data : [])
     } catch (error: any) {
       logger.error('Load services error:', error);
       toastError(error.message || '❌ Failed to load services');

@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { Prisma, prisma } from '@fundifyhub/prisma';
-import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, AssetPledgePayloadType, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES } from '@fundifyhub/types';
+import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, AssetPledgePayloadType, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
 import logger from '../../utils/logger';
+import { generateSignedUrl } from '../../utils/uploadthing';
 
 /**
  * Adds new asset photos to the request (does not delete existing)
@@ -336,6 +337,18 @@ export async function addAssetController(req: Request, res: Response): Promise<v
 
     // Step 5: Create request and link documents in transaction
     const createdRequest = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Generate a human-friendly request number and attach to the request
+      try {
+        // Import locally to avoid circular issues at top-level imports
+        const { generateRequestNumber } = require('../../utils/serial') as typeof import('../../utils/serial')
+        const reqNumber = await generateRequestNumber(tx);
+        // Attach requestNumber to the create data
+        requestData.requestNumber = reqNumber
+      } catch (e) {
+        // If serial generation fails, log and continue with creation (non-blocking)
+        logger.warn('Failed to generate request number, proceeding without it: ' + String(e))
+      }
+
       // Create the asset request
       const reqCreated = await tx.request.create({ data: requestData });
 
@@ -359,7 +372,7 @@ export async function addAssetController(req: Request, res: Response): Promise<v
     res.status(201).json({
       success: true,
       message: 'Asset request created successfully',
-      data: { requestId: createdRequest.id },
+      data: { requestId: createdRequest.id, requestNumber: createdRequest.requestNumber },
     });
 
     // Step 6: Enqueue admin notification (non-blocking)
@@ -414,7 +427,8 @@ export async function addAssetController(req: Request, res: Response): Promise<v
  * Update an existing asset request (protected)
  * 
  * @param req - Express request object
- * @param req.body.requestId - ID of the request to update (required)
+ * @param req.body.requestId - ID of the request to update (optional if requestNumber provided)
+ * @param req.body.requestNumber - Human-friendly request number (e.g., REQ1000) (optional)
  * @param req.body.district - Customer's district (optional)
  * @param req.body.assetPhotos - Array of asset photo URLs (optional, replaces existing)
  * @param req.body.assetType - Type of asset (optional)
@@ -447,10 +461,17 @@ export async function updateAssetController(req: Request, res: Response): Promis
   try {
     const customerId = req.user!.id;
     const userRoles = Array.isArray(req.user!.roles) ? req.user!.roles : [];
-  const { requestId, assetPhotos, ...updateData } = req.body || {};
+  let { requestId } = req.body || {};
+  const { requestNumber, assetPhotos, ...updateData } = req.body || {};
+
+    // Allow callers to pass requestNumber (human-friendly) instead of DB id
+    if ((!requestId || typeof requestId !== 'string') && requestNumber && typeof requestNumber === 'string') {
+      const found = await prisma.request.findUnique({ where: { requestNumber } });
+      if (found) requestId = found.id;
+    }
 
     if (!requestId || typeof requestId !== 'string') {
-      res.status(400).json({ success: false, message: 'requestId is required' });
+      res.status(400).json({ success: false, message: 'requestId is required (or provide requestNumber)' });
       return;
     }
 
@@ -696,6 +717,214 @@ export async function totalBorrowController(req: Request, res: Response): Promis
   } catch (error) {
     logger.error('Total borrow error:', error as Error);
     res.status(500).json({ success: false, message: 'Failed to retrieve total borrow stats' });
+  }
+}
+
+/**
+ * GET /user/requests
+ * Returns paginated list of requests for the authenticated user
+ * Query params: page (default 1), pageSize (default 10)
+ */
+export async function getUserRequestsController(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'User not found in token' });
+      return;
+    }
+
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const pageSize = Math.max(1, Math.min(100, Number(req.query.pageSize ?? 10)));
+
+    const where: Prisma.RequestWhereInput = { customerId: userId };
+
+    // Optional status filter: support friendly keywords (pending, active, rejected, closed)
+    const rawStatus = typeof req.query.status === 'string' ? req.query.status.trim() : undefined;
+    if (rawStatus) {
+      const s = rawStatus.toUpperCase();
+      // Map common keywords to arrays where helpful
+      if (s === 'PENDING') {
+        where.currentStatus = { in: PENDING_REQUEST_STATUSES as any } as any;
+      } else if (s === 'REJECTED') {
+        where.currentStatus = { in: [REQUEST_STATUS.REJECTED, REQUEST_STATUS.OFFER_REJECTED] as any } as any;
+      } else if (s === 'CLOSED') {
+        where.currentStatus = { in: [REQUEST_STATUS.CANCELLED, REQUEST_STATUS.COMPLETED] as any } as any;
+      } else if (s === 'ACTIVE') {
+        where.currentStatus = { in: [REQUEST_STATUS.APPROVED, REQUEST_STATUS.AMOUNT_TRANSFERRED, REQUEST_STATUS.LOAN_PROCESSING] as any } as any;
+      } else {
+        // Fallback: if a direct enum value passed, match exactly
+        where.currentStatus = rawStatus as any;
+      }
+    }
+
+    // Optional simple search (search by id or brand/model)
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
+    if (search && search.length > 0) {
+      where.OR = [
+        { id: { contains: search } },
+        { requestNumber: { contains: search, mode: 'insensitive' } },
+        { assetBrand: { contains: search, mode: 'insensitive' } },
+        { assetModel: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.request.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          assignedAgent: { select: { id: true, firstName: true, lastName: true, email: true } },
+          loan: { select: { id: true, approvedAmount: true, status: true } },
+          _count: { select: { documents: true, comments: true, inspections: true } },
+        },
+      }),
+      prisma.request.count({ where }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'Requests fetched',
+      data: { items, total, page, pageSize },
+    });
+  } catch (error) {
+    logger.error('Get user requests error:', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to fetch requests' });
+  }
+}
+
+/**
+ * GET /user/request/:identifier
+ * Fetch a single request by DB id or by human-friendly requestNumber (e.g., REQ1000)
+ */
+export async function getUserRequestController(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'User not found in token' });
+      return;
+    }
+
+    const { identifier } = req.params;
+    if (!identifier || typeof identifier !== 'string') {
+      res.status(400).json({ success: false, message: 'Identifier is required' });
+      return;
+    }
+
+    // Try to find by requestNumber first (human-friendly), then by id
+    const request = await prisma.request.findFirst({
+      where: {
+        customerId: userId,
+        OR: [{ requestNumber: identifier }, { id: identifier }],
+      },
+      include: {
+        assignedAgent: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } },
+        loan: { select: { id: true, loanNumber: true, approvedAmount: true, status: true, disbursedDate: true, approvedDate: true, tenureMonths: true, emiAmount: true, emisSchedule: true } },
+        comments: { select: { id: true, content: true, createdAt: true, authorId: true, author: { select: { id: true, firstName: true, lastName: true, roles: true } } } },
+        _count: { select: { documents: true, comments: true, inspections: true } },
+        documents: { select: { id: true, fileKey: true, fileName: true, fileType: true } },
+      },
+    });
+
+    if (!request) {
+      res.status(404).json({ success: false, message: 'Request not found' });
+      return;
+    }
+    // Generate signed URLs for each document so the frontend can render images directly
+    try {
+      const docsWithUrls = await Promise.all(
+        (request.documents || []).map(async (d) => {
+          try {
+            const { url, expiresAt } = await generateSignedUrl(d.fileKey, 900);
+            return { ...d, signedUrl: url, signedUrlExpiresAt: expiresAt };
+          } catch (e) {
+            // If signed URL generation fails for a document, return the document without signedUrl
+            logger.warn(`Failed to generate signed URL for fileKey=${d.fileKey}: ${String(e)}`);
+            return d;
+          }
+        })
+      );
+
+      const responsePayload = { ...request, documents: docsWithUrls };
+      res.json({ success: true, data: responsePayload });
+      return;
+    } catch (e) {
+      logger.warn('Failed to generate signed URLs for documents: ' + String(e));
+      res.json({ success: true, data: request });
+      return;
+    }
+  } catch (error) {
+    logger.error('Get user request error:', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to fetch request' });
+  }
+}
+
+/**
+ * POST /user/request/:identifier/comment
+ * Add a comment to a request (protected)
+ */
+export async function postCommentController(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    const userRoles = Array.isArray(req.user?.roles) ? req.user!.roles : [];
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'User not found in token' });
+      return;
+    }
+
+    const { identifier } = req.params as { identifier?: string };
+    if (!identifier) {
+      res.status(400).json({ success: false, message: 'Request identifier is required' });
+      return;
+    }
+
+    // Find request by requestNumber or id
+    const found = await prisma.request.findFirst({
+      where: { OR: [{ requestNumber: identifier }, { id: identifier }] },
+      select: { id: true, customerId: true },
+    });
+    if (!found) {
+      res.status(404).json({ success: false, message: 'Request not found' });
+      return;
+    }
+
+    const { content, isInternal, commentType } = req.body || {};
+    if (!content || typeof content !== 'string' || content.trim() === '') {
+      res.status(400).json({ success: false, message: 'Comment content is required' });
+      return;
+    }
+
+    const isAdminOrAgent = userRoles.some((r) => ADMIN_AGENT_ROLES.includes(r));
+    // Customers cannot post internal comments
+    const internalFlag = Boolean(isInternal && isAdminOrAgent);
+    if (isInternal && !isAdminOrAgent) {
+      res.status(403).json({ success: false, message: 'Not authorized to post internal comments' });
+      return;
+    }
+
+    // Only request owner or admin/agent can comment
+    if (found.customerId !== userId && !isAdminOrAgent) {
+      res.status(403).json({ success: false, message: 'Not authorized to comment on this request' });
+      return;
+    }
+
+    const created = await prisma.comment.create({
+      data: {
+        requestId: found.id,
+        authorId: userId,
+        content: content.trim(),
+        isInternal: internalFlag,
+        commentType: commentType && typeof commentType === 'string' ? commentType : 'GENERAL',
+      },
+      include: { author: { select: { id: true, firstName: true, lastName: true, roles: true } } },
+    });
+
+    res.status(201).json({ success: true, message: 'Comment created', data: created });
+    return;
+  } catch (error) {
+    logger.error('Post comment error:', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to create comment' });
   }
 }
 
