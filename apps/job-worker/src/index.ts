@@ -1,7 +1,7 @@
 import { EmailWorker, WhatsAppWorker  } from './workers';
 import { serviceManager } from './services/service-manager';
 import { QUEUE_NAMES } from '@fundifyhub/types';
-import { validateJobWorkerEnv } from '@fundifyhub/utils';
+import config from './utils/config';
 import logger from './utils/logger';
 
 class JobWorkerServer {
@@ -10,9 +10,10 @@ class JobWorkerServer {
 
   async start(): Promise<void> {
     try {
-      // Validate environment variables before starting the server
-      validateJobWorkerEnv();
-      logger.info('✅ Environment variables validated successfully');
+  // App-level config validates env on import. At this point the
+  // configuration shape is trusted and consumer modules can import
+  // `./utils/config` to read typed values.
+  logger.info('✅ Job-worker configuration loaded successfully');
 
       // Initialize ServiceManager with logger
       serviceManager.initialize(logger);

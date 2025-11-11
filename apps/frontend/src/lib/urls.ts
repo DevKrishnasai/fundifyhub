@@ -1,8 +1,10 @@
 /**
  * Centralized API endpoint definitions
  */
+import frontendConfig from './config';
+
 export const BACKEND_API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL,
+  BASE_URL: frontendConfig.public.apiUrl,
   ENDPOINTS: {
     AUTH: {
       REGISTER: '/api/v1/auth/register',
@@ -52,7 +54,7 @@ export const BACKEND_API_CONFIG = {
 }
 
 export const FRONTEND_API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_FRONTEND_API_URL,
+  BASE_URL: frontendConfig.public.apiUrl,
   ENDPOINTS: {
     AUTH: {
       LOGIN: '/auth/login',

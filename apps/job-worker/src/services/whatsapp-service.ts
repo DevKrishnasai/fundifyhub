@@ -3,7 +3,18 @@ import { CONNECTION_STATUS } from '@fundifyhub/types';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import { prisma } from '@fundifyhub/prisma';
 import logger from '../utils/logger';
+import config from '../utils/config';
 
+// Use `config.env` (validated at module import) for runtime values. This
+// module exposes `sendWhatsApp`, `startWhatsAppService`, and `stopWhatsAppService`.
+const env = config.env;
+
+/**
+ * sendWhatsApp
+ * Sends a WhatsApp text message using the running WhatsApp client (if any).
+ * The function normalizes recipient phone numbers using the configured
+ * `DEFAULT_COUNTRY_DIAL` and verifies the number is registered on WhatsApp.
+ */
 export const sendWhatsApp = async (opts: { to: string; text: string }) => {
   const client = serviceManager.getWhatsAppClient();
   if (!client) throw new Error('WhatsApp client not available');
@@ -28,9 +39,10 @@ export const sendWhatsApp = async (opts: { to: string; text: string }) => {
       }
 
       // Normalize to international format expected by WhatsApp (no leading 0, include country code)
-  // Allow configuration via env DEFAULT_COUNTRY_DIAL (we primarily use Indian numbers here).
-  // Fallback to '91' (India) when not provided.
-  const DEFAULT_COUNTRY_DIAL = (process.env.DEFAULT_COUNTRY_DIAL || '91').replace(/\D/g, '');
+  // Allow configuration via validated config (DEFAULT_COUNTRY_DIAL).
+  // Fallback is provided by the validator (default '91').
+  // DEFAULT_COUNTRY_DIAL is validated and defaulted by the central validator.
+  const DEFAULT_COUNTRY_DIAL = env.DEFAULT_COUNTRY_DIAL.replace(/\D/g, '');
 
       // If number starts with a leading zero (local format), replace it with country dial
       if (digits.startsWith('0')) {
@@ -63,6 +75,12 @@ export const sendWhatsApp = async (opts: { to: string; text: string }) => {
 
 let whatsappClient: Client | null = null;
 
+/**
+ * startWhatsAppService
+ * Initializes the WhatsApp client using `whatsapp-web.js` and Puppeteer.
+ * The service stores QR codes and status in the `serviceConfig` DB table
+ * so the admin UI can display scanner state and connection health.
+ */
 export const startWhatsAppService = async () => {
   try {
     if (whatsappClient) {
