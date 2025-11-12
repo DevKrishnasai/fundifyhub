@@ -1,16 +1,15 @@
 /**
- * Complete Request Detail Page - Production Ready
+ * Complete Request Detail Page
  * 
- * Full workflow implementation from PENDING → ACTIVE:
+ * Implemented workflows:
  * ✓ Document upload and display with signed URLs
  * ✓ Agent assignment with district filtering
  * ✓ Offer creation and acceptance
- * ✓ Inspection workflow
- * ✓ Signature collection
- * ✓ Bank details submission
- * ✓ Loan processing and disbursement
+ * ✓ Inspection workflow with photo uploads
+ * ✓ Request more info workflow
  * ✓ Role-based UI and permissions
  * ✓ Timeline with all events
+ * ✓ Comments system
  */
 
 "use client";
@@ -19,6 +18,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getAvailableActions, type WorkflowAction, type UserRole } from '@fundifyhub/types';
 import { useRouter } from 'next/navigation';
+import { BACKEND_API_CONFIG } from '@/lib/urls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UploadButton } from '@/components/uploadthing-components';
+import type { ClientUploadedFileData } from 'uploadthing/types';
 import { 
   Calendar, 
   MapPin, 
@@ -137,7 +138,15 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const auth = useAuth();
   const [request, setRequest] = useState<RequestDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [hasUploadedNewDocs, setHasUploadedNewDocs] = useState(() => {
+    // Check sessionStorage for uploaded docs flag for this request
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem(`uploaded_docs_${id}`);
+      return stored === 'true';
+    }
+    return false;
+  });
   
   // Agent assignment
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -171,7 +180,6 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [showAssignAgent, setShowAssignAgent] = useState(false);
   const [showOffer, setShowOffer] = useState(false);
   const [showBankDetails, setShowBankDetails] = useState(false);
-  const [showSignature, setShowSignature] = useState(false);
   const [showRequestInfo, setShowRequestInfo] = useState(false);
 
   const isCustomer = auth.isCustomer();
@@ -197,7 +205,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${id}`, { 
+        const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}`, { 
           credentials: 'include' 
         });
         if (res.status === 401) {
@@ -206,12 +214,19 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         }
         const data = await res.json();
         if (res.ok) {
-          if (mounted) setRequest(data.data.request as RequestDetail);
+          if (mounted) {
+            setRequest(data.data.request as RequestDetail);
+            
+            // Check sessionStorage for upload flag
+            const hasUploaded = sessionStorage.getItem(`uploaded_docs_${id}`) === 'true';
+            if (hasUploaded) {
+              setHasUploadedNewDocs(true);
+            }
+          }
         } else {
           alert(data.message || 'Failed to load request');
         }
       } catch (err) {
-        console.error(err);
         alert(ACTION_MESSAGES.NETWORK_ERROR);
       } finally {
         if (mounted) setLoading(false);
@@ -225,7 +240,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const loadAgents = async () => {
     if (!request?.district) return;
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/agents/${request.district}`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/agents/${request.district}`, {
         credentials: 'include'
       });
       const data = await res.json();
@@ -233,7 +248,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         setAgents(data.data.agents || []);
       }
     } catch (err) {
-      console.error('Failed to load agents:', err);
+      // Silently fail, agents will be empty array
     }
   };
 
@@ -251,7 +266,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     setAssigningAgent(true);
     try {
       const inspectionDateTime = `${inspectionDate}T${inspectionTime}`;
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${id}/assign`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -290,7 +305,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     setCreatingOffer(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${id}/offer`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/offer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -318,7 +333,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   // Handle status updates
   const handleStatusUpdate = async (newStatus: string, note?: string) => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${id}/status`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -327,6 +342,11 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       const data = await res.json();
       if (res.ok) {
         setRequest(data.data.request);
+        
+        // Clear the upload flag when status changes
+        sessionStorage.removeItem(`uploaded_docs_${id}`);
+        setHasUploadedNewDocs(false);
+        
         alert(ACTION_MESSAGES.SUCCESS);
       } else {
         alert(data.message || ACTION_MESSAGES.ERROR);
@@ -348,7 +368,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       // Store in comment for now (ideally create a BankDetails model)
       const details = `Bank Details:\nAccount: ${accountNumber}\nIFSC: ${ifscCode}\nName: ${accountName}${upiId ? `\nUPI: ${upiId}` : ''}`;
       
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/request/${id}/comment`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -379,7 +399,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     setSubmittingInfo(true);
     try {
       // Post comment with the requested info
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/request/${id}/comment`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -407,7 +427,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     setPostingComment(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/request/${id}/comment`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -430,9 +450,72 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     }
   };
 
+  // Handle document upload (consolidated for both agent and customer)
+  const handleDocumentUpload = async (
+    files: ClientUploadedFileData<{ fileKey: string; uploadedBy: string; fileName: string; fileSize: number; fileType: string }>[],
+    documentType: string,
+    documentCategory: string,
+    successMessage: string
+  ) => {
+    try {
+      setUploadProgress('Saving documents...');
+      
+      const documents = files.map((file) => ({
+        fileKey: file.serverData?.fileKey || file.key,
+        fileName: file.serverData?.fileName || file.name,
+        fileSize: file.serverData?.fileSize || file.size || 0,
+        fileType: file.serverData?.fileType || file.type,
+        documentType,
+        documentCategory,
+        requestId: request?.id,
+        uploadedBy: file.serverData?.uploadedBy,
+        description: `${documentCategory} photo uploaded`
+      }));
+
+      const response = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ documents })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Mark that new docs were uploaded (for enabling submit button)
+        setHasUploadedNewDocs(true);
+        
+        // Persist upload state across reloads
+        sessionStorage.setItem(`uploaded_docs_${request?.id}`, 'true');
+        
+        // Refetch request to get updated documents with signed URLs
+        const refreshResponse = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}`, {
+          credentials: 'include'
+        });
+        
+        if (refreshResponse.ok) {
+          const refreshData = await refreshResponse.json();
+          setRequest(refreshData.data.request);
+        }
+        
+        setUploadProgress('');
+        
+        // Show success message
+        alert(successMessage);
+      } else {
+        const result = await response.json();
+        throw new Error(result.message || 'Failed to save documents');
+      }
+    } catch (error) {
+      setUploadProgress('');
+      alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    }
+  };
+
   // Get signed URL for document display
   const getSignedUrl = (fileKey: string) => {
-    return `${process.env.NEXT_PUBLIC_API_URL}/api/v1/documents/${fileKey}/signed-url?expiresIn=900`;
+    return `${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/${fileKey}/signed-url?expiresIn=900`;
   };
 
   // Handle workflow actions
@@ -467,7 +550,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       if (!preferredTime || !preferredTime.trim()) return;
       
       // Post comment with reschedule request details
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/request/${id}/comment`, {
+      await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -548,45 +631,27 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               {availableActions.map((action) => {
                 const IconComponent = iconMap[action.icon || ''] || FileText;
                 
-                // Special case: PENDING_SIGNATURE upload
-                if (action.targetStatus === REQUEST_STATUS.PENDING_BANK_DETAILS && 
-                    request.currentStatus === REQUEST_STATUS.PENDING_SIGNATURE) {
-                  return (
-                    <div key={action.id} className="flex items-center gap-3">
-                      <p className="text-sm text-muted-foreground">Please upload your signature document</p>
-                      <UploadButton
-                        endpoint="assetImageUploader"
-                        onClientUploadComplete={(res: any) => {
-                          if (res && res.length > 0) {
-                            alert('Signature uploaded! Moving to bank details...');
-                            handleStatusUpdate(REQUEST_STATUS.PENDING_BANK_DETAILS);
-                          }
-                        }}
-                        onUploadError={(error: Error) => {
-                          alert(`Upload failed: ${error.message}`);
-                        }}
-                      />
-                    </div>
-                  );
-                }
-                
-                // Special case: Submit Additional Info - requires document upload
+                // Special handling for submit-info action in MORE_INFO_REQUIRED status
                 if (action.id === 'submit-info' && request.currentStatus === REQUEST_STATUS.MORE_INFO_REQUIRED) {
+                  // Only check if new documents were uploaded in THIS session
+                  const canSubmit = hasUploadedNewDocs;
+                  
                   return (
-                    <div key={action.id} className="flex items-center gap-3 flex-wrap">
-                      <p className="text-sm font-medium">Upload requested documents:</p>
-                      <UploadButton
-                        endpoint="assetImageUploader"
-                        onClientUploadComplete={(res: any) => {
-                          if (res && res.length > 0) {
-                            alert('Documents uploaded! Moving back to review...');
-                            handleStatusUpdate(REQUEST_STATUS.PENDING);
-                          }
-                        }}
-                        onUploadError={(error: Error) => {
-                          alert(`Upload failed: ${error.message}`);
-                        }}
-                      />
+                    <div key={action.id} className="flex items-center gap-2">
+                      <Button
+                        variant={action.variant || 'default'}
+                        onClick={() => handleWorkflowAction(action)}
+                        disabled={!canSubmit}
+                        title={canSubmit ? action.description : 'Please upload at least one document first'}
+                      >
+                        <IconComponent className="h-4 w-4 mr-2" />
+                        {action.label}
+                      </Button>
+                      {!canSubmit && (
+                        <span className="text-xs text-muted-foreground italic">
+                          Upload documents first ↓
+                        </span>
+                      )}
                     </div>
                   );
                 }
@@ -608,78 +673,25 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         </Card>
       )}
 
-      {/* Agent Upload Photos Alert - For INSPECTION_IN_PROGRESS */}
+      {/* Agent Inspection Alert - Points to upload section below */}
       {isAgent && request.currentStatus === REQUEST_STATUS.INSPECTION_IN_PROGRESS && (
         <Card className="mb-6 border-blue-500 bg-blue-50 dark:bg-blue-950">
           <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <Upload className="h-5 w-5 text-blue-600 mt-0.5" />
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-blue-600 rounded-lg shrink-0">
+                <AlertCircle className="h-6 w-6 text-white" />
+              </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                  Upload Inspection Photos
+                <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 text-lg">
+                  📸 Inspection Photos Required
                 </h3>
-                <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
-                  Please upload clear photos of the asset from different angles before completing the inspection.
+                <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                  Please upload inspection photos in the <strong>Documents section below</strong> before completing the inspection.
                 </p>
-                <UploadButton
-                  endpoint="assetImageUploader"
-                  appearance={{
-                    button: "bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm",
-                    allowedContent: "text-xs text-blue-700 dark:text-blue-300"
-                  }}
-                  content={{
-                    button: "📸 Upload Photos (Images Only)",
-                    allowedContent: "Images only (max 4MB each)"
-                  }}
-                  onClientUploadComplete={async (res: any) => {
-                    if (res && res.length > 0) {
-                      // Save uploaded files to database with INSPECTION_PHOTO type
-                      try {
-                        console.log('Upload response from UploadThing:', res);
-                        
-                        const documents = res.map((file: any) => ({
-                          fileKey: file.serverData?.fileKey || file.key,
-                          fileName: file.serverData?.fileName || file.name,
-                          fileSize: file.serverData?.fileSize || file.size || 0,
-                          fileType: file.serverData?.fileType || file.type,
-                          documentType: 'INSPECTION_PHOTO',
-                          documentCategory: 'INSPECTION',
-                          requestId: request.id, // Use actual DB ID, not requestNumber
-                          uploadedBy: file.serverData?.uploadedBy,
-                          description: 'Inspection photo uploaded by agent'
-                        }));
-
-                        console.log('Sending to backend:', { documents });
-
-                        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/documents/bulk`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          credentials: 'include',
-                          body: JSON.stringify({ documents })
-                        });
-
-                        const result = await response.json();
-                        console.log('Backend response:', result);
-
-                        if (response.ok) {
-                          alert(`${res.length} inspection photo(s) uploaded successfully!`);
-                          window.location.reload();
-                        } else {
-                          alert(`Failed to save: ${result.message || 'Unknown error'}`);
-                        }
-                      } catch (error) {
-                        console.error('Failed to save documents:', error);
-                        alert('Photos uploaded but failed to save records. Please contact support.');
-                      }
-                    }
-                  }}
-                  onUploadError={(error: Error) => {
-                    alert(`Upload failed: ${error.message}`);
-                  }}
-                />
-                <p className="text-xs text-blue-700 dark:text-blue-300 mt-3">
-                  💡 Upload multiple photos showing: front view, back view, serial numbers, and any defects/damage.
-                </p>
+                <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900 rounded-lg px-3 py-2">
+                  <span className="text-base">�</span>
+                  <span>Scroll down to the <strong>"Upload Inspection Photos"</strong> section</span>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1033,57 +1045,122 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               <CardDescription>Uploaded documents for this request</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Upload Button */}
-              {isCustomer && (
-                <div className="mb-4">
-                  <UploadButton
-                    endpoint="assetImageUploader"
-                    onClientUploadComplete={async (res: any) => {
-                      if (res && res.length > 0) {
-                        // Save uploaded files to database with ASSET_PHOTO type
-                        try {
-                          console.log('Upload response from UploadThing:', res);
-                          
-                          const documents = res.map((file: any) => ({
-                            fileKey: file.serverData?.fileKey || file.key,
-                            fileName: file.serverData?.fileName || file.name,
-                            fileSize: file.serverData?.fileSize || file.size || 0,
-                            fileType: file.serverData?.fileType || file.type,
-                            documentType: 'ASSET_PHOTO',
-                            documentCategory: 'ASSET',
-                            requestId: request.id, // Use actual DB ID, not requestNumber
-                            uploadedBy: file.serverData?.uploadedBy,
-                            description: 'Asset photo uploaded by customer'
-                          }));
-
-                          console.log('Sending to backend:', { documents });
-
-                          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/documents/bulk`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'include',
-                            body: JSON.stringify({ documents })
-                          });
-
-                          const result = await response.json();
-                          console.log('Backend response:', result);
-
-                          if (response.ok) {
-                            alert(DOCUMENT_MESSAGES.UPLOAD_SUCCESS);
-                            window.location.reload();
-                          } else {
-                            alert(`Failed to save: ${result.message || 'Unknown error'}`);
+              {/* Customer Upload - Only when admin requests more info */}
+              {isCustomer && request.currentStatus === REQUEST_STATUS.MORE_INFO_REQUIRED && (
+                <div className="mb-6 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 hover:border-primary transition-colors">
+                  <div className="text-center">
+                    <Upload className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+                    <h4 className="font-medium mb-2">
+                      {request.currentStatus === REQUEST_STATUS.MORE_INFO_REQUIRED 
+                        ? '📋 Upload Additional Documents' 
+                        : 'Upload Asset Photos'}
+                    </h4>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {request.currentStatus === REQUEST_STATUS.MORE_INFO_REQUIRED 
+                        ? 'Upload the documents requested by admin (max 5 images, 4MB each)'
+                        : 'Add photos of your asset (max 5 images, 4MB each)'}
+                    </p>
+                    {uploadProgress ? (
+                      <div className="bg-primary/10 rounded-lg p-4">
+                        <div className="flex items-center justify-center gap-3">
+                          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                          <p className="text-sm font-medium">{uploadProgress}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <UploadButton
+                        endpoint="assetImageUploader"
+                        appearance={{
+                          button: "bg-primary hover:bg-primary/90 text-white px-6 py-2.5 rounded-md font-medium",
+                        }}
+                        content={{
+                          button: "Select Photos",
+                        }}
+                        onBeforeUploadBegin={(files: File[]) => {
+                          setUploadProgress(`Uploading ${files.length} photo(s)...`);
+                          return files;
+                        }}
+                        onClientUploadComplete={async (res: ClientUploadedFileData<{ fileKey: string; uploadedBy: string; fileName: string; fileSize: number; fileType: string }>[]) => {
+                          if (res && res.length > 0) {
+                            await handleDocumentUpload(
+                              res,
+                              'ASSET_PHOTO',
+                              'ASSET',
+                              `✅ ${res.length} photo(s) uploaded successfully!`
+                            );
                           }
-                        } catch (error) {
-                          console.error('Failed to save documents:', error);
-                          alert('Photos uploaded but failed to save records. Please contact support.');
-                        }
-                      }
-                    }}
-                    onUploadError={(error: Error) => {
-                      alert(DOCUMENT_MESSAGES.UPLOAD_ERROR);
-                    }}
-                  />
+                        }}
+                        onUploadError={(error: Error) => {
+                          setUploadProgress('');
+                          alert(DOCUMENT_MESSAGES.UPLOAD_ERROR);
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Agent Upload - During inspection */}
+              {isAgent && request.currentStatus === REQUEST_STATUS.INSPECTION_IN_PROGRESS && (
+                <div className="mb-6 border-2 border-dashed border-blue-300 dark:border-blue-700 rounded-lg p-6 bg-blue-50 dark:bg-blue-950 hover:border-blue-500 transition-colors">
+                  <div className="text-center">
+                    <div className="inline-flex p-3 bg-blue-600 rounded-lg mb-3">
+                      <Upload className="h-10 w-10 text-white" />
+                    </div>
+                    <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                      📸 Upload Inspection Photos
+                    </h4>
+                    <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
+                      Upload clear photos from multiple angles (max 5 images, 4MB each)
+                    </p>
+                    {uploadProgress ? (
+                      <div className="bg-blue-100 dark:bg-blue-900 rounded-lg p-4 border-2 border-blue-600">
+                        <div className="flex items-center justify-center gap-3">
+                          <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                          <p className="text-sm font-medium text-blue-900 dark:text-blue-100">{uploadProgress}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <UploadButton
+                          endpoint="assetImageUploader"
+                          appearance={{
+                            button: "bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-md font-medium",
+                          }}
+                          content={{
+                            button: "📸 Select Photos",
+                          }}
+                          onBeforeUploadBegin={(files: File[]) => {
+                            setUploadProgress(`Uploading ${files.length} photo(s)...`);
+                            return files;
+                          }}
+                          onClientUploadComplete={async (res: ClientUploadedFileData<{ fileKey: string; uploadedBy: string; fileName: string; fileSize: number; fileType: string }>[]) => {
+                            if (res && res.length > 0) {
+                              await handleDocumentUpload(
+                                res,
+                                'INSPECTION_PHOTO',
+                                'INSPECTION',
+                                `✅ ${res.length} inspection photo(s) uploaded successfully!`
+                              );
+                            }
+                          }}
+                          onUploadError={(error: Error) => {
+                            setUploadProgress('');
+                            alert(`Upload failed: ${error.message}`);
+                          }}
+                        />
+                        <div className="mt-4 bg-blue-100 dark:bg-blue-900 rounded-lg p-3 text-left">
+                          <p className="text-xs text-blue-800 dark:text-blue-200 flex items-start gap-2">
+                            <span className="text-base shrink-0">💡</span>
+                            <span>
+                              <strong>Tips:</strong> Hold Ctrl/Cmd to select multiple photos. 
+                              Capture: front view, back view, serial numbers, and any defects.
+                            </span>
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
 

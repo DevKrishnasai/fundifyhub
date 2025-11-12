@@ -8,13 +8,21 @@ import { validateFrontendEnv } from '@fundifyhub/utils';
  * Client-side: do NOT run the Zod validator (it reads process.env and may
  * throw in the browser). Instead, read the NEXT_PUBLIC_* variables that are
  * statically injected by Next.js at build time.
+ * 
+ * Build phase: Skip validation during Next.js build to avoid errors when
+ * environment variables aren't set. Validation will still run at actual runtime.
  */
 let env: Record<string, any>;
-if (typeof window === 'undefined') {
-  // server/runtime: validate strictly
+
+// Skip validation during Next.js build phase
+const isNextBuild = process.env.NEXT_PHASE === 'phase-production-build' || 
+                    process.env.NEXT_PHASE === 'phase-development-build';
+
+if (typeof window === 'undefined' && !isNextBuild) {
+  // server/runtime: validate strictly (NOT during build)
   env = validateFrontendEnv();
 } else {
-  // client: read safe NEXT_PUBLIC_* values injected by Next.js at build time.
+  // client or build phase: read safe NEXT_PUBLIC_* values injected by Next.js
   env = {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
