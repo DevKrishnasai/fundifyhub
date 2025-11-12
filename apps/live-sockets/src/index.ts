@@ -1,6 +1,5 @@
 import WebSocket, { WebSocketServer } from "ws";
 import { createLogger } from "@fundifyhub/logger";
-import { validateLiveSocketsEnv } from "@fundifyhub/utils";
 import config from "./utils/config";
 
 const logger = createLogger({ serviceName: 'live-sockets' });
@@ -8,18 +7,13 @@ const logger = createLogger({ serviceName: 'live-sockets' });
 const contextLogger = logger.child('[startup]');
 contextLogger.info('Initializing WebSocket server');
 
-// Validate environment variables before starting the server
-try {
-  validateLiveSocketsEnv();
-  contextLogger.info('✅ Environment variables validated successfully');
-} catch (error) {
-  contextLogger.error('❌ Environment validation failed:', error as Error);
-  process.exit(1);
-}
+// App-level config validates env on import
+const env = config.env;
+contextLogger.info('✅ Live-sockets configuration loaded successfully');
 
 let connectionCount = 0;
 
-const wss = new WebSocketServer({ port: Number(config.services.port) });
+const wss = new WebSocketServer({ port: Number(config.server.port) });
 
 wss.on("connection", (ws: WebSocket, req: any) => {
   connectionCount++;
@@ -67,4 +61,4 @@ process.on('SIGINT', () => {
 });
 
 const serverLogger = logger.child('[server]');
-serverLogger.info(`Running on ws://localhost:${config.services.port}`);
+serverLogger.info(`Running on ws://localhost:${config.server.port}`);

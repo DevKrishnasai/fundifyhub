@@ -1,57 +1,68 @@
+// Load environment variables from repository root `.env` (dev convenience).
+// Using a simple relative path as suggested so configs load the root .env
+// before validators run. This is intentionally placed in per-app config
+// files and not in the shared validator.
 import dotenv from 'dotenv';
-import path from 'path';
+if (process.env.NODE_ENV !== 'production') {
+	dotenv.config({ path: '../../.env' });
+}
+
 import { validateMainBackendEnv } from '@fundifyhub/utils';
 
-// Load environment variables
-dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
-
-// Validate and get typed environment variables
+// Validate env once and construct a backwards-compatible config object.
 const env = validateMainBackendEnv();
 
-export const config = {
-  // Server Configuration
-  server: {
-    port: env.API_PORT,
-    host: env.API_HOST,
-    cors: {
-      credentials: true,
-      origins: [
-        env.FRONTEND_URL
-      ]
-    }
-  },
+const config = {
+	// raw validated env (flat)
+	env,
 
-  // JWT Configuration
-  jwt: {
-    secret: env.JWT_SECRET,
-    expiresIn: env.JWT_EXPIRES_IN,
-    refreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN
-  },
+	// Server settings
+	server: {
+		host: env.API_HOST,
+		port: env.API_PORT,
+		frontendUrl: env.FRONTEND_URL,
+	},
 
-  // Redis Configuration
-  redis: {
-    host: env.REDIS_HOST,
-    port: env.REDIS_PORT,
-    url: env.REDIS_URL
-  },
+	// JWT settings (used by auth utilities)
+	jwt: {
+		secret: env.JWT_SECRET,
+		expiresIn: env.JWT_EXPIRES_IN,
+		refreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN,
+	},
 
-  storage: {
-    uploadthingToken: env.UPLOADTHING_TOKEN
-  },
+	// Redis connection settings
+	redis: {
+		host: env.REDIS_HOST,
+		port: env.REDIS_PORT,
+		url: env.REDIS_URL,
+	},
 
-  // Environment Configuration
-  env: {
-    isDevelopment: env.NODE_ENV === 'development',
-    logLevel: env.LOG_LEVEL || 'info'
-  }
-  ,
-  // OTP / Rate limiting configuration
-  otp: {
-    // maximum allowed attempts (resends + failed verifies) in the configured window
-    attemptsLimit: env.OTP_ATTEMPTS_LIMIT,
-    // sliding window duration in milliseconds
-    attemptsWindowMs: env.OTP_ATTEMPTS_WINDOW_MS
-  }
+	// OTP / attempts policy
+	otp: {
+		hmacSecret: env.OTP_HMAC_SECRET ?? env.JWT_SECRET,
+		attemptsLimit: env.OTP_ATTEMPTS_LIMIT,
+		attemptsWindowMs: env.OTP_ATTEMPTS_WINDOW_MS,
+	},
+
+	// UploadThing
+	uploadthing: {
+		token: env.UPLOADTHING_TOKEN,
+	},
+
+	// Database
+	database: {
+		url: env.DATABASE_URL,
+		seedUserPassword: env.SEED_USER_PASSWORD,
+	},
+
+	// bcrypt
+	bcrypt: {
+		rounds: env.BCRYPT_ROUNDS,
+	},
+
+	// convenience
+	nodeEnv: env.NODE_ENV,
+	logLevel: env.LOG_LEVEL,
 };
 
 export default config;

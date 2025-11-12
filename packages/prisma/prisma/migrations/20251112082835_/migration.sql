@@ -7,7 +7,7 @@ CREATE TABLE "users" (
     "phoneNumber" TEXT,
     "password" TEXT,
     "roles" TEXT[] DEFAULT ARRAY['CUSTOMER']::TEXT[],
-    "district" TEXT NOT NULL,
+    "district" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "emailVerified" BOOLEAN NOT NULL DEFAULT false,
     "phoneVerified" BOOLEAN NOT NULL DEFAULT false,
@@ -28,6 +28,7 @@ CREATE TABLE "users" (
 -- CreateTable
 CREATE TABLE "requests" (
     "id" TEXT NOT NULL,
+    "requestNumber" TEXT,
     "customerId" TEXT NOT NULL,
     "requestedAmount" DOUBLE PRECISION NOT NULL,
     "district" TEXT NOT NULL,
@@ -41,6 +42,7 @@ CREATE TABLE "requests" (
     "adminOfferedAmount" DOUBLE PRECISION,
     "adminTenureMonths" INTEGER,
     "adminInterestRate" DOUBLE PRECISION,
+    "adminEmiSchedule" JSONB,
     "offerMadeDate" TIMESTAMP(3),
     "offerResponseDate" TIMESTAMP(3),
     "assignedAgentId" TEXT,
@@ -54,6 +56,7 @@ CREATE TABLE "requests" (
 -- CreateTable
 CREATE TABLE "loans" (
     "id" TEXT NOT NULL,
+    "loanNumber" TEXT,
     "requestId" TEXT NOT NULL,
     "approvedAmount" DOUBLE PRECISION NOT NULL,
     "interestRate" DOUBLE PRECISION NOT NULL,
@@ -125,17 +128,22 @@ CREATE TABLE "payments" (
 -- CreateTable
 CREATE TABLE "documents" (
     "id" TEXT NOT NULL,
-    "requestId" TEXT NOT NULL,
-    "url" TEXT NOT NULL,
-    "fileSize" INTEGER,
-    "mimeType" TEXT,
+    "fileKey" TEXT NOT NULL DEFAULT '',
+    "fileName" TEXT NOT NULL DEFAULT 'unknown',
+    "fileSize" INTEGER NOT NULL DEFAULT 0,
+    "fileType" TEXT NOT NULL DEFAULT 'application/octet-stream',
     "documentType" TEXT NOT NULL,
     "documentCategory" TEXT NOT NULL DEFAULT 'OTHER',
-    "uploadedBy" TEXT,
+    "requestId" TEXT,
+    "uploadedBy" TEXT NOT NULL,
+    "isPublic" BOOLEAN NOT NULL DEFAULT false,
     "isVerified" BOOLEAN NOT NULL DEFAULT false,
     "verifiedBy" TEXT,
     "verifiedAt" TIMESTAMP(3),
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
     "description" TEXT,
+    "displayOrder" INTEGER,
+    "metadata" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -154,6 +162,18 @@ CREATE TABLE "comments" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "comments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "request_history" (
+    "id" TEXT NOT NULL,
+    "requestId" TEXT NOT NULL,
+    "actorId" TEXT,
+    "action" TEXT NOT NULL,
+    "metadata" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "request_history_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -177,6 +197,7 @@ CREATE TABLE "inspections" (
 -- CreateTable
 CREATE TABLE "otp_verifications" (
     "id" TEXT NOT NULL,
+    "sessionId" TEXT NOT NULL,
     "userId" TEXT,
     "identifier" TEXT NOT NULL,
     "type" TEXT NOT NULL,
@@ -185,28 +206,11 @@ CREATE TABLE "otp_verifications" (
     "isUsed" BOOLEAN NOT NULL DEFAULT false,
     "isVerified" BOOLEAN NOT NULL DEFAULT false,
     "attempts" INTEGER NOT NULL DEFAULT 0,
-    "maxAttempts" INTEGER NOT NULL DEFAULT 3,
+    "resendCount" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "otp_verifications_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "verification_sessions" (
-    "id" TEXT NOT NULL,
-    "sessionId" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "phoneNumber" TEXT NOT NULL,
-    "emailOTP" TEXT NOT NULL,
-    "phoneOTP" TEXT NOT NULL,
-    "emailVerified" BOOLEAN NOT NULL DEFAULT false,
-    "phoneVerified" BOOLEAN NOT NULL DEFAULT false,
-    "expiresAt" TIMESTAMP(3) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "verification_sessions_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -229,6 +233,16 @@ CREATE TABLE "service_configs" (
     CONSTRAINT "service_configs_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "serial_counters" (
+    "id" TEXT NOT NULL,
+    "seq" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "serial_counters_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
@@ -245,6 +259,9 @@ CREATE INDEX "users_roles_idx" ON "users"("roles");
 CREATE INDEX "users_district_idx" ON "users"("district");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "requests_requestNumber_key" ON "requests"("requestNumber");
+
+-- CreateIndex
 CREATE INDEX "requests_customerId_idx" ON "requests"("customerId");
 
 -- CreateIndex
@@ -255,6 +272,9 @@ CREATE INDEX "requests_district_idx" ON "requests"("district");
 
 -- CreateIndex
 CREATE INDEX "requests_assignedAgentId_idx" ON "requests"("assignedAgentId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "loans_loanNumber_key" ON "loans"("loanNumber");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "loans_requestId_key" ON "loans"("requestId");
@@ -296,10 +316,25 @@ CREATE INDEX "payments_emiScheduleId_idx" ON "payments"("emiScheduleId");
 CREATE INDEX "payments_paidDate_idx" ON "payments"("paidDate");
 
 -- CreateIndex
-CREATE INDEX "documents_requestId_idx" ON "documents"("requestId");
+CREATE UNIQUE INDEX "documents_fileKey_key" ON "documents"("fileKey");
+
+-- CreateIndex
+CREATE INDEX "documents_fileKey_idx" ON "documents"("fileKey");
+
+-- CreateIndex
+CREATE INDEX "documents_documentType_idx" ON "documents"("documentType");
 
 -- CreateIndex
 CREATE INDEX "documents_documentCategory_idx" ON "documents"("documentCategory");
+
+-- CreateIndex
+CREATE INDEX "documents_requestId_idx" ON "documents"("requestId");
+
+-- CreateIndex
+CREATE INDEX "documents_uploadedBy_idx" ON "documents"("uploadedBy");
+
+-- CreateIndex
+CREATE INDEX "documents_status_idx" ON "documents"("status");
 
 -- CreateIndex
 CREATE INDEX "comments_requestId_idx" ON "comments"("requestId");
@@ -311,6 +346,12 @@ CREATE INDEX "comments_authorId_idx" ON "comments"("authorId");
 CREATE INDEX "comments_commentType_idx" ON "comments"("commentType");
 
 -- CreateIndex
+CREATE INDEX "request_history_requestId_idx" ON "request_history"("requestId");
+
+-- CreateIndex
+CREATE INDEX "request_history_actorId_idx" ON "request_history"("actorId");
+
+-- CreateIndex
 CREATE INDEX "inspections_requestId_idx" ON "inspections"("requestId");
 
 -- CreateIndex
@@ -318,6 +359,9 @@ CREATE INDEX "inspections_agentId_idx" ON "inspections"("agentId");
 
 -- CreateIndex
 CREATE INDEX "inspections_status_idx" ON "inspections"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "otp_verifications_sessionId_key" ON "otp_verifications"("sessionId");
 
 -- CreateIndex
 CREATE INDEX "otp_verifications_userId_idx" ON "otp_verifications"("userId");
@@ -330,21 +374,6 @@ CREATE INDEX "otp_verifications_type_idx" ON "otp_verifications"("type");
 
 -- CreateIndex
 CREATE INDEX "otp_verifications_expiresAt_idx" ON "otp_verifications"("expiresAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "verification_sessions_sessionId_key" ON "verification_sessions"("sessionId");
-
--- CreateIndex
-CREATE INDEX "verification_sessions_sessionId_idx" ON "verification_sessions"("sessionId");
-
--- CreateIndex
-CREATE INDEX "verification_sessions_email_idx" ON "verification_sessions"("email");
-
--- CreateIndex
-CREATE INDEX "verification_sessions_phoneNumber_idx" ON "verification_sessions"("phoneNumber");
-
--- CreateIndex
-CREATE INDEX "verification_sessions_expiresAt_idx" ON "verification_sessions"("expiresAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "service_configs_serviceName_key" ON "service_configs"("serviceName");
@@ -390,6 +419,9 @@ ALTER TABLE "comments" ADD CONSTRAINT "comments_requestId_fkey" FOREIGN KEY ("re
 
 -- AddForeignKey
 ALTER TABLE "comments" ADD CONSTRAINT "comments_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "request_history" ADD CONSTRAINT "request_history_requestId_fkey" FOREIGN KEY ("requestId") REFERENCES "requests"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "inspections" ADD CONSTRAINT "inspections_requestId_fkey" FOREIGN KEY ("requestId") REFERENCES "requests"("id") ON DELETE CASCADE ON UPDATE CASCADE;

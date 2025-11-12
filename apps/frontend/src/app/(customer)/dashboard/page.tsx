@@ -53,7 +53,7 @@ function getStatusBadge(status: string) {
   switch (status) {
     case REQUEST_STATUS.PENDING:
     case REQUEST_STATUS.UNDER_REVIEW:
-    case REQUEST_STATUS.OFFER_MADE:
+    case REQUEST_STATUS.OFFER_SENT:
       return <Badge variant="secondary">{status.replace(/_/g, ' ')}</Badge>
     case REQUEST_STATUS.OFFER_ACCEPTED:
     case REQUEST_STATUS.INSPECTION_SCHEDULED:
@@ -61,10 +61,10 @@ function getStatusBadge(status: string) {
     case REQUEST_STATUS.INSPECTION_COMPLETED:
       return <Badge className="bg-primary/10 text-primary">{status.replace(/_/g, ' ')}</Badge>
     case REQUEST_STATUS.APPROVED:
-    case REQUEST_STATUS.AMOUNT_TRANSFERRED:
+    case REQUEST_STATUS.AMOUNT_DISBURSED:
       return <Badge className="bg-chart-3/10 text-chart-3">{status.replace(/_/g, ' ')}</Badge>
     case REQUEST_STATUS.REJECTED:
-    case REQUEST_STATUS.OFFER_REJECTED:
+    case REQUEST_STATUS.OFFER_DECLINED:
       return <Badge className="bg-destructive/10 text-destructive">{status.replace(/_/g, ' ')}</Badge>
     case REQUEST_STATUS.CANCELLED:
     case REQUEST_STATUS.COMPLETED:

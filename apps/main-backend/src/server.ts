@@ -1,27 +1,28 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import { validateMainBackendEnv } from '@fundifyhub/utils';
 import config from './utils/config';
 import apiRoutes from './api';
 import logger from './utils/logger';
 
-// Validate environment variables before starting the server
-try {
-  validateMainBackendEnv();
-  logger.info('✅ Environment variables validated successfully');
-} catch (error) {
-  logger.error('❌ Environment validation failed:', error as Error);
-  process.exit(1);
-}
+/*
+ * server.ts
+ * Entry point for the main-backend service. We import the application
+ * `config` (which validates environment variables on import) and then
+ * wire the Express app. Keeping validation in `utils/config` centralizes
+ * defaults and reduces duplicated validation logic across modules.
+ */
+// App-level config validates env on import
+const env = config.env;
+logger.info('✅ Main-backend configuration loaded successfully');
 
 const app = express();
 
 // TODO [P-2]: add rate limiting, security headers, request logging, etc.
 
 app.use(cors({
-  origin: config.server.cors.origins,
-  credentials: config.server.cors.credentials,
+  origin: config.server.frontendUrl,
+  credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -52,8 +53,8 @@ app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
   const contextLogger = logger.child('[error-handler]');
   contextLogger.error('Unhandled error:', error);
 
-  const message = config.env.isDevelopment 
-    ? error.message 
+  const message = config.nodeEnv === 'development'
+    ? error.message
     : 'Internal server error';
     
   res.status(500).json({

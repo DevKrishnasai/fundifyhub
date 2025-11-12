@@ -1,8 +1,10 @@
 /**
  * Centralized API endpoint definitions
  */
+import frontendConfig from './config';
+
 export const BACKEND_API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL,
+  BASE_URL: frontendConfig.public.apiUrl,
   ENDPOINTS: {
     AUTH: {
       REGISTER: '/api/v1/auth/register',
@@ -22,8 +24,9 @@ export const BACKEND_API_CONFIG = {
       SERVICE_DISABLE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disable`,
       SERVICE_DISCONNECT: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disconnect`,
       SERVICE_CONFIGURE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/configure`,
-      GET_ACTIVE_LOANS: '/api/v1/admin/active-loans-count',
-      GET_PENDING_REQUESTS: '/api/v1/admin/pending-loans-count',
+  GET_ACTIVE_LOANS: '/api/v1/admin/get-active-loans',
+  GET_PENDING_REQUESTS: '/api/v1/admin/get-pending-requests',
+      REQUESTS_LIST: '/api/v1/admin/requests',
     },
     USER: {
       PROFILE: '/api/v1/user/profile',
@@ -52,7 +55,7 @@ export const BACKEND_API_CONFIG = {
 }
 
 export const FRONTEND_API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_FRONTEND_API_URL,
+  BASE_URL: frontendConfig.public.apiUrl,
   ENDPOINTS: {
     AUTH: {
       LOGIN: '/auth/login',

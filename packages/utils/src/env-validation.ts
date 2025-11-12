@@ -57,12 +57,13 @@ export const mainBackendEnvSchema = z.object({
   // Default country dial code for phone normalization (digits only). Defaults to '91' for India.
   DEFAULT_COUNTRY_DIAL: z.string().regex(/^\d+$/, 'DEFAULT_COUNTRY_DIAL must be digits only').default('91'),
   // Bcrypt rounds configurable
-  BCRYPT_ROUNDS: z.string().transform((val) => parseInt(val)).optional(),
+  BCRYPT_ROUNDS: z.string().default('10').transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'BCRYPT_ROUNDS must be a positive integer'),
   // OTP attempts policy (Policy B): total attempts (resends + failed verifies) allowed in a time window
-  // NOTE: no defaults - these must be set in the environment explicitly
-  OTP_ATTEMPTS_LIMIT: z.string().transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'OTP_ATTEMPTS_LIMIT must be a positive integer'),
-  // Window for attempts in milliseconds
-  OTP_ATTEMPTS_WINDOW_MS: z.string().transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'OTP_ATTEMPTS_WINDOW_MS must be a positive integer'),
+  // OTP attempts policy (Policy B): total attempts (resends + failed verifies) allowed in a time window
+  // Provide sensible defaults for local/dev so application code doesn't need inline fallbacks.
+  OTP_ATTEMPTS_LIMIT: z.string().default('5').transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'OTP_ATTEMPTS_LIMIT must be a positive integer'),
+  // Window for attempts in milliseconds (default: 1 hour)
+  OTP_ATTEMPTS_WINDOW_MS: z.string().default(String(60 * 60 * 1000)).transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'OTP_ATTEMPTS_WINDOW_MS must be a positive integer'),
 });
 
 // Live sockets environment variables
@@ -79,6 +80,9 @@ export const jobWorkerEnvSchema = z.object({
   ...databaseEnvSchema.shape,
   ...redisEnvSchema.shape,
   DEFAULT_COUNTRY_DIAL: z.string().regex(/^\d+$/, 'DEFAULT_COUNTRY_DIAL must be digits only').default('91'),
+  // Chromium executable path for headless browser usage in workers (optional)
+  CHROMIUM_PATH: z.string().optional().default(''),
+  // Note: SMTP configuration is not read from environment; it's expected from DB service config
 });
 
 /**

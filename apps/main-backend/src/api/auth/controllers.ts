@@ -10,6 +10,7 @@ import logger from '../../utils/logger';
 import { APIResponseType } from '../../types';
 import queueClient from '../../utils/queues';
 import { generateAccessToken } from '../../utils/jwt';
+import config from '../../utils/config';
 
 /**
  * Check if email/phone is available for registration
@@ -136,7 +137,7 @@ export async function sendOTP(
       // Policy B: count sends/resends as attempts. Enforce attempts sliding-window before issuing a new code.
       const attemptsRes = await checkAndIncrementAttempts(identifier)
       if (!attemptsRes.ok) {
-        const retryMs = attemptsRes.retryAfterMs ?? Number(process.env.OTP_ATTEMPTS_WINDOW_MS || 3600000)
+        const retryMs = attemptsRes.retryAfterMs ?? Number(config.otp.attemptsWindowMs)
         const retrySeconds = Math.ceil(retryMs / 1000)
         // set Retry-After header in seconds for clients and caches
         res.setHeader('Retry-After', String(retrySeconds))
@@ -234,7 +235,7 @@ export async function verifyOTP(
       return res.status(400).json({ success: false, message: 'OTP already used' } as APIResponseType);
     }
     if (result.status === 'too_many_attempts') {
-      const retryMs = (result as any).retryAfterMs ?? Number(process.env.OTP_ATTEMPTS_WINDOW_MS || 3600000)
+      const retryMs = (result as any).retryAfterMs ?? Number(config.otp.attemptsWindowMs)
       const retrySeconds = Math.ceil(retryMs / 1000)
       res.setHeader('Retry-After', String(retrySeconds))
       return res.status(429).json({ success: false, message: 'Maximum OTP attempts exceeded', retryAfterMs: retryMs } as APIResponseType);
@@ -329,7 +330,7 @@ export async function register(
       return;
     }
 
-  const saltRounds = Number(process.env.BCRYPT_ROUNDS || 10)
+  const saltRounds = Number(config.bcrypt.rounds)
   const hashedPassword = await bcrypt.hash(password, saltRounds);
     // TODO: Make bcrypt salt rounds configurable via env (e.g. BCRYPT_ROUNDS). Consider
     // using a transaction here so user creation and OTP marking are atomic.
@@ -347,7 +348,9 @@ export async function register(
             roles: ['CUSTOMER'],
             emailVerified: true,
             phoneVerified: true,
-            district: district
+            // Cast to any to satisfy transient type differences between generated Prisma client
+            // and local types during the migration. After regenerating clients this can be tightened.
+            district: district ? ([district] as any) : ([] as any)
           },
         });
 
@@ -394,7 +397,7 @@ export async function register(
             firstName: user.firstName,
             lastName: user.lastName,
             roles: Array.isArray(user.roles) ? user.roles : ['CUSTOMER'],
-            district: user.district || '',
+            district: Array.isArray(user.district) ? user.district : (user.district ? [user.district] : []),
             isActive: user.isActive ?? true,
           },
         },
@@ -483,13 +486,13 @@ export async function login(
       roles: user.roles,
       firstName: user.firstName,
       lastName: user.lastName,
-      district: user.district,
+  district: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
       isActive: user.isActive,
     });
 
     res.cookie('accessToken', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+  secure: config.nodeEnv === 'production',
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000,
       path: '/',
@@ -527,7 +530,7 @@ export async function login(
           firstName: user.firstName,
           lastName: user.lastName,
           roles: Array.isArray(user.roles) ? user.roles : ['CUSTOMER'],
-          district: user.district || '',
+          district: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
           isActive: user.isActive ?? true,
         },
       },
@@ -555,7 +558,7 @@ export async function logout(
     }
     res.clearCookie('accessToken', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: config.nodeEnv === 'production',
       sameSite: 'lax',
       path: '/',
     });

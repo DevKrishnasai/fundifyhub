@@ -1,9 +1,10 @@
 import { UTApi } from "uploadthing/server";
 import type { UploadThingListFilesResponse } from "@fundifyhub/types";
+import config from './config';
 
-// Initialize UploadThing API
+// Initialize UploadThing API using validated config (token validated at import)
 const utapi = new UTApi({
-  token: process.env.UPLOADTHING_TOKEN,
+  token: config.uploadthing.token,
 });
 
 /**

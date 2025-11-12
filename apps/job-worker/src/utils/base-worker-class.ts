@@ -3,6 +3,17 @@ import config from './config';
 import { SimpleLogger } from '@fundifyhub/logger';
 import { QUEUE_NAMES } from '@fundifyhub/types';
 
+/**
+ * BaseWorker
+ * ----------
+ * Small base class that wraps a BullMQ Worker instance and standardizes
+ * event handling and graceful shutdown. Child classes should implement
+ * `processJob(job)` and can override `getConcurrency()`.
+ *
+ * This class obtains Redis connection settings from the application `config`
+ * (which is validated at import time). Using the app-level `config` avoids
+ * scattering direct validator calls across worker modules.
+ */
 export abstract class BaseWorker<T> {
   protected worker: Worker<T>;
   protected logger: SimpleLogger;
@@ -12,10 +23,10 @@ export abstract class BaseWorker<T> {
     this.logger = logger;
     this.queueName = queueName;
 
-    const connection = {
-      host: config.redis.host,
-      port: config.redis.port,
-    };
+  // Build connection object for BullMQ. We prefer a simple host/port object
+  // to satisfy the Worker connection shape. If you require TLS or a URL,
+  // update callers to normalize `config.redis.url` into the correct form.
+  const connection = { host: config.redis.host, port: config.redis.port };
 
     const workerOptions: WorkerOptions = {
       connection,

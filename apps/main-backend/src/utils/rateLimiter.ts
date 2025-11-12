@@ -151,10 +151,10 @@ export async function checkAndIncrementOtpRate(identifier: string): Promise<Limi
 export async function checkAndIncrementAttempts(identifier: string, limit?: number, windowMs?: number): Promise<{ ok: boolean; count?: number; retryAfterMs?: number }> {
   const key = `otp:attempts:${identifier}:z`
   const now = Date.now()
-  const expireSeconds = Math.ceil((windowMs || Number(config.otp.attemptsWindowMs || 3600000)) / 1000) + 60
+  const expireSeconds = Math.ceil((windowMs || Number(config.otp.attemptsWindowMs)) / 1000) + 60
   const member = `${now}:${Math.random().toString(36).slice(2, 10)}`
-  const lim = limit ?? Number(config.otp.attemptsLimit ?? 5)
-  const window = windowMs ?? Number(config.otp.attemptsWindowMs ?? 60 * 60 * 1000)
+  const lim = limit ?? Number(config.otp.attemptsLimit)
+  const window = windowMs ?? Number(config.otp.attemptsWindowMs)
 
   try {
     // Pass limit into the script; script will NOT add a new member when already over limit

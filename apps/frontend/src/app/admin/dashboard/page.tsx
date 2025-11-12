@@ -38,9 +38,10 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { get } from "@/lib/api-client"
-import { ROLES } from "@fundifyhub/types"
+import { ROLES, PENDING_REQUEST_STATUSES, ADMIN_AGENT_ROLES } from "@fundifyhub/types"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
 import logger from "@/lib/logger"
+import RequestActions from '@/components/request/RequestActions';
 
 // Data will be loaded from admin API endpoints: /admin/get-active-loans and /admin/get-pending-requests
 
@@ -92,6 +93,7 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [riskFilter, setRiskFilter] = useState("all")
+  const [districtFilter, setDistrictFilter] = useState<string>('all')
   const [selectedLoan, setSelectedLoan] = useState<any>(null)
   const [collectionNote, setCollectionNote] = useState("")
   const [actionType, setActionType] = useState("")
@@ -100,6 +102,8 @@ export default function AdminDashboard() {
   const [loans, setLoans] = useState<any[]>([])
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false)
   const [dataError, setDataError] = useState<string | null>(null)
+  const [requestLimit, setRequestLimit] = useState<number>(20)
+  const [requestOffset, setRequestOffset] = useState<number>(0)
   const [isCollectionDialogOpen, setIsCollectionDialogOpen] = useState(false)
   const [selectedLoanForCollection, setSelectedLoanForCollection] = useState<any>(null)
   const [collectionFormData, setCollectionFormData] = useState({
@@ -121,9 +125,23 @@ export default function AdminDashboard() {
       setIsLoadingData(true)
       setDataError(null)
       try {
+        // Build query for pending statuses and optional district filter
+        const statuses = PENDING_REQUEST_STATUSES.join(',');
+        const params: string[] = [];
+        params.push('status=' + encodeURIComponent(statuses));
+        // if a district is selected in the UI, add it. Otherwise leave blank to let the server
+        // return all allowed districts (server will restrict district-admins to their districts).
+        if (districtFilter && districtFilter !== 'all') {
+          params.push('district=' + encodeURIComponent(districtFilter));
+        }
+
+        // append pagination params
+        params.push('limit=' + String(requestLimit))
+        params.push('offset=' + String(requestOffset))
+
         const [activeResp, pendingResp] = await Promise.all([
           get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.GET_ACTIVE_LOANS),
-          get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.GET_PENDING_REQUESTS),
+          get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.REQUESTS_LIST + (params.length ? '?' + params.join('&') : '')),
         ])
 
         if (!mounted) return
@@ -149,8 +167,9 @@ export default function AdminDashboard() {
           }
         })
 
-        const fetchedRequests = (pendingResp.data || []).map((r: any) => ({
+        const fetchedRequests = (pendingResp.data?.requests || pendingResp.data || []).map((r: any) => ({
           id: r.id,
+          requestNumber: r.requestNumber || r.id,
           asset: r.assetBrand && r.assetModel ? `${r.assetBrand} ${r.assetModel}` : r.assetType || 'N/A',
           assetType: r.assetType || 'unknown',
           brand: r.assetBrand || '',
@@ -159,6 +178,8 @@ export default function AdminDashboard() {
           requestedAmount: r.requestedAmount || 0,
           submittedDate: r.submittedDate || r.createdAt || new Date().toISOString(),
           district: r.district || r.customer?.district || '',
+          currentStatus: r.currentStatus || 'PENDING',
+          assignedAgentId: r.assignedAgentId || null,
           userName: r.customer ? `${r.customer.firstName || ''} ${r.customer.lastName || ''}`.trim() : 'Unknown',
           userPhone: r.customer?.phoneNumber || r.customer?.phone || '',
         }))
@@ -173,12 +194,18 @@ export default function AdminDashboard() {
       }
     }
 
+    let interval: ReturnType<typeof setInterval> | undefined;
+
     if (!isLoading && user && user.roles?.some((r: string) => [ROLES.DISTRICT_ADMIN, ROLES.SUPER_ADMIN].includes(String(r).toUpperCase()))) {
       fetchData()
+      // Poll only when admin views the requests tab
+      interval = setInterval(() => {
+        if (activeTab === 'requests') fetchData();
+      }, 15000);
     }
 
-    return () => { mounted = false }
-  }, [isLoading, user])
+    return () => { mounted = false; if (interval) clearInterval(interval); }
+  }, [isLoading, user, activeTab])
 
   // Show loading while checking auth
   if (isLoading || !user || !user.roles?.some((r: string) => Object.values(ROLES).includes(r.toUpperCase()))) {
@@ -334,6 +361,58 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
+        {/* Filters (applies to both Loans and Requests) */}
+        <Card className="mb-4">
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <Input
+                    placeholder="Search by name, asset, request ID or loan ID..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full md:w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={riskFilter} onValueChange={setRiskFilter}>
+                <SelectTrigger className="w-full md:w-40">
+                  <SelectValue placeholder="Risk Level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Risk</SelectItem>
+                  <SelectItem value="low">Low Risk</SelectItem>
+                  <SelectItem value="medium">Medium Risk</SelectItem>
+                  <SelectItem value="high">High Risk</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={districtFilter} onValueChange={setDistrictFilter}>
+                <SelectTrigger className="w-full md:w-48">
+                  <SelectValue placeholder="District" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Districts</SelectItem>
+                  {(user?.district || []).map((d: string) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Tabs to separate loans and pending requests */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-2">
@@ -342,47 +421,6 @@ export default function AdminDashboard() {
           </TabsList>
 
           <TabsContent value="loans" className="space-y-4">
-            {/* Filters */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                      <Input
-                        placeholder="Search by borrower name, loan ID, or asset..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-full md:w-40">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="overdue">Overdue</SelectItem>
-                      <SelectItem value="closed">Closed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={riskFilter} onValueChange={setRiskFilter}>
-                    <SelectTrigger className="w-full md:w-40">
-                      <SelectValue placeholder="Risk Level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Risk</SelectItem>
-                      <SelectItem value="low">Low Risk</SelectItem>
-                      <SelectItem value="medium">Medium Risk</SelectItem>
-                      <SelectItem value="high">High Risk</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Loans Table */}
             <div className="space-y-4">
               {filteredLoans.map((loan) => (
@@ -508,7 +546,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="min-w-0">
                           <h3 className="font-semibold text-base sm:text-lg truncate">{request.asset}</h3>
-                          <p className="text-sm text-muted-foreground">Request ID: {request.id}</p>
+                          <p className="text-sm text-muted-foreground">Request ID: {request.requestNumber ?? request.id}</p>
                         </div>
                       </div>
                       <Badge variant="secondary" className="w-fit">
@@ -551,9 +589,16 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="flex justify-end">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
+                        {/* Only show admin actions when user has admin/agent roles */}
+                        {user && user.roles && user.roles.some((r: string) => ADMIN_AGENT_ROLES.map(x => x.toUpperCase()).includes(String(r).toUpperCase())) && (
+                          <RequestActions requestId={request.id} requestStatus={request.currentStatus} district={request.district} onUpdated={(r) => {
+                            // update local UI after actions
+                            setRequests((prev) => prev.map((p) => p.id === r.id ? { ...p, ...r } : p));
+                          }} />
+                        )}
                         <Button variant="outline" size="sm" asChild>
-                          <Link href={`/request/${request.id}`}>
+                          <Link href={`/asset-detail/${request.requestNumber ?? request.id}`}>
                             <Eye className="w-4 h-4 mr-2" />
                             View Details
                           </Link>
@@ -573,6 +618,18 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
               )}
+            </div>
+            {/* Pagination controls for requests list */}
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-muted-foreground">Showing {requests.length} requests</div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" disabled={requestOffset === 0} onClick={() => setRequestOffset(Math.max(0, requestOffset - requestLimit))}>
+                  Previous
+                </Button>
+                <Button size="sm" onClick={() => setRequestOffset(requestOffset + requestLimit)}>
+                  Next
+                </Button>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
