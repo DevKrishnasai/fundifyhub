@@ -755,7 +755,7 @@ export async function getUserRequestsController(req: Request, res: Response): Pr
       } else if (s === 'CLOSED') {
         where.currentStatus = { in: [REQUEST_STATUS.CANCELLED, REQUEST_STATUS.COMPLETED] as any } as any;
       } else if (s === 'ACTIVE') {
-        where.currentStatus = { in: [REQUEST_STATUS.APPROVED, REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.PROCESSING_LOAN, REQUEST_STATUS.ACTIVE] as any } as any;
+        where.currentStatus = { in: [REQUEST_STATUS.APPROVED, REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.ACTIVE] as any } as any;
       } else {
         // Fallback: if a direct enum value passed, match exactly
         where.currentStatus = rawStatus as any;

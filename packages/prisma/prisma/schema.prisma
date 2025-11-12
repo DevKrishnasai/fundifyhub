@@ -84,6 +84,13 @@ model Request {
   // Admin requested information (when status is MORE_INFO_REQUIRED)
   adminRequestedInfo String?    // What additional info/documents admin needs
   
+  // Bank Details (for disbursement)
+  bankAccountNumber  String?    // Customer's bank account number
+  bankIfscCode       String?    // Bank IFSC code
+  bankAccountName    String?    // Account holder name
+  upiId              String?    // UPI ID (optional alternative)
+  bankDetailsSubmittedAt DateTime? // When bank details were submitted
+  
   // Assignment Details
   assignedAgentId    String?    // Agent assigned for inspection
   inspectionScheduledAt DateTime? // When inspection is scheduled to take place

@@ -30,6 +30,13 @@ export async function getRequestDetailController(req: Request, res: Response): P
         customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } },
         assignedAgent: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } },
         comments: { select: { id: true, content: true, createdAt: true, authorId: true, isInternal: true, author: { select: { id: true, firstName: true, lastName: true, roles: true } } } },
+        loan: {
+          include: {
+            emisSchedule: {
+              orderBy: { emiNumber: 'asc' }
+            }
+          }
+        }
       }
     });
 
@@ -273,14 +280,16 @@ export async function updateRequestStatusController(req: Request, res: Response)
         res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
         return;
       }
-      // Only allow these customer transitions (accept, decline, withdraw/cancel, reschedule)
+      // Only allow these customer transitions (accept, decline, withdraw/cancel, reschedule, signature, bank details)
       const allowed = [
         'OFFER_ACCEPTED', 
         'OFFER_DECLINED', 
-        'CANCELLED',  // Withdraw request
+        'CANCELLED',  // Withdraw request or refuse signature
         'PENDING',    // Submit additional info when MORE_INFO_REQUIRED
         'INSPECTION_SCHEDULED',  // Request reschedule (stays in same status)
         'INSPECTION_RESCHEDULE_REQUESTED',  // Request reschedule (new status)
+        'PENDING_BANK_DETAILS',  // After uploading signature
+        'BANK_DETAILS_SUBMITTED',  // After submitting bank details
       ];
       if (!allowed.includes(status)) {
         res.status(403).json({ success: false, message: 'Customers cannot perform this status change' } as APIResponseType);
@@ -337,6 +346,26 @@ export async function updateRequestStatusController(req: Request, res: Response)
       prisma.request.update({ where: { id: dbId }, data: { currentStatus: toStatus } }),
       prisma.requestHistory.create({ data: { requestId: dbId, actorId: user.id, action: String(toStatus), metadata: { fromStatus, toStatus, note } } })
     ]);
+
+    // Auto-transition: APPROVED → PENDING_SIGNATURE
+    // When agent approves, immediately move to signature collection phase
+    let finalRequest = updatedRequest;
+    if (toStatus === 'APPROVED') {
+      finalRequest = await prisma.request.update({ 
+        where: { id: dbId }, 
+        data: { currentStatus: 'PENDING_SIGNATURE' } 
+      });
+      
+      // Create history entry for auto-transition
+      await prisma.requestHistory.create({ 
+        data: { 
+          requestId: dbId, 
+          actorId: user.id, 
+          action: 'PENDING_SIGNATURE', 
+          metadata: { fromStatus: 'APPROVED', toStatus: 'PENDING_SIGNATURE', note: 'Auto-transitioned to signature collection' } 
+        } 
+      });
+    }
 
     // Return the full request including history/comments/documents so clients have the complete audit trail
     const fullRequest = await prisma.request.findUnique({
@@ -650,7 +679,7 @@ export async function confirmOfferController(req: Request, res: Response): Promi
         lastEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[(emiCalc).emiSchedule.length - 1].paymentDate) : undefined,
       } });
 
-      // create EMISchedule rows
+      // Create EMI schedule entries
       for (const r of (emiCalc).emiSchedule) {
         await tx.eMISchedule.create({ data: {
           loanId: createdLoan.id,
@@ -664,8 +693,8 @@ export async function confirmOfferController(req: Request, res: Response): Promi
         } });
       }
 
-      // Update request status to PROCESSING_LOAN (or APPROVED depending on business rules)
-      await tx.request.update({ where: { id: request.id }, data: { currentStatus: REQUEST_STATUS.PROCESSING_LOAN } });
+      // Note: Request status remains APPROVED until admin manually disburses amount
+      // No automatic status change here
 
       // Create history entry
       await tx.requestHistory.create({ data: { requestId: request.id, actorId: user.id, action: 'LOAN_CREATED', metadata: { loanId: createdLoan.id } } });
@@ -676,6 +705,182 @@ export async function confirmOfferController(req: Request, res: Response): Promi
   } catch (error) {
     logger.error('confirmOfferController error', error as Error);
     res.status(500).json({ success: false, message: 'Failed to confirm offer and create loan' } as APIResponseType);
+  }
+}
+
+/**
+ * POST /requests/:id/create-loan
+ * Create Loan and EMI Schedule entries from disbursed request
+ * Called when admin activates the loan after disbursement
+ * Uses adminEmiSchedule snapshot to create canonical Loan + EMISchedule records
+ * RBAC: District admins for the district or SUPER_ADMIN
+ */
+export async function createLoanController(req: Request, res: Response): Promise<void> {
+  try {
+    const requestId = req.params.id;
+    if (!requestId) {
+      res.status(400).json({ success: false, message: 'request id required' } as APIResponseType);
+      return;
+    }
+
+    const user = req.user as any;
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
+      return;
+    }
+
+    // Allow lookup by DB id or by human-friendly requestNumber
+    const request = await prisma.request.findFirst({ 
+      where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
+      select: { 
+        id: true, 
+        district: true, 
+        currentStatus: true,
+        adminOfferedAmount: true,
+        adminInterestRate: true,
+        adminTenureMonths: true,
+        adminEmiSchedule: true
+      }
+    });
+    
+    if (!request) {
+      res.status(404).json({ success: false, message: 'Request not found' } as APIResponseType);
+      return;
+    }
+
+    const isSuper = Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN);
+    if (!isSuper && !hasAnyRole(user, [ROLES.DISTRICT_ADMIN])) {
+      res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+      return;
+    }
+
+    // If district admin, verify they have access to the request's district
+    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+      res.status(403).json({ success: false, message: 'Forbidden - No access to this district' } as APIResponseType);
+      return;
+    }
+
+    // Validate request is in AMOUNT_DISBURSED status
+    if (request.currentStatus !== 'AMOUNT_DISBURSED') {
+      res.status(400).json({ 
+        success: false, 
+        message: 'Loan can only be created from AMOUNT_DISBURSED status',
+        data: { currentStatus: request.currentStatus }
+      } as APIResponseType);
+      return;
+    }
+
+    // Idempotency: if a loan already exists for this request, return it
+    const existingLoan = await prisma.loan.findUnique({ 
+      where: { requestId: request.id } as any,
+      include: { emisSchedule: { orderBy: { emiNumber: 'asc' } } }
+    });
+    
+    if (existingLoan) {
+      res.status(200).json({ 
+        success: true, 
+        message: 'Loan already exists', 
+        data: { loan: existingLoan } 
+      } as APIResponseType);
+      return;
+    }
+
+    // Use stored snapshot or fall back to admin offer fields
+    const snapshot = (request as any).adminEmiSchedule;
+    let emiCalc: any;
+    
+    if (snapshot) {
+      emiCalc = snapshot;
+    } else if (request.adminOfferedAmount && request.adminInterestRate && request.adminTenureMonths) {
+      emiCalc = calculateEmiSchedule({ 
+        principal: Number(request.adminOfferedAmount), 
+        annualRate: Number(request.adminInterestRate), 
+        tenureMonths: Number(request.adminTenureMonths) 
+      });
+    } else {
+      res.status(400).json({ 
+        success: false, 
+        message: 'No EMI snapshot or admin offer fields available to create loan' 
+      } as APIResponseType);
+      return;
+    }
+
+    // Create loan and EMI schedule transactionally
+    let createdLoan: any = null;
+    await prisma.$transaction(async (tx) => {
+      // Create Loan record
+      createdLoan = await tx.loan.create({ 
+        data: {
+          requestId: request.id,
+          approvedAmount: Number(request.adminOfferedAmount) || Number((emiCalc).monthlyPayment * (emiCalc).emiSchedule.length),
+          interestRate: Number(request.adminInterestRate) || 0,
+          tenureMonths: Number(request.adminTenureMonths) || (emiCalc).emiSchedule.length,
+          emiAmount: Number((emiCalc).monthlyPayment) || 0,
+          totalInterest: Number((emiCalc).totalInterest) || 0,
+          totalAmount: Number((emiCalc).totalPayment) || 0,
+          status: 'ACTIVE',
+          approvedDate: new Date(),
+          disbursedDate: new Date(),
+          firstEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[0].paymentDate) : undefined,
+          lastEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[(emiCalc).emiSchedule.length - 1].paymentDate) : undefined,
+          remainingAmount: Number((emiCalc).totalPayment) || 0,
+          remainingEMIs: (emiCalc).emiSchedule.length,
+        } 
+      });
+
+      // Create EMI schedule entries
+      for (const r of (emiCalc).emiSchedule) {
+        await tx.eMISchedule.create({ 
+          data: {
+            loanId: createdLoan.id,
+            requestId: request.id,
+            emiNumber: r.installment,
+            dueDate: new Date(r.paymentDate),
+            emiAmount: r.paymentAmount,
+            principalAmount: r.principal,
+            interestAmount: r.interest,
+            status: 'PENDING'
+          } 
+        });
+      }
+
+      // Create history entry
+      await tx.requestHistory.create({ 
+        data: { 
+          requestId: request.id, 
+          actorId: user.id, 
+          action: 'LOAN_CREATED', 
+          metadata: { 
+            loanId: createdLoan.id,
+            emiCount: (emiCalc).emiSchedule.length,
+            totalAmount: Number((emiCalc).totalPayment)
+          } 
+        } 
+      });
+    });
+
+    // Fetch the created loan with EMI schedule
+    const loanWithSchedule = await prisma.loan.findUnique({
+      where: { id: createdLoan.id },
+      include: { 
+        emisSchedule: { 
+          orderBy: { emiNumber: 'asc' } 
+        } 
+      }
+    });
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Loan and EMI schedule created successfully', 
+      data: { loan: loanWithSchedule } 
+    } as APIResponseType);
+    return;
+  } catch (error) {
+    logger.error('createLoanController error', error as Error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create loan and EMI schedule' 
+    } as APIResponseType);
   }
 }
 
@@ -740,5 +945,299 @@ export async function getAvailableAgentsController(req: Request, res: Response):
   } catch (error) {
     logger.error('getAvailableAgentsController error', error as Error);
     res.status(500).json({ success: false, message: 'Failed to fetch available agents' } as APIResponseType);
+  }
+}
+
+/**
+ * GET /requests/:id/generate-agreement
+ * Generate loan agreement PDF for a request in PENDING_SIGNATURE status
+ * Returns PDF buffer that can be downloaded
+ */
+export async function generateAgreementController(req: Request, res: Response): Promise<void> {
+  try {
+    const requestId = req.params.id;
+    if (!requestId) {
+      res.status(400).json({ success: false, message: 'request id required' } as APIResponseType);
+      return;
+    }
+
+    const user = req.user as any;
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
+      return;
+    }
+
+    // Fetch request with all necessary details
+    const request = await prisma.request.findFirst({
+      where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
+      include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } }
+      }
+    });
+
+    if (!request) {
+      res.status(404).json({ success: false, message: 'Request not found' } as APIResponseType);
+      return;
+    }
+
+    // RBAC: Customer can only access their own request
+    if (hasAnyRole(user, [ROLES.CUSTOMER])) {
+      if (request.customerId !== user.id) {
+        res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+        return;
+      }
+    }
+
+    // District admin must have district access
+    if (hasAnyRole(user, [ROLES.DISTRICT_ADMIN]) && !hasAnyRole(user, [ROLES.SUPER_ADMIN])) {
+      if (!hasDistrictAccess(user, request.district)) {
+        res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+        return;
+      }
+    }
+
+    // Verify request is in correct status
+    if (request.currentStatus !== REQUEST_STATUS.PENDING_SIGNATURE && request.currentStatus !== REQUEST_STATUS.APPROVED) {
+      res.status(400).json({ 
+        success: false, 
+        message: 'Agreement can only be generated for approved requests awaiting signature' 
+      } as APIResponseType);
+      return;
+    }
+
+    // Prepare agreement data
+    const agreementData = {
+      requestNumber: request.requestNumber || request.id,
+      customerName: `${request.customer?.firstName || ''} ${request.customer?.lastName || ''}`.trim() || 'Customer',
+      customerEmail: request.customer?.email || '',
+      customerPhone: request.customer?.phoneNumber || '',
+      customerDistrict: request.district,
+      
+      assetType: request.assetType || 'Asset',
+      assetBrand: request.assetBrand || undefined,
+      assetModel: request.assetModel || undefined,
+      
+      approvedAmount: Number(request.adminOfferedAmount) || 0,
+      tenureMonths: Number(request.adminTenureMonths) || 0,
+      interestRate: Number(request.adminInterestRate) || 0,
+      emiAmount: request.adminEmiSchedule ? Number((request.adminEmiSchedule as any).monthlyPayment) || 0 : 0,
+      
+      emiSchedule: request.adminEmiSchedule ? (request.adminEmiSchedule as any).emiSchedule : undefined,
+      
+      generatedDate: new Date().toISOString()
+    };
+
+    // Generate PDF (import at top of file: import { generateLoanAgreementPDF } from '../../utils/pdf-generator';)
+    const { generateLoanAgreementPDF } = await import('../../utils/pdf-generator');
+    const pdfBuffer = await generateLoanAgreementPDF(agreementData);
+
+    // Set headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="loan-agreement-${request.requestNumber || request.id}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    // Send PDF buffer
+    res.send(pdfBuffer);
+  } catch (error) {
+    logger.error('generateAgreementController error', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to generate agreement' } as APIResponseType);
+  }
+}
+
+/**
+ * Upload Signed Agreement Controller
+ * Receives base64 PDF from frontend, uploads to UploadThing, and saves document record
+ */
+export async function uploadSignedAgreementController(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
+    const { pdfBase64, fileName } = req.body;
+    const user = (req as any).user;
+
+    if (!user) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    if (!pdfBase64 || !fileName) {
+      res.status(400).json({ success: false, error: 'Missing PDF data or filename' });
+      return;
+    }
+
+    // Fetch request with minimal data
+    const request = await prisma.request.findUnique({
+      where: { id: id },
+      select: { 
+        id: true, 
+        customerId: true, 
+        district: true,
+        currentStatus: true 
+      }
+    });
+
+    if (!request) {
+      res.status(404).json({ success: false, error: 'Request not found' });
+      return;
+    }
+
+    // Authorization check
+    const isCustomer = user.roles.includes('CUSTOMER');
+    const isAdmin = user.roles.includes('DISTRICT_ADMIN') || user.roles.includes('SUPER_ADMIN');
+    const isDistrictMatch = user.district === request.district;
+
+    if (isCustomer && request.customerId !== user.id) {
+      res.status(403).json({ success: false, error: 'Not authorized to upload agreement for this request' });
+      return;
+    }
+
+    if (isAdmin && !user.roles.includes('SUPER_ADMIN') && !isDistrictMatch) {
+      res.status(403).json({ success: false, error: 'Not authorized for this district' });
+      return;
+    }
+
+    // Convert base64 to buffer
+    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+
+    // Upload to UploadThing using UTApi
+    const { UTApi } = await import('uploadthing/server');
+    const utapi = new UTApi();
+
+    logger.info(`Uploading signed agreement for request ${id}`);
+
+    // Create a File object from buffer
+    const file = new File([pdfBuffer], fileName, { type: 'application/pdf' });
+
+    const uploadResult = await utapi.uploadFiles(file);
+
+    if (uploadResult.error) {
+      logger.error('UploadThing upload failed:', uploadResult.error as any);
+      res.status(500).json({ success: false, error: 'Failed to upload PDF to storage' });
+      return;
+    }
+
+    const uploadedFile = uploadResult.data;
+
+    // Save document record to database
+    const document = await prisma.document.create({
+      data: {
+        requestId: id,
+        fileKey: uploadedFile.key,
+        fileName: uploadedFile.name,
+        fileSize: uploadedFile.size,
+        fileType: 'application/pdf',
+        uploadedBy: user.id,
+        documentType: 'LOAN_AGREEMENT',
+        description: 'Digitally signed loan agreement',
+      }
+    });
+
+    logger.info(`Signed agreement saved: ${document.id} for request ${id}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Signed agreement uploaded successfully',
+      data: {
+        documentId: document.id,
+        fileKey: document.fileKey,
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error uploading signed agreement:', error as Error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to upload signed agreement' 
+    });
+  }
+}
+
+/**
+ * Update Bank Details Controller
+ * Saves customer's bank details to the request
+ */
+export async function updateBankDetailsController(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
+    const { bankAccountNumber, bankIfscCode, bankAccountName, upiId } = req.body;
+    const user = (req as any).user;
+
+    if (!user) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    if (!bankAccountNumber || !bankIfscCode || !bankAccountName) {
+      res.status(400).json({ success: false, error: 'Account number, IFSC code, and account name are required' });
+      return;
+    }
+
+    // Fetch request - support both database ID and request number
+    const request = await prisma.request.findFirst({
+      where: { 
+        OR: [
+          { id: id }, 
+          { requestNumber: id }
+        ] 
+      },
+      select: { id: true, customerId: true, currentStatus: true }
+    });
+
+    if (!request) {
+      res.status(404).json({ success: false, error: 'Request not found' });
+      return;
+    }
+
+    // Only customer who owns the request can update bank details
+    if (request.customerId !== user.id) {
+      res.status(403).json({ success: false, error: 'Not authorized to update bank details for this request' });
+      return;
+    }
+
+    // Update bank details using the database ID
+    const updatedRequest = await prisma.request.update({
+      where: { id: request.id },
+      data: {
+        bankAccountNumber,
+        bankIfscCode,
+        bankAccountName,
+        upiId: upiId || null,
+        bankDetailsSubmittedAt: new Date(),
+        currentStatus: 'BANK_DETAILS_SUBMITTED',
+      }
+    });
+
+    // Create history entry
+    await prisma.requestHistory.create({
+      data: {
+        requestId: request.id,
+        actorId: user.id,
+        action: 'BANK_DETAILS_SUBMITTED',
+        metadata: {
+          fromStatus: request.currentStatus,
+          toStatus: 'BANK_DETAILS_SUBMITTED',
+          bankAccountNumber: `***${bankAccountNumber.slice(-4)}`, // Store last 4 digits only for privacy
+          bankIfscCode,
+          hasUpi: !!upiId,
+        }
+      }
+    });
+
+    logger.info(`Bank details updated for request ${id}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Bank details submitted successfully',
+      data: {
+        requestId: updatedRequest.id,
+        status: updatedRequest.currentStatus,
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error updating bank details:', error as Error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to update bank details' 
+    });
   }
 }

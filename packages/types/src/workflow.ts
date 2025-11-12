@@ -621,7 +621,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
   // ============================================
 
   [REQUEST_STATUS.APPROVED]: {
-    description: 'Agent approved the request',
+    description: 'Agent approved - automatically requesting signature',
     customerActions: [],
     adminActions: [],
     agentActions: [],
@@ -630,7 +630,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
         id: 'auto-request-signature',
         label: 'Request Signature',
         targetStatus: REQUEST_STATUS.PENDING_SIGNATURE,
-        description: 'Automatically moves to signature stage',
+        description: 'Automatically moves to signature stage immediately',
         priority: 1,
       }
     ],
@@ -639,15 +639,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
   [REQUEST_STATUS.PENDING_SIGNATURE]: {
     description: 'Waiting for customer to sign loan agreement',
     customerActions: [
-      {
-        id: 'sign-agreement',
-        label: 'Sign Agreement',
-        icon: 'FileSignature',
-        variant: 'default',
-        targetStatus: REQUEST_STATUS.PENDING_BANK_DETAILS,
-        requiresCustomerOwnership: true,
-        priority: 1,
-      },
+      // No action button - SignaturePad component is rendered directly in the documents section
       {
         id: 'refuse-signature',
         label: 'Refuse to Sign',
@@ -674,93 +666,27 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
   },
 
   [REQUEST_STATUS.PENDING_BANK_DETAILS]: {
-    description: 'Waiting for customer to provide UPI/bank details',
+    description: 'Waiting for customer to provide bank details for disbursement',
     customerActions: [
-      {
-        id: 'submit-bank-details',
-        label: 'Submit Bank Details',
-        icon: 'CreditCard',
-        variant: 'default',
-        targetStatus: REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-        requiresInput: true,
-        requiresCustomerOwnership: true,
-        priority: 1,
-      }
+      // Bank details form is shown directly in UI, no action button needed
     ],
     adminActions: [],
     agentActions: [],
-    systemActions: [
-      {
-        id: 'auto-cancel-bank-details',
-        label: 'Auto-cancel',
-        targetStatus: REQUEST_STATUS.CANCELLED,
-        description: 'Auto-cancels after 7 days if not submitted',
-        priority: 99,
-      }
-    ],
   },
 
   // ============================================
-  // PHASE 5: LOAN PROCESSING
+  // PHASE 5: LOAN PROCESSING & DISBURSEMENT
   // ============================================
 
   [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: {
-    description: 'Customer submitted bank details, admin verifying',
+    description: 'Bank details submitted, admin will disburse amount',
     customerActions: [],
     adminActions: [
       {
-        id: 'process-loan',
-        label: 'Process Loan',
-        icon: 'FileCheck',
-        variant: 'default',
-        targetStatus: REQUEST_STATUS.PROCESSING_LOAN,
-        districtCheck: true,
-        priority: 1,
-      },
-      {
-        id: 'request-different-details',
-        label: 'Request Different Details',
-        icon: 'AlertCircle',
-        variant: 'outline',
-        targetStatus: REQUEST_STATUS.PENDING_BANK_DETAILS,
-        requiresInput: true,
-        districtCheck: true,
-        priority: 5,
-      }
-    ],
-    agentActions: [],
-  },
-
-  [REQUEST_STATUS.PROCESSING_LOAN]: {
-    description: 'Admin is creating loan record',
-    customerActions: [],
-    adminActions: [
-      {
-        id: 'transfer-amount',
-        label: 'Transfer Amount',
+        id: 'disburse-amount',
+        label: 'Disburse Amount',
+        description: 'Create loan and transfer amount to customer',
         icon: 'Send',
-        variant: 'default',
-        targetStatus: REQUEST_STATUS.TRANSFERRING_AMOUNT,
-        requiresInput: true,
-        districtCheck: true,
-        priority: 1,
-      }
-    ],
-    agentActions: [],
-  },
-
-  // ============================================
-  // PHASE 6: DISBURSEMENT
-  // ============================================
-
-  [REQUEST_STATUS.TRANSFERRING_AMOUNT]: {
-    description: 'Admin is transferring money to customer',
-    customerActions: [],
-    adminActions: [
-      {
-        id: 'confirm-transfer',
-        label: 'Upload Proof & Confirm',
-        icon: 'CheckCircle',
         variant: 'default',
         targetStatus: REQUEST_STATUS.AMOUNT_DISBURSED,
         requiresInput: true,
@@ -768,11 +694,12 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
         priority: 1,
       },
       {
-        id: 'transfer-failed',
-        label: 'Transfer Failed',
-        icon: 'AlertTriangle',
-        variant: 'destructive',
-        targetStatus: REQUEST_STATUS.TRANSFER_FAILED,
+        id: 'request-different-details',
+        label: 'Request Different Details',
+        description: 'Ask customer to resubmit bank details',
+        icon: 'AlertCircle',
+        variant: 'outline',
+        targetStatus: REQUEST_STATUS.PENDING_BANK_DETAILS,
         requiresInput: true,
         districtCheck: true,
         priority: 5,
@@ -821,7 +748,8 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
         icon: 'Calendar',
         variant: 'default',
         targetStatus: REQUEST_STATUS.ACTIVE,
-        requiresInput: true,
+        requiresInput: false,
+        requiresConfirmation: true,
         districtCheck: true,
         priority: 1,
       }
@@ -839,7 +767,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
   },
 
   // ============================================
-  // PHASE 7: ACTIVE LOAN
+  // PHASE 6: ACTIVE LOAN
   // ============================================
 
   [REQUEST_STATUS.ACTIVE]: {
