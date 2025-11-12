@@ -10,21 +10,61 @@ async function main() {
   const defaultPassword = process.env.SEED_USER_PASSWORD || "Password123!";
   const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
+  // Helper to increment/get serial counters in a safe way
+  async function nextSerial(id: string, startAt = 1000) {
+    try {
+      const updated = await prisma.serialCounter.update({
+        where: { id },
+        data: { seq: { increment: 1 } },
+        select: { seq: true },
+      });
+      return updated.seq;
+    } catch (err) {
+      // not found: create
+      try {
+        const created = await prisma.serialCounter.create({ data: { id, seq: startAt } });
+        return created.seq;
+      } catch (innerErr) {
+        // If creation fails due to race, fallback to reading existing
+        const existing = await prisma.serialCounter.findUnique({ where: { id } });
+        return existing ? existing.seq : startAt;
+      }
+    }
+  }
+
+  // Check if RequestHistory table exists (some deployments/migrations may differ)
+  let hasRequestHistory = false;
+  try {
+    // to_regclass returns null if table not present
+  // raw result shape varies by Prisma runtime
+  // @ts-ignore
+  const rh = await prisma.$queryRaw`SELECT to_regclass('public.request_history') as name`;
+    // rh may be an array or object depending on client; normalize
+    if (rh) {
+      const name = Array.isArray(rh) ? rh[0]?.name : (rh as any).name;
+      hasRequestHistory = !!name;
+    }
+  } catch (err) {
+    // silently continue; we'll skip creating history rows if not available
+    hasRequestHistory = false;
+  }
+
   // ---------------------------------------
-  // USERS
+  // USERS (more realistic demo set)
   // ---------------------------------------
   const users = await Promise.all([
+    // Customers
     prisma.user.upsert({
-      where: { email: "customer@example.com" },
+      where: { email: "john.customer@example.com" },
       update: {},
       create: {
         firstName: "John",
-        lastName: "Customer",
-        email: "customer@example.com",
-        phoneNumber: "+919876543210",
+        lastName: "Doe",
+        email: "john.customer@example.com",
+        phoneNumber: "+919810000001",
         password: hashedPassword,
         roles: ["CUSTOMER"],
-        district: "Mumbai",
+        district: ["Mumbai"],
         emailVerified: true,
         phoneVerified: true,
         city: "Mumbai",
@@ -32,33 +72,105 @@ async function main() {
       },
     }),
     prisma.user.upsert({
-      where: { email: "agent@fundifyhub.com" },
+      where: { email: "meena.k@example.com" },
       update: {},
       create: {
-        firstName: "Field",
-        lastName: "Agent",
-        email: "agent@fundifyhub.com",
-        phoneNumber: "+919876543202",
+        firstName: "Meena",
+        lastName: "Krishna",
+        email: "meena.k@example.com",
+        phoneNumber: "+919810000002",
+        password: hashedPassword,
+        roles: ["CUSTOMER"],
+        district: ["Delhi"],
+        emailVerified: true,
+        phoneVerified: true,
+        city: "New Delhi",
+        state: "Delhi",
+      },
+    }),
+    prisma.user.upsert({
+      where: { email: "arjun.r@example.com" },
+      update: {},
+      create: {
+        firstName: "Arjun",
+        lastName: "Rao",
+        email: "arjun.r@example.com",
+        phoneNumber: "+919810000003",
+        password: hashedPassword,
+        roles: ["CUSTOMER"],
+        district: ["Bangalore"],
+        emailVerified: true,
+        phoneVerified: true,
+        city: "Bangalore",
+        state: "Karnataka",
+      },
+    }),
+
+    // Agents
+    prisma.user.upsert({
+      where: { email: "agent.mumbai@fundifyhub.com" },
+      update: {},
+      create: {
+        firstName: "Ramesh",
+        lastName: "Patel",
+        email: "agent.mumbai@fundifyhub.com",
+        phoneNumber: "+919820000001",
         password: hashedPassword,
         roles: ["AGENT"],
-        district: "Mumbai",
+        district: ["Mumbai"],
         emailVerified: true,
         phoneVerified: true,
       },
     }),
     prisma.user.upsert({
-      where: { email: "admin@fundifyhub.com" },
+      where: { email: "agent.delhi@fundifyhub.com" },
       update: {},
       create: {
-        firstName: "System",
-        lastName: "Admin",
-        email: "admin@fundifyhub.com",
-        phoneNumber: "+919876543204",
+        firstName: "Asha",
+        lastName: "Verma",
+        email: "agent.delhi@fundifyhub.com",
+        phoneNumber: "+919820000002",
         password: hashedPassword,
-        roles: ["ADMIN"],
-        district:"Ahmedabad"
+        roles: ["AGENT"],
+        district: ["Delhi"],
+        emailVerified: true,
+        phoneVerified: true,
       },
     }),
+
+    // District admins
+    prisma.user.upsert({
+      where: { email: "admin.mumbai@fundifyhub.com" },
+      update: {},
+      create: {
+        firstName: "Priya",
+        lastName: "Shah",
+        email: "admin.mumbai@fundifyhub.com",
+        phoneNumber: "+919830000001",
+        password: hashedPassword,
+        roles: ["DISTRICT_ADMIN"],
+        district: ["Mumbai"],
+        emailVerified: true,
+        phoneVerified: true,
+      },
+    }),
+    prisma.user.upsert({
+      where: { email: "admin.delhi@fundifyhub.com" },
+      update: {},
+      create: {
+        firstName: "Vikram",
+        lastName: "Singh",
+        email: "admin.delhi@fundifyhub.com",
+        phoneNumber: "+919830000002",
+        password: hashedPassword,
+        roles: ["DISTRICT_ADMIN"],
+        district: ["Delhi"],
+        emailVerified: true,
+        phoneVerified: true,
+      },
+    }),
+
+    // Super admin
     prisma.user.upsert({
       where: { email: "super.admin@fundifyhub.com" },
       update: {},
@@ -68,43 +180,94 @@ async function main() {
         email: "super.admin@fundifyhub.com",
         phoneNumber: "+919876543203",
         password: hashedPassword,
-        roles: ["SUPER_ADMIN", "ADMIN", "AGENT", "CUSTOMER"],
-        district:"Ahmedabad"
+        roles: ["SUPER_ADMIN"],
+        district: ["Mumbai", "Delhi", "Bangalore"],
+        emailVerified: true,
+        phoneVerified: true,
       },
     }),
   ]);
 
-  const customer = users.find((u: User) => u.roles.includes("CUSTOMER"))!;
-  const agent = users.find((u: User) => u.roles.includes("AGENT"))!;
-  const admin = users.find((u: User) => u.roles.includes("ADMIN"))!;
+  const customers = users.filter((u: User) => Array.isArray(u.roles) && u.roles.includes("CUSTOMER"));
+  const agents = users.filter((u: User) => Array.isArray(u.roles) && u.roles.includes("AGENT"));
+  const districtAdmins = users.filter((u: User) => Array.isArray(u.roles) && u.roles.includes("DISTRICT_ADMIN"));
+  const superAdmin = users.find((u: User) => Array.isArray(u.roles) && u.roles.includes("SUPER_ADMIN"));
+
+  const customer = customers[0]!;
+  const agent = agents[0]!;
+  const admin = districtAdmins[0] || superAdmin || users[0];
 
   console.log(`✅ Created ${users.length} users`);
 
   // ---------------------------------------
   // REQUESTS
   // ---------------------------------------
-  const requestStatuses = ["PENDING", "ACTIVE", "REJECTED", "CLOSED"];
+  // ---------------------------------------
+  // REQUESTS (per-customer across districts and statuses)
+  // ---------------------------------------
+  const statuses = ["PENDING", "UNDER_REVIEW", "OFFER_SENT", "OFFER_ACCEPTED", "INSPECTION_SCHEDULED", "INSPECTION_IN_PROGRESS", "APPROVED", "REJECTED"];
   const requests: any[] = [];
 
-  for (const status of requestStatuses) {
-    const count = status === "ACTIVE" ? 4 : 2; // 4 active, 2 each for others
-
+  for (const cust of customers) {
+    // create 2-4 requests per customer
+    const count = 2 + Math.floor(Math.random() * 3);
     for (let i = 0; i < count; i++) {
+      const seq = await nextSerial('REQUEST', 1000);
+      const requestNumber = `REQ${seq}`;
+
+      const status = statuses[Math.floor(Math.random() * statuses.length)];
+      const district = Array.isArray(cust.district) && cust.district.length ? cust.district[0] : 'Mumbai';
+      const brandPool = ['Honda', 'Tata', 'Suzuki', 'Hyundai', 'Royal Enfield'];
+      const assetBrand = brandPool[Math.floor(Math.random() * brandPool.length)];
+
+      // try to find an available agent for this district
+      const assigned = agents.find((a) => Array.isArray(a.district) && a.district.includes(district));
+
       const req = await prisma.request.create({
         data: {
-          customerId: customer.id,
-          requestedAmount: 100000 + Math.floor(Math.random() * 50000),
-          district: "Mumbai",
+          requestNumber,
+          customerId: cust.id,
+          requestedAmount: 20000 + Math.floor(Math.random() * 150000),
+          district,
           currentStatus: status,
-          purchaseYear: 2018 + i,
-          assetType: "Vehicle",
-          assetBrand: ["Honda", "Tata", "Suzuki", "Hyundai"][Math.floor(Math.random() * 4)],
-          assetModel: `${status}-Model-${i + 1}`,
-          assetCondition: ["Excellent", "Good", "Fair"][Math.floor(Math.random() * 3)],
-          AdditionalDescription: `Demo ${status} asset ${i + 1} for testing`,
-          assignedAgentId: agent.id,
+          purchaseYear: 2015 + Math.floor(Math.random() * 10),
+          assetType: Math.random() > 0.7 ? 'JEWELRY' : 'MOTORCYCLE',
+          assetBrand,
+          assetModel: `${assetBrand}-Model-${i + 1}`,
+          assetCondition: ['EXCELLENT', 'GOOD', 'FAIR'][Math.floor(Math.random() * 3)],
+          AdditionalDescription: `Demo asset ${i + 1} for ${cust.firstName}`,
+          assignedAgentId: assigned ? assigned.id : null,
         },
       });
+
+      // initial history entry (best-effort)
+      if (hasRequestHistory) {
+        try {
+          await prisma.requestHistory.create({ data: { requestId: req.id, actorId: cust.id, action: 'REQUEST_CREATED', metadata: { createdBy: cust.email } } });
+        } catch (err) {
+          console.warn('Skipping requestHistory insert (create) -', (err as Error).message);
+        }
+      }
+
+      // For some requests, create an offer
+      if (['UNDER_REVIEW', 'OFFER_SENT'].includes(status) && Math.random() > 0.4) {
+        const offerAmount = Math.round(req.requestedAmount * (0.6 + Math.random() * 0.3));
+        const tenure = [6, 9, 12][Math.floor(Math.random() * 3)];
+        const interest = [10, 12, 14][Math.floor(Math.random() * 3)];
+        const toStatus = 'OFFER_SENT';
+        // perform update and then best-effort history insert
+        const updatedReq = await prisma.request.update({ where: { id: req.id }, data: { adminOfferedAmount: offerAmount, adminTenureMonths: tenure, adminInterestRate: interest, offerMadeDate: new Date(), currentStatus: toStatus } });
+        if (hasRequestHistory) {
+          try {
+            await prisma.requestHistory.create({ data: { requestId: req.id, actorId: admin.id, action: 'OFFER_CREATED', metadata: { amount: offerAmount, tenure, interest } } });
+          } catch (err) {
+            console.warn('Skipping requestHistory insert (offer) -', (err as Error).message);
+          }
+        }
+        requests.push(updatedReq);
+        continue;
+      }
+
       requests.push(req);
     }
   }
@@ -119,14 +282,14 @@ async function main() {
   const payments = [];
 
   for (const req of requests) {
-    // Only create loans for ACTIVE and CLOSED requests
-    if (req.currentStatus === "PENDING" || req.currentStatus === "REJECTED") continue;
+    // Only create loans for requests that look approved or offer accepted
+    if (!['OFFER_ACCEPTED', 'APPROVED', 'AMOUNT_DISBURSED', 'ACTIVE', 'COMPLETED'].includes(req.currentStatus)) continue;
 
-    const approvedAmount = req.requestedAmount - 5000;
-    const interestRate = 12;
-    const tenureMonths = 6;
+    const approvedAmount = Math.max( Math.round((req.adminOfferedAmount || req.requestedAmount) * 0.95), 1000 );
+    const interestRate = req.adminInterestRate || 12;
+    const tenureMonths = req.adminTenureMonths || 6;
     const emiAmount = parseFloat(((approvedAmount * (1 + interestRate / 100)) / tenureMonths).toFixed(2));
-    const totalInterest = approvedAmount * (interestRate / 100);
+    const totalInterest = Math.round(approvedAmount * (interestRate / 100));
     const totalAmount = approvedAmount + totalInterest;
 
     const loan = await prisma.loan.create({
@@ -138,7 +301,7 @@ async function main() {
         emiAmount,
         totalInterest,
         totalAmount,
-        status: req.currentStatus,
+        status: 'ACTIVE',
         approvedDate: new Date(),
         disbursedDate: new Date(),
         firstEMIDate: new Date(),

@@ -41,8 +41,16 @@ router.get("/signed-url-by-filekey/:fileKey", getSignedUrlByFileKeyController);
 /**
  * GET /api/v1/documents/:id
  * Get document metadata by ID
+ * Note: This must come before the /:fileKey/signed-url route to avoid conflicts
  */
 router.get("/:id", getDocumentController);
+
+/**
+ * GET /api/v1/documents/:fileKey/signed-url
+ * Generate signed URL for a file (RESTful format)
+ * Note: This route must come after /:id to ensure proper routing
+ */
+router.get("/:fileKey/signed-url", getSignedUrlByFileKeyController);
 
 /**
  * POST /api/v1/documents/signed-urls

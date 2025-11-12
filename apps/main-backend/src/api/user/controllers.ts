@@ -3,6 +3,7 @@ import { Prisma, prisma } from '@fundifyhub/prisma';
 import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, AssetPledgePayloadType, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 import { generateSignedUrl } from '../../utils/uploadthing';
+import { normalizeDistrict } from '../../utils/district';
 
 /**
  * Adds new asset photos to the request (does not delete existing)
@@ -263,8 +264,9 @@ async function handleDocuments(tx: Prisma.TransactionClient, requestId: string, 
  */
 export async function addAssetController(req: Request, res: Response): Promise<void> {
   try {
-    const customerId = req.user?.id;
-    const district = req.user?.district;
+  const customerId = req.user?.id;
+  const userDistricts = Array.isArray(req.user?.district) ? req.user!.district : [];
+  const district = userDistricts.length > 0 ? userDistricts[0] : '';
 
     // Enforce non-null for required user fields
     if (!customerId || !district) {
@@ -382,10 +384,13 @@ export async function addAssetController(req: Request, res: Response): Promise<v
         const customerName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim() || undefined;
         let recipientEmail: string | undefined = undefined;
         try {
-          const districtAdmin = await prisma.user.findFirst({
-            where: { roles: { has: 'DISTRICT_ADMIN' }, district },
-            select: { email: true },
+          // Prisma filters for string[] can be awkward across generated types; query candidates
+          // then filter in JS by district membership.
+          const candidates = await prisma.user.findMany({
+            where: { roles: { has: 'DISTRICT_ADMIN' } },
+            select: { email: true, district: true },
           });
+          const districtAdmin = candidates.find((u) => Array.isArray((u as any).district) && (u as any).district.includes(district));
           recipientEmail = districtAdmin?.email;
         } catch (e) {
           logger.warn('Failed to lookup district admin email, will fallback to global admin');
@@ -746,11 +751,11 @@ export async function getUserRequestsController(req: Request, res: Response): Pr
       if (s === 'PENDING') {
         where.currentStatus = { in: PENDING_REQUEST_STATUSES as any } as any;
       } else if (s === 'REJECTED') {
-        where.currentStatus = { in: [REQUEST_STATUS.REJECTED, REQUEST_STATUS.OFFER_REJECTED] as any } as any;
+        where.currentStatus = { in: [REQUEST_STATUS.REJECTED, REQUEST_STATUS.OFFER_DECLINED] as any } as any;
       } else if (s === 'CLOSED') {
         where.currentStatus = { in: [REQUEST_STATUS.CANCELLED, REQUEST_STATUS.COMPLETED] as any } as any;
       } else if (s === 'ACTIVE') {
-        where.currentStatus = { in: [REQUEST_STATUS.APPROVED, REQUEST_STATUS.AMOUNT_TRANSFERRED, REQUEST_STATUS.LOAN_PROCESSING] as any } as any;
+        where.currentStatus = { in: [REQUEST_STATUS.APPROVED, REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.PROCESSING_LOAN, REQUEST_STATUS.ACTIVE] as any } as any;
       } else {
         // Fallback: if a direct enum value passed, match exactly
         where.currentStatus = rawStatus as any;
