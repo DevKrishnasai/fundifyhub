@@ -84,20 +84,14 @@ export enum REQUEST_STATUS {
   PENDING_BANK_DETAILS = "PENDING_BANK_DETAILS", // Waiting for UPI/bank details
   
   // ============================================
-  // PHASE 5: LOAN PROCESSING
+  // PHASE 5: LOAN PROCESSING & DISBURSEMENT
   // ============================================
-  BANK_DETAILS_SUBMITTED = "BANK_DETAILS_SUBMITTED", // Customer submitted, admin verifying
-  PROCESSING_LOAN = "PROCESSING_LOAN",               // Admin creating loan record
-  
-  // ============================================
-  // PHASE 6: DISBURSEMENT
-  // ============================================
-  TRANSFERRING_AMOUNT = "TRANSFERRING_AMOUNT",       // Admin transferring money
+  BANK_DETAILS_SUBMITTED = "BANK_DETAILS_SUBMITTED", // Customer submitted, admin will disburse
   TRANSFER_FAILED = "TRANSFER_FAILED",               // Transfer failed, need new details
   AMOUNT_DISBURSED = "AMOUNT_DISBURSED",             // Money successfully sent
   
   // ============================================
-  // PHASE 7: ACTIVE LOAN
+  // PHASE 6: ACTIVE LOAN
   // ============================================
   ACTIVE = "ACTIVE",                       // Loan active, customer paying EMIs
   PAYMENT_OVERDUE = "PAYMENT_OVERDUE",     // Customer missed EMI payment

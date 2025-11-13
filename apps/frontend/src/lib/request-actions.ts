@@ -123,8 +123,9 @@ export async function executeRequestAction(
         }
         return await createOffer(requestId, input, onSuccess, onError);
       
-      case 'process-loan':
-        return await updateStatus(requestId, REQUEST_STATUS.PROCESSING_LOAN, onSuccess, onError);
+      case 'disburse-amount':
+        // Admin creates loan record and disburses amount in single step
+        return await updateStatus(requestId, REQUEST_STATUS.AMOUNT_DISBURSED, onSuccess, onError);
       
       case 'request-different-details':
         return await updateStatus(
@@ -133,18 +134,6 @@ export async function executeRequestAction(
           onSuccess, 
           onError,
           input?.notes
-        );
-      
-      case 'transfer-amount':
-        return await updateStatus(requestId, REQUEST_STATUS.TRANSFERRING_AMOUNT, onSuccess, onError);
-      
-      case 'confirm-transfer':
-        return await updateStatus(
-          requestId, 
-          REQUEST_STATUS.AMOUNT_DISBURSED, 
-          onSuccess, 
-          onError,
-          input?.transactionId
         );
       
       case 'transfer-failed':
@@ -157,7 +146,38 @@ export async function executeRequestAction(
         );
       
       case 'create-emi-schedule':
-        return await updateStatus(requestId, REQUEST_STATUS.ACTIVE, onSuccess, onError);
+        // Step 1: Create Loan + EMI Schedule records
+        try {
+          console.log('🎯 Creating loan for request:', requestId);
+          
+          const createLoanRes = await fetch(`${API_BASE}/api/v1/requests/${requestId}/create-loan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          });
+
+          console.log('📡 Create loan response status:', createLoanRes.status);
+
+          if (!createLoanRes.ok) {
+            const errorData = await createLoanRes.json();
+            console.error('❌ Failed to create loan:', errorData);
+            if (onError) onError(errorData.message || 'Failed to create loan');
+            return false;
+          }
+
+          const loanData = await createLoanRes.json();
+          console.log('✅ Loan created successfully:', loanData);
+
+          // Step 2: Update status to ACTIVE
+          console.log('🔄 Updating status to ACTIVE...');
+          const result = await updateStatus(requestId, REQUEST_STATUS.ACTIVE, onSuccess, onError);
+          console.log('✅ Status update result:', result);
+          return result;
+        } catch (error) {
+          console.error('💥 Error in create-emi-schedule:', error);
+          if (onError) onError('Failed to create loan and EMI schedule');
+          return false;
+        }
       
       case 'mark-overdue':
         return await updateStatus(requestId, REQUEST_STATUS.PAYMENT_OVERDUE, onSuccess, onError);

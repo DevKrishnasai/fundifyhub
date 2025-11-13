@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
-import { getRequestDetailController, assignAgentController, updateRequestStatusController, createOfferController, offerPreviewController, confirmOfferController, getAvailableAgentsController } from './controllers';
+import { getRequestDetailController, assignAgentController, updateRequestStatusController, createOfferController, offerPreviewController, confirmOfferController, getAvailableAgentsController, generateAgreementController, uploadSignedAgreementController, updateBankDetailsController, createLoanController } from './controllers';
 
 const router: ExpressRouter = Router();
 
@@ -9,6 +9,18 @@ router.get('/agents/:district', getAvailableAgentsController);
 
 // GET /requests/:id
 router.get('/:id', getRequestDetailController);
+
+// GET /requests/:id/generate-agreement - Generate loan agreement PDF
+router.get('/:id/generate-agreement', generateAgreementController);
+
+// POST /requests/:id/upload-signed-agreement - Upload signed agreement PDF
+router.post('/:id/upload-signed-agreement', uploadSignedAgreementController);
+
+// POST /requests/:id/bank-details - Update bank details
+router.post('/:id/bank-details', updateBankDetailsController);
+
+// POST /requests/:id/create-loan - Create Loan and EMI Schedule
+router.post('/:id/create-loan', createLoanController);
 
 // POST /requests/:id/assign
 router.post('/:id/assign', assignAgentController);

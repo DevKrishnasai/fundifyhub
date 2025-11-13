@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getAvailableActions, type WorkflowAction, type UserRole } from '@fundifyhub/types';
 import { useRouter } from 'next/navigation';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
+import { executeRequestAction } from '@/lib/request-actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UploadButton } from '@/components/uploadthing-components';
 import type { ClientUploadedFileData } from 'uploadthing/types';
+import { SignaturePad } from '@/components/SignaturePad';
 import { 
   Calendar, 
   MapPin, 
@@ -58,6 +60,7 @@ interface RequestDetail {
   requestedAmount: number;
   district: string;
   customerId: string;
+  createdAt?: string; // Request creation timestamp
   
   assetType?: string;
   assetBrand?: string;
@@ -75,6 +78,13 @@ interface RequestDetail {
   // Assignment
   assignedAgentId?: string | null;
   inspectionScheduledAt?: string | null;
+  
+  // Bank Details
+  bankAccountNumber?: string | null;
+  bankIfscCode?: string | null;
+  bankAccountName?: string | null;
+  upiId?: string | null;
+  bankDetailsSubmittedAt?: string | null;
   
   documents?: Array<{
     id: string;
@@ -123,6 +133,33 @@ interface RequestDetail {
     lastName?: string;
     phoneNumber?: string;
   };
+  loan?: {
+    id: string;
+    approvedAmount: number;
+    interestRate: number;
+    tenureMonths: number;
+    emiAmount: number;
+    totalInterest: number;
+    totalAmount: number;
+    status: string;
+    paidEMIs: number;
+    totalPaidAmount: number;
+    remainingAmount?: number | null;
+    remainingEMIs?: number | null;
+    firstEMIDate?: string | null;
+    lastEMIDate?: string | null;
+    emisSchedule?: Array<{
+      id: string;
+      emiNumber: number;
+      dueDate: string;
+      emiAmount: number;
+      principalAmount: number;
+      interestAmount: number;
+      status: string;
+      paidDate?: string | null;
+      paidAmount?: number | null;
+    }>;
+  } | null;
 }
 
 interface Agent {
@@ -181,6 +218,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [showOffer, setShowOffer] = useState(false);
   const [showBankDetails, setShowBankDetails] = useState(false);
   const [showRequestInfo, setShowRequestInfo] = useState(false);
+  const [showDisbursement, setShowDisbursement] = useState(false);
+  
+  // Disbursement form
+  const [transactionRef, setTransactionRef] = useState('');
+  const [disbursementProof, setDisbursementProof] = useState<string[]>([]);
+  const [submittingDisbursement, setSubmittingDisbursement] = useState(false);
 
   const isCustomer = auth.isCustomer();
   const isAdmin = auth.hasRole([ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN]);
@@ -216,6 +259,16 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         if (res.ok) {
           if (mounted) {
             setRequest(data.data.request as RequestDetail);
+            
+            // Debug: Log loan data
+            console.log('🔍 Request loaded:', {
+              id: data.data.request.id,
+              status: data.data.request.currentStatus,
+              hasLoan: !!data.data.request.loan,
+              loanData: data.data.request.loan,
+              hasEmiSchedule: !!data.data.request.loan?.emisSchedule,
+              emiCount: data.data.request.loan?.emisSchedule?.length || 0
+            });
             
             // Check sessionStorage for upload flag
             const hasUploaded = sessionStorage.getItem(`uploaded_docs_${id}`) === 'true';
@@ -365,27 +418,108 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     setSubmittingBank(true);
     try {
-      // Store in comment for now (ideally create a BankDetails model)
-      const details = `Bank Details:\nAccount: ${accountNumber}\nIFSC: ${ifscCode}\nName: ${accountName}${upiId ? `\nUPI: ${upiId}` : ''}`;
-      
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      // Submit bank details to backend
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/bank-details`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ content: details })
+        body: JSON.stringify({ 
+          bankAccountNumber: accountNumber,
+          bankIfscCode: ifscCode,
+          bankAccountName: accountName,
+          upiId: upiId || null,
+        })
       });
       
       if (res.ok) {
-        await handleStatusUpdate(REQUEST_STATUS.BANK_DETAILS_SUBMITTED);
         setShowBankDetails(false);
-        alert('Bank details submitted successfully');
+        alert('Bank details submitted successfully! Admin will process your loan soon.');
+        // Reload to show updated status
+        window.location.reload();
       } else {
-        alert('Failed to submit bank details');
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Failed to submit bank details');
       }
     } catch (err) {
       alert(ACTION_MESSAGES.NETWORK_ERROR);
     } finally {
       setSubmittingBank(false);
+    }
+  };
+
+  // Handle disbursement submission
+  const handleDisbursementSubmit = async () => {
+    if (!transactionRef.trim()) {
+      alert('Please enter transaction reference/UTR number');
+      return;
+    }
+    
+    if (disbursementProof.length === 0) {
+      alert('Please upload proof of transfer');
+      return;
+    }
+    
+    setSubmittingDisbursement(true);
+    try {
+      // First, create document records for the proof files
+      const documentsPayload = disbursementProof.map((fileKey, index) => ({
+        fileKey,
+        fileName: `Transfer Proof ${index + 1}`,
+        fileType: fileKey.toLowerCase().includes('.pdf') ? 'application/pdf' : 'image/jpeg',
+        fileSize: 0, // Size not available from upload response
+        documentType: 'TRANSFER_PROOF',
+        documentCategory: 'PAYMENT',
+        requestId: request?.id, // Database ID
+        uploadedBy: auth.user?.id || '',
+        description: `Transaction Ref: ${transactionRef}`,
+      }));
+
+      const docRes = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ documents: documentsPayload })
+      });
+
+      if (!docRes.ok) {
+        console.error('Failed to create document records');
+        // Continue anyway, don't block disbursement
+      }
+
+      // Then, add a comment with transaction details (no file keys)
+      await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          content: `💰 Amount Disbursed\nTransaction Ref: ${transactionRef}\n${disbursementProof.length} proof document(s) uploaded`
+        })
+      });
+
+      // Finally, update status to AMOUNT_DISBURSED
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          status: REQUEST_STATUS.AMOUNT_DISBURSED,
+          note: `Transaction Ref: ${transactionRef}`
+        })
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.message || 'Failed to record disbursement');
+        return;
+      }
+      
+      setShowDisbursement(false);
+      alert('Disbursement recorded successfully!');
+      window.location.reload();
+    } catch (err) {
+      alert(ACTION_MESSAGES.NETWORK_ERROR);
+    } finally {
+      setSubmittingDisbursement(false);
     }
   };
 
@@ -520,6 +654,8 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
   // Handle workflow actions
   const handleWorkflowAction = async (action: WorkflowAction) => {
+    console.log('🎯 handleWorkflowAction called with:', action.id);
+    
     // Special handlers for actions requiring input/modals
     if (action.id === 'make-offer' || action.id === 'revise-offer') {
       setShowOffer(true);
@@ -533,6 +669,10 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     }
     if (action.id === 'submit-bank-details') {
       setShowBankDetails(true);
+      return;
+    }
+    if (action.id === 'disburse-amount') {
+      setShowDisbursement(true);
       return;
     }
     if (action.id === 'request-more-info') {
@@ -561,6 +701,34 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       
       // Change status to INSPECTION_RESCHEDULE_REQUESTED
       handleStatusUpdate(action.targetStatus);
+      return;
+    }
+    
+    // For actions with custom handlers (like create-emi-schedule)
+    if (action.id === 'create-emi-schedule') {
+      console.log('🚀 Executing create-emi-schedule action');
+      
+      if (action.requiresConfirmation) {
+        const confirmed = confirm(`Are you sure you want to ${action.label.toLowerCase()}? This will create the loan and EMI schedule.`);
+        if (!confirmed) return;
+      }
+      
+      const success = await executeRequestAction(
+        action.id,
+        {
+          requestId: id,
+          onSuccess: (data) => {
+            console.log('✅ Action succeeded:', data);
+            // Reload the page to show the updated loan data
+            window.location.reload();
+          },
+          onError: (error) => {
+            console.error('❌ Action failed:', error);
+            alert(error || 'Failed to create loan and EMI schedule');
+          }
+        }
+      );
+      
       return;
     }
     
@@ -698,6 +866,59 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         </Card>
       )}
 
+      {/* Signature Upload Alert - For Customer in PENDING_SIGNATURE status */}
+      {isCustomer && request.currentStatus === REQUEST_STATUS.PENDING_SIGNATURE && (
+        <Card className="mb-6 border-green-500 bg-green-50 dark:bg-green-950">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-green-600 rounded-lg shrink-0">
+                <PenTool className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-green-900 dark:text-green-100 mb-2 text-lg">
+                  ✍️ Signature Required
+                </h3>
+                <p className="text-sm text-green-800 dark:text-green-200 mb-3">
+                  Your loan has been approved! Please upload your signature document in the <strong>Documents section below</strong> to proceed.
+                </p>
+                <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900 rounded-lg px-3 py-2">
+                  <span className="text-base">↓</span>
+                  <span>Scroll down to the <strong>"Upload Signature"</strong> section</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bank Details Alert - For Customer in PENDING_BANK_DETAILS status */}
+      {isCustomer && request.currentStatus === REQUEST_STATUS.PENDING_BANK_DETAILS && (
+        <Card className="mb-6 border-purple-500 bg-purple-50 dark:bg-purple-950">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-purple-600 rounded-lg shrink-0">
+                <CreditCard className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-purple-900 dark:text-purple-100 mb-2 text-lg">
+                  🏦 Bank Details Required
+                </h3>
+                <p className="text-sm text-purple-800 dark:text-purple-200 mb-3">
+                  Almost done! Please provide your bank account details for loan disbursement.
+                </p>
+                <Button 
+                  onClick={() => setShowBankDetails(true)}
+                  className="mt-2 bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Submit Bank Details
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Admin Requested Info Alert - For Customer */}
       {isCustomer && request.currentStatus === REQUEST_STATUS.MORE_INFO_REQUIRED && (
         <Card className="mb-6 border-amber-500 bg-amber-50 dark:bg-amber-950">
@@ -752,6 +973,103 @@ export default function RequestDetailComplete({ id }: { id: string }) {
             </div>
             <Button onClick={handleBankDetailsSubmit} disabled={submittingBank} className="w-full">
               {submittingBank ? 'Submitting...' : 'Submit Details'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Disbursement Modal - Admin uploads proof of transfer */}
+      <Dialog open={showDisbursement} onOpenChange={setShowDisbursement}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Disburse Loan Amount</DialogTitle>
+            <DialogDescription>
+              Upload proof of transfer and confirm disbursement to customer
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Show customer bank details */}
+            {request?.bankAccountNumber && (
+              <div className="p-4 bg-muted rounded-lg space-y-2">
+                <p className="text-sm font-semibold mb-2">Customer Bank Details:</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Account Name:</span>
+                    <p className="font-medium">{request.bankAccountName}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Account Number:</span>
+                    <p className="font-mono font-medium">{request.bankAccountNumber}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">IFSC Code:</span>
+                    <p className="font-mono font-medium">{request.bankIfscCode}</p>
+                  </div>
+                  {request.upiId && (
+                    <div>
+                      <span className="text-muted-foreground">UPI ID:</span>
+                      <p className="font-mono font-medium">{request.upiId}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Label>Transaction Reference / UTR Number *</Label>
+              <Input 
+                value={transactionRef} 
+                onChange={(e) => setTransactionRef(e.target.value)} 
+                placeholder="Enter transaction reference or UTR number"
+              />
+            </div>
+
+            <div>
+              <Label>Upload Transfer Proof * (Screenshot/Document)</Label>
+              <div className="mt-2">
+                <UploadButton
+                  endpoint="requestDocument"
+                  onClientUploadComplete={(res: ClientUploadedFileData<{ uploadedBy: string }>[]) => {
+                    if (res && res.length > 0) {
+                      const fileKeys = res.map(f => f.key);
+                      setDisbursementProof(prev => [...prev, ...fileKeys]);
+                      alert(`${res.length} file(s) uploaded successfully!`);
+                    }
+                  }}
+                  onUploadError={(error: Error) => {
+                    alert(`Upload failed: ${error.message}`);
+                  }}
+                />
+              </div>
+              {disbursementProof.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-sm text-muted-foreground">Uploaded: {disbursementProof.length} file(s)</p>
+                  {disbursementProof.map((key, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs">
+                      <CheckCircle className="h-3 w-3 text-green-600" />
+                      <span className="font-mono">{key.slice(0, 30)}...</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Button 
+              onClick={handleDisbursementSubmit} 
+              disabled={submittingDisbursement} 
+              className="w-full"
+            >
+              {submittingDisbursement ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Confirming...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Confirm Disbursement
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>
@@ -1100,6 +1418,114 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                 </div>
               )}
 
+              {/* Digital Signature - For Customer in PENDING_SIGNATURE status */}
+              {isCustomer && request.currentStatus === REQUEST_STATUS.PENDING_SIGNATURE && (
+                <div className="mb-6">
+                  <SignaturePad 
+                    requestId={request.id}
+                    requestNumber={request.requestNumber || request.id}
+                    onSave={async (signatureDataUrl: string) => {
+                      try {
+                        setUploadProgress('Processing signature...');
+                        
+                        // Import pdf-lib dynamically (client-side only)
+                        const { PDFDocument } = await import('pdf-lib');
+                        
+                        // Step 1: Download the generated PDF from backend
+                        setUploadProgress('Downloading agreement...');
+                        const pdfResponse = await fetch(
+                          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${request.id}/generate-agreement`,
+                          { credentials: 'include' }
+                        );
+                        
+                        if (!pdfResponse.ok) {
+                          throw new Error('Failed to generate agreement PDF');
+                        }
+                        
+                        const pdfBlob = await pdfResponse.blob();
+                        
+                        // Step 2: Load the PDF and embed signature
+                        setUploadProgress('Merging signature...');
+                        const pdfDoc = await PDFDocument.load(await pdfBlob.arrayBuffer());
+                        
+                        // Convert signature base64 to blob
+                        const signatureResponse = await fetch(signatureDataUrl);
+                        const signatureBlob = await signatureResponse.blob();
+                        const signatureBytes = await signatureBlob.arrayBuffer();
+                        
+                        // Embed signature image
+                        const signatureImage = await pdfDoc.embedPng(signatureBytes);
+                        
+                        // Get the last page (signature page) and add signature
+                        const pages = pdfDoc.getPages();
+                        const signaturePage = pages[pages.length - 1];
+                        
+                        // Position signature in the borrower signature box
+                        signaturePage.drawImage(signatureImage, {
+                          x: 80,
+                          y: signaturePage.getHeight() - 450, // Adjust based on signature box position
+                          width: 180,
+                          height: 50,
+                        });
+                        
+                        // Step 3: Save the merged PDF
+                        setUploadProgress('Finalizing document...');
+                        const mergedPdfBytes = await pdfDoc.save();
+                        
+                        // Convert to base64 for backend upload
+                        const base64Pdf = btoa(
+                          new Uint8Array(mergedPdfBytes).reduce((data, byte) => data + String.fromCharCode(byte), '')
+                        );
+                        
+                        // Step 4: Send to backend to upload to UploadThing and save
+                        setUploadProgress('Uploading signed agreement...');
+                        const uploadResponse = await fetch(
+                          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${request.id}/upload-signed-agreement`,
+                          {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify({
+                              pdfBase64: base64Pdf,
+                              fileName: `signed-agreement-${request.requestNumber || request.id}.pdf`,
+                            }),
+                          }
+                        );
+                        
+                        if (!uploadResponse.ok) {
+                          const errorData = await uploadResponse.json().catch(() => ({}));
+                          throw new Error(errorData.error || 'Failed to upload signed document');
+                        }
+                        
+                        // Step 5: Transition to PENDING_BANK_DETAILS
+                        setUploadProgress('Completing signature process...');
+                        await handleStatusUpdate(REQUEST_STATUS.PENDING_BANK_DETAILS);
+                        
+                        setUploadProgress('');
+                        alert('✅ Agreement signed successfully! Please submit your bank details.');
+                        
+                        // Reload to show updated status
+                        window.location.reload();
+                        
+                      } catch (error) {
+                        console.error('Signature process failed:', error);
+                        setUploadProgress('');
+                        alert(error instanceof Error ? error.message : 'Failed to process signature. Please try again.');
+                      }
+                    }}
+                  />
+                  
+                  {uploadProgress && (
+                    <div className="mt-4 bg-green-100 dark:bg-green-900 rounded-lg p-4 border-2 border-green-600">
+                      <div className="flex items-center justify-center gap-3">
+                        <Loader2 className="h-5 w-5 animate-spin text-green-600" />
+                        <p className="text-sm font-medium text-green-900 dark:text-green-100">{uploadProgress}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Agent Upload - During inspection */}
               {isAgent && request.currentStatus === REQUEST_STATUS.INSPECTION_IN_PROGRESS && (
                 <div className="mb-6 border-2 border-dashed border-blue-300 dark:border-blue-700 rounded-lg p-6 bg-blue-50 dark:bg-blue-950 hover:border-blue-500 transition-colors">
@@ -1300,8 +1726,84 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                     </div>
                   )}
 
+                  {/* Disbursement Proof - Show transfer proof documents */}
+                  {request.documents.filter(doc => doc.documentCategory === 'PAYMENT').length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-green-700 dark:text-green-400">
+                        <Send className="h-4 w-4" />
+                        Disbursement Proof ({request.documents.filter(doc => doc.documentCategory === 'PAYMENT').length})
+                      </h4>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        {request.documents.filter(doc => doc.documentCategory === 'PAYMENT').map((doc) => {
+                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
+                          const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf');
+                          
+                          return (
+                            <div key={doc.id} className="border border-green-200 dark:border-green-800 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                              {doc.fileKey && (
+                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
+                                  {isPdf ? (
+                                    <div className="flex flex-col items-center justify-center p-4">
+                                      <FileText className="h-16 w-16 text-green-600 mb-2" />
+                                      <p className="text-xs text-center text-muted-foreground">Transfer Proof PDF</p>
+                                      <a 
+                                        href={signedUrl || '#'} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="mt-2 text-xs text-primary hover:underline flex items-center gap-1"
+                                      >
+                                        <Eye className="h-3 w-3" />
+                                        View PDF
+                                      </a>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <img 
+                                        src={signedUrl || ''} 
+                                        alt={doc.fileName || 'Transfer Proof'} 
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                          const target = e.target as HTMLImageElement;
+                                          target.style.display = 'none';
+                                          const parent = target.parentElement;
+                                          if (parent) {
+                                            parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
+                                          }
+                                        }}
+                                      />
+                                      <a 
+                                        href={signedUrl || '#'} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                                      >
+                                        <Eye className="h-8 w-8 text-white" />
+                                      </a>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                              <div className="p-3 border-t bg-green-50 dark:bg-green-950">
+                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Transfer Proof'}>
+                                  {doc.fileName || 'Transfer Proof'}
+                                </p>
+                                <p className="text-xs text-green-600 dark:text-green-400">
+                                  Disbursement Document
+                                </p>
+                                <Badge variant="outline" className="mt-1 text-xs border-green-600 text-green-600">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Verified
+                                </Badge>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Other Documents */}
-                  {request.documents.filter(doc => doc.documentCategory !== 'ASSET' && doc.documentCategory !== 'INSPECTION').length > 0 && (
+                  {request.documents.filter(doc => doc.documentCategory !== 'ASSET' && doc.documentCategory !== 'INSPECTION' && doc.documentCategory !== 'PAYMENT').length > 0 && (
                     <div>
                       <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                         <FileText className="h-4 w-4" />
@@ -1381,6 +1883,232 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               )}
             </CardContent>
           </Card>
+
+          {/* EMI Schedule - Show from OFFER_SENT onwards */}
+          {/* If loan exists (ACTIVE status), show actual loan data. Otherwise show preview from adminEmiSchedule */}
+          {(request.loan || request.adminEmiSchedule) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  {request.loan ? 'EMI Schedule' : 'EMI Schedule Preview'}
+                </CardTitle>
+                <CardDescription>
+                  {request.loan 
+                    ? 'Monthly payment schedule for this loan' 
+                    : 'Proposed monthly payment schedule - dates will be set after disbursement'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Show actual loan if exists, otherwise show preview */}
+                {request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 ? (
+                  <>
+                    {/* Actual Loan Summary */}
+                    <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Loan Amount</p>
+                        <p className="text-lg font-bold">₹{request.loan.approvedAmount.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Monthly EMI</p>
+                        <p className="text-lg font-bold">₹{request.loan.emiAmount.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Interest Rate</p>
+                        <p className="text-lg font-bold">{request.loan.interestRate}% p.a.</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Tenure</p>
+                        <p className="text-lg font-bold">{request.loan.tenureMonths} months</p>
+                      </div>
+                    </div>
+
+                    {/* Actual EMI Schedule Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left p-2 font-semibold">#</th>
+                            <th className="text-left p-2 font-semibold">Due Date</th>
+                            <th className="text-right p-2 font-semibold">EMI Amount</th>
+                            <th className="text-right p-2 font-semibold">Principal</th>
+                            <th className="text-right p-2 font-semibold">Interest</th>
+                            <th className="text-center p-2 font-semibold">Status</th>
+                            {(auth.user?.roles?.includes(ROLES.SUPER_ADMIN) || auth.user?.roles?.includes(ROLES.DISTRICT_ADMIN)) && (
+                              <th className="text-center p-2 font-semibold">Action</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {request.loan.emisSchedule.map((emi: any) => {
+                            const isPending = emi.status === 'PENDING';
+                            const isPaid = emi.status === 'PAID';
+                            const isOverdue = emi.status === 'OVERDUE';
+                            const dueDate = new Date(emi.dueDate);
+                            const isUpcoming = dueDate > new Date();
+                            
+                            return (
+                              <tr key={emi.id} className={`border-b hover:bg-muted/50 ${isPaid ? 'bg-green-50 dark:bg-green-950/20' : isOverdue ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
+                                <td className="p-2 font-medium">#{emi.emiNumber}</td>
+                                <td className="p-2">
+                                  <div className="flex flex-col">
+                                    <span>{dueDate.toLocaleDateString()}</span>
+                                    {isUpcoming && isPending && (
+                                      <span className="text-xs text-muted-foreground">
+                                        ({Math.ceil((dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days left)
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-2 text-right font-semibold">₹{emi.emiAmount.toLocaleString()}</td>
+                                <td className="p-2 text-right text-muted-foreground">₹{emi.principalAmount.toLocaleString()}</td>
+                                <td className="p-2 text-right text-muted-foreground">₹{emi.interestAmount.toLocaleString()}</td>
+                                <td className="p-2 text-center">
+                                  {isPaid && (
+                                    <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400 border-green-300">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Paid
+                                    </Badge>
+                                  )}
+                                  {isOverdue && (
+                                    <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-400 border-red-300">
+                                      <AlertCircle className="h-3 w-3 mr-1" />
+                                      Overdue
+                                    </Badge>
+                                  )}
+                                  {isPending && !isOverdue && (
+                                    <Badge variant="outline" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-400 border-yellow-300">
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      Pending
+                                    </Badge>
+                                  )}
+                                </td>
+                                {(auth.user?.roles?.includes(ROLES.SUPER_ADMIN) || auth.user?.roles?.includes(ROLES.DISTRICT_ADMIN)) && (
+                                  <td className="p-2 text-center">
+                                    {isPending && (
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline"
+                                        className="text-xs"
+                                        onClick={() => {
+                                          // TODO: Implement payment recording
+                                          alert('Payment recording will be implemented next!');
+                                        }}
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Mark Paid
+                                      </Button>
+                                    )}
+                                    {isPaid && emi.paidDate && (
+                                      <span className="text-xs text-muted-foreground">
+                                        Paid on {new Date(emi.paidDate).toLocaleDateString()}
+                                      </span>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Loan Summary */}
+                    <div className="mt-6 p-4 bg-muted rounded-lg grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Total Amount</p>
+                        <p className="text-base font-bold">₹{request.loan.totalAmount.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Paid EMIs</p>
+                        <p className="text-base font-bold text-green-600">{request.loan.paidEMIs}/{request.loan.tenureMonths}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Amount Paid</p>
+                        <p className="text-base font-bold text-green-600">₹{request.loan.totalPaidAmount.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Remaining</p>
+                        <p className="text-base font-bold text-orange-600">₹{(request.loan.remainingAmount || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </>
+                ) : request.adminEmiSchedule ? (
+                  <>
+                    {/* Preview from adminEmiSchedule */}
+                    <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <p className="text-sm text-blue-800 dark:text-blue-400 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="font-medium">Preview:</span> This is the proposed EMI schedule. Actual payment dates will start after amount disbursement.
+                      </p>
+                    </div>
+
+                    {/* Preview Summary */}
+                    <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Loan Amount</p>
+                        <p className="text-lg font-bold">₹{request.adminOfferedAmount?.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Monthly EMI</p>
+                        <p className="text-lg font-bold">₹{request.adminEmiSchedule.monthlyPayment?.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Interest Rate</p>
+                        <p className="text-lg font-bold">{request.adminInterestRate}% p.a.</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Tenure</p>
+                        <p className="text-lg font-bold">{request.adminTenureMonths} months</p>
+                      </div>
+                    </div>
+
+                    {/* Preview EMI Table - Without dates */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left p-2 font-semibold">Installment</th>
+                            <th className="text-right p-2 font-semibold">EMI Amount</th>
+                            <th className="text-right p-2 font-semibold">Principal</th>
+                            <th className="text-right p-2 font-semibold">Interest</th>
+                            <th className="text-right p-2 font-semibold">Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {request.adminEmiSchedule.emiSchedule?.map((emi: any, idx: number) => (
+                            <tr key={idx} className="border-b hover:bg-muted/50">
+                              <td className="p-2 font-medium">#{emi.installment}</td>
+                              <td className="p-2 text-right font-semibold">₹{emi.paymentAmount?.toLocaleString()}</td>
+                              <td className="p-2 text-right text-muted-foreground">₹{emi.principal?.toLocaleString()}</td>
+                              <td className="p-2 text-right text-muted-foreground">₹{emi.interest?.toLocaleString()}</td>
+                              <td className="p-2 text-right text-muted-foreground">₹{emi.remainingBalance?.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Preview Summary */}
+                    <div className="mt-6 p-4 bg-muted rounded-lg grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Total Interest</p>
+                        <p className="text-base font-bold text-orange-600">₹{request.adminEmiSchedule.totalInterest?.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Total Repayment</p>
+                        <p className="text-base font-bold">₹{request.adminEmiSchedule.totalPayment?.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Number of EMIs</p>
+                        <p className="text-base font-bold">{request.adminEmiSchedule.emiSchedule?.length || 0} payments</p>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Comments */}
           <Card>
@@ -1481,6 +2209,48 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                         })}
                       </p>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Bank Details Section - Show to Admin/Agent or Customer (if submitted) */}
+              {request.bankAccountNumber && request.bankDetailsSubmittedAt && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    Bank Details
+                  </p>
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Account Name:</span>
+                      <span>{request.bankAccountName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Account Number:</span>
+                      <span className="font-mono">
+                        {isCustomer 
+                          ? `**** **** ${request.bankAccountNumber.slice(-4)}`
+                          : request.bankAccountNumber
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">IFSC Code:</span>
+                      <span className="font-mono">{request.bankIfscCode}</span>
+                    </div>
+                    {request.upiId && (
+                      <div className="flex justify-between">
+                        <span className="font-medium">UPI ID:</span>
+                        <span className="font-mono">{request.upiId}</span>
+                      </div>
+                    )}
+                    <p className="flex items-center gap-1 text-xs pt-2 border-t mt-2 text-green-600 dark:text-green-400">
+                      <CheckCircle className="h-3 w-3" />
+                      Submitted: {new Date(request.bankDetailsSubmittedAt).toLocaleString('en-IN', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short'
+                      })}
+                    </p>
                   </div>
                 </div>
               )}
@@ -1611,14 +2381,16 @@ function TimelineEvent({ event, isLast }: { event: any; isLast: boolean }) {
 function buildTimeline(request: RequestDetail) {
   const events: any[] = [];
 
-  // Add initial submission event using the earliest history entry date or now
-  const earliestDate = request.requestHistory && request.requestHistory.length > 0
-    ? request.requestHistory[request.requestHistory.length - 1].createdAt
-    : new Date().toISOString();
+  // Add initial submission event using request createdAt
+  // Fallback to earliest history entry if createdAt not available
+  const submissionDate = request.createdAt || 
+    (request.requestHistory && request.requestHistory.length > 0
+      ? request.requestHistory[0].createdAt // First item (oldest) since history is sorted by asc
+      : new Date().toISOString());
     
   events.push({
     id: `submitted-${request.id}`,
-    date: earliestDate,
+    date: submissionDate,
     type: 'history',
     title: 'Request Submitted',
     action: 'REQUEST_SUBMITTED',

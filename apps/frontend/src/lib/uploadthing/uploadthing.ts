@@ -82,6 +82,69 @@ export const ourFileRouter: FileRouter = {
         fileType: file.type,
       };
     }),
+
+  /**
+   * Request Document Uploader Route
+   *
+   * Handles document uploads (PDFs, images) for request-related documents like:
+   * - Transfer proofs
+   * - Payment receipts
+   * - Additional verification documents
+   *
+   * @middleware Authenticates user via JWT token
+   * @returns File metadata for database storage
+   */
+  requestDocument: f({
+    image: { maxFileSize: '8MB', maxFileCount: 5 },
+    pdf: { maxFileSize: '8MB', maxFileCount: 5 },
+  })
+    .middleware(async ({ req }: { req: Request }) => {
+      try {
+        const cookie = req.headers.get('cookie');
+        const validationResult = await get<AuthValidationResponse>(
+          BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE,
+          {
+            headers: {
+              cookie: cookie ?? '',
+            },
+          }
+        );
+
+        if (
+          !validationResult.success ||
+          !validationResult.data?.isAuthenticated
+        ) {
+          throw new Error('Invalid or expired token');
+        }
+
+        const user = validationResult.data.user;
+        if (!user) {
+          throw new Error('Authentication required');
+        }
+
+        return {
+          userId: user.id,
+          userEmail: user.email,
+          userRoles: user.roles,
+          userDistrict: user.district,
+        };
+      } catch (validationError) {
+        logger.error(
+          'UploadThing middleware: Token validation failed:',
+          validationError as Error
+        );
+        throw new Error('Authentication failed');
+      }
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      return {
+        fileKey: file.key,
+        uploadedBy: metadata.userId,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+      };
+    }),
 };
 
 export type OurFileRouter = typeof ourFileRouter;
