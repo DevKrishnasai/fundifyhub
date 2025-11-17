@@ -3,6 +3,7 @@
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import { ROLES } from '@fundifyhub/types'
 import Link from "next/link"
 import { useAuth } from "@/contexts/AuthContext"
 
@@ -12,7 +13,7 @@ export default function AgentLayout({
   children: React.ReactNode
 }>) {
   return (
-  <ProtectedRoute requiredRole={["AGENT"]}>
+  <ProtectedRoute requiredRole={[ROLES.AGENT]}>
       <AgentContent>{children}</AgentContent>
     </ProtectedRoute>
   )

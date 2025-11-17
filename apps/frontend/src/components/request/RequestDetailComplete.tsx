@@ -232,10 +232,10 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   // Build user context with all roles
   const getUserRoles = (): UserRole[] => {
     const roles: UserRole[] = [];
-    if (auth.hasRole([ROLES.SUPER_ADMIN])) roles.push('SUPER_ADMIN');
-    if (auth.hasRole([ROLES.DISTRICT_ADMIN])) roles.push('DISTRICT_ADMIN');
-    if (auth.isAgent()) roles.push('AGENT');
-    if (auth.isCustomer()) roles.push('CUSTOMER');
+    if (auth.hasRole([ROLES.SUPER_ADMIN])) roles.push(ROLES.SUPER_ADMIN);
+    if (auth.hasRole([ROLES.DISTRICT_ADMIN])) roles.push(ROLES.DISTRICT_ADMIN);
+    if (auth.isAgent()) roles.push(ROLES.AGENT);
+    if (auth.isCustomer()) roles.push(ROLES.CUSTOMER);
     return roles;
   };
 
@@ -2452,11 +2452,11 @@ function buildTimeline(request: RequestDetail) {
     const actor = h.actor || null;
     let roleLabel = '';
     if (actor && Array.isArray(actor.roles)) {
-      if (actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('DISTRICT_ADMIN')) {
+      if (actor.roles.includes(ROLES.SUPER_ADMIN) || actor.roles.includes(ROLES.DISTRICT_ADMIN)) {
         roleLabel = 'Admin';
-      } else if (actor.roles.includes('AGENT')) {
+      } else if (actor.roles.includes(ROLES.AGENT)) {
         roleLabel = 'Agent';
-      } else if (actor.roles.includes('CUSTOMER')) {
+      } else if (actor.roles.includes(ROLES.CUSTOMER)) {
         roleLabel = 'Customer';
       }
     }
@@ -2486,11 +2486,11 @@ function buildTimeline(request: RequestDetail) {
     const actor = c.author || null;
     let roleLabel = '';
     if (actor && Array.isArray(actor.roles)) {
-      if (actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('DISTRICT_ADMIN')) {
+      if (actor.roles.includes(ROLES.SUPER_ADMIN) || actor.roles.includes(ROLES.DISTRICT_ADMIN)) {
         roleLabel = 'Admin';
-      } else if (actor.roles.includes('AGENT')) {
+      } else if (actor.roles.includes(ROLES.AGENT)) {
         roleLabel = 'Agent';
-      } else if (actor.roles.includes('CUSTOMER')) {
+      } else if (actor.roles.includes(ROLES.CUSTOMER)) {
         roleLabel = 'Customer';
       }
     }

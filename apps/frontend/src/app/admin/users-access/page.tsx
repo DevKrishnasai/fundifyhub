@@ -72,7 +72,7 @@ export default function UsersAccessPage() {
     name: "",
     email: "",
     phone: "",
-    roles: ['CUSTOMER'],
+    roles: [ROLES.CUSTOMER],
     status: "active",
     district: "",
     _isActive: true
@@ -276,7 +276,7 @@ export default function UsersAccessPage() {
         name: `${createdUser.firstName} ${createdUser.lastName}`.trim(),
         email: createdUser.email,
         phone: createdUser.phoneNumber,
-        roles: Array.isArray(createdUser.roles) ? createdUser.roles : [createdUser.role || 'CUSTOMER'],
+        roles: Array.isArray(createdUser.roles) ? createdUser.roles : [createdUser.role || ROLES.CUSTOMER],
         status: createdUser.isActive ? 'active' : 'inactive',
         district: createdUser.district,
         createdAt: createdUser.createdAt,
@@ -291,7 +291,7 @@ export default function UsersAccessPage() {
         name: "",
         email: "",
         phone: "",
-        roles: ['CUSTOMER'],
+        roles: [ROLES.CUSTOMER],
         status: "active",
         district: "",
         _isActive: true
@@ -695,7 +695,7 @@ export default function UsersAccessPage() {
                 <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center text-green-600 font-semibold">AG</div>
                 <div>
                   <p className="text-sm text-muted-foreground">Agents</p>
-                  <p className="text-lg font-semibold">{users.filter(u => Array.isArray(u.roles) && u.roles.map(r => r.toUpperCase()).includes('AGENT')).length}</p>
+                  <p className="text-lg font-semibold">{users.filter(u => Array.isArray(u.roles) && u.roles.map(r => r.toUpperCase()).includes(ROLES.AGENT)).length}</p>
                 </div>
               </div>
             </CardContent>
@@ -709,7 +709,7 @@ export default function UsersAccessPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Customers</p>
-                  <p className="text-lg font-semibold">{users.filter(u => Array.isArray(u.roles) && u.roles.map(r => r.toUpperCase()).includes('CUSTOMER')).length}</p>
+                  <p className="text-lg font-semibold">{users.filter(u => Array.isArray(u.roles) && u.roles.map(r => r.toUpperCase()).includes(ROLES.CUSTOMER)).length}</p>
                 </div>
               </div>
             </CardContent>
@@ -776,7 +776,7 @@ export default function UsersAccessPage() {
                               <div className="flex gap-2">
                                 {Array.isArray(user.roles) ? user.roles.map((r, idx) => (
                                   <span key={`${user.id}-role-${idx}`}>{getRoleBadge(r)}</span>
-                                )) : getRoleBadge('CUSTOMER')}
+                                )) : getRoleBadge(ROLES.CUSTOMER)}
                                 {getStatusBadge(user.status)}
                               </div>
                     </div>

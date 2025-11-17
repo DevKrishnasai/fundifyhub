@@ -36,7 +36,7 @@ export async function getAgentsByDistrictController(req: Request, res: Response)
 
     const agentsRaw = await prisma.user.findMany({
       where: {
-        roles: { has: 'AGENT' },
+        roles: { has: ROLES.AGENT },
         isActive: true
       },
       select: {

@@ -4,7 +4,7 @@
  */
 
 import { useMemo } from 'react';
-import { REQUEST_STATUS, type UserRole, getActionsForUser, type WorkflowAction, type UserContext, type RequestContext } from '@fundifyhub/types';
+import { REQUEST_STATUS, type UserRole, getActionsForUser, type WorkflowAction, type UserContext, type RequestContext, ROLES } from '@fundifyhub/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Request {
@@ -89,20 +89,20 @@ interface User {
 function getUserRoles(user: User): UserRole[] {
   const validRoles: UserRole[] = [];
   
-  if (user.roles.includes('SUPER_ADMIN')) {
-    validRoles.push('SUPER_ADMIN');
+  if (user.roles.includes(ROLES.SUPER_ADMIN)) {
+    validRoles.push(ROLES.SUPER_ADMIN);
   }
   
-  if (user.roles.includes('DISTRICT_ADMIN')) {
-    validRoles.push('DISTRICT_ADMIN');
+  if (user.roles.includes(ROLES.DISTRICT_ADMIN)) {
+    validRoles.push(ROLES.DISTRICT_ADMIN);
   }
   
-  if (user.roles.includes('AGENT')) {
-    validRoles.push('AGENT');
+  if (user.roles.includes(ROLES.AGENT)) {
+    validRoles.push(ROLES.AGENT);
   }
   
-  if (user.roles.includes('CUSTOMER')) {
-    validRoles.push('CUSTOMER');
+  if (user.roles.includes(ROLES.CUSTOMER)) {
+    validRoles.push(ROLES.CUSTOMER);
   }
   
   return validRoles;

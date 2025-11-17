@@ -11,7 +11,7 @@ import { REQUEST_STATUS, ROLES } from './constants';
 // TYPES & INTERFACES
 // ============================================
 
-export type UserRole = 'CUSTOMER' | 'DISTRICT_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
+export type UserRole = typeof ROLES[keyof typeof ROLES];
 
 export interface WorkflowAction {
   id: string;                    // Unique action identifier
@@ -951,12 +951,12 @@ export function getAvailableActions(
   if (!state) return [];
 
   switch (role) {
-    case 'CUSTOMER':
+    case ROLES.CUSTOMER:
       return state.customerActions;
-    case 'DISTRICT_ADMIN':
-    case 'SUPER_ADMIN':
+    case ROLES.DISTRICT_ADMIN:
+    case ROLES.SUPER_ADMIN:
       return state.adminActions;
-    case 'AGENT':
+    case ROLES.AGENT:
       return state.agentActions;
     default:
       return [];
@@ -985,7 +985,7 @@ export function getActionsForUser(
 
   // Helper to check district access
   const hasDistrictAccess = (): boolean => {
-    if (user.roles.includes('SUPER_ADMIN')) return true;
+    if (user.roles.includes(ROLES.SUPER_ADMIN)) return true;
     return user.districts?.includes(request.districtId) ?? false;
   };
 
@@ -1010,7 +1010,7 @@ export function getActionsForUser(
   };
 
   // Collect customer actions if user is the request owner
-  if (user.roles.includes('CUSTOMER') && user.id === request.customerId) {
+  if (user.roles.includes(ROLES.CUSTOMER) && user.id === request.customerId) {
     for (const action of state.customerActions) {
       if (!seenActionIds.has(action.id) && canPerformAction(action)) {
         allActions.push(action);
@@ -1020,7 +1020,7 @@ export function getActionsForUser(
   }
 
   // Collect admin actions if user has admin role
-  if (user.roles.includes('SUPER_ADMIN') || user.roles.includes('DISTRICT_ADMIN')) {
+  if (user.roles.includes(ROLES.SUPER_ADMIN) || user.roles.includes(ROLES.DISTRICT_ADMIN)) {
     for (const action of state.adminActions) {
       if (!seenActionIds.has(action.id) && canPerformAction(action)) {
         allActions.push(action);
@@ -1030,7 +1030,7 @@ export function getActionsForUser(
   }
 
   // Collect agent actions if user has agent role
-  if (user.roles.includes('AGENT')) {
+  if (user.roles.includes(ROLES.AGENT)) {
     for (const action of state.agentActions) {
       if (!seenActionIds.has(action.id) && canPerformAction(action)) {
         allActions.push(action);
@@ -1060,24 +1060,24 @@ export function canViewRequestDetail(
   request: RequestContext
 ): boolean {
   // Super admin can view all requests
-  if (user.roles.includes('SUPER_ADMIN')) {
+  if (user.roles.includes(ROLES.SUPER_ADMIN)) {
     return true;
   }
 
   // Customer can view their own requests
-  if (user.roles.includes('CUSTOMER') && user.id === request.customerId) {
+  if (user.roles.includes(ROLES.CUSTOMER) && user.id === request.customerId) {
     return true;
   }
 
   // District admin can view requests in their district
-  if (user.roles.includes('DISTRICT_ADMIN')) {
+  if (user.roles.includes(ROLES.DISTRICT_ADMIN)) {
     if (user.districts?.includes(request.districtId)) {
       return true;
     }
   }
 
   // Assigned agent can view the request
-  if (user.roles.includes('AGENT') && user.id === request.agentId) {
+  if (user.roles.includes(ROLES.AGENT) && user.id === request.agentId) {
     return true;
   }
 

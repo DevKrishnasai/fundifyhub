@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import toast from '@/lib/toast'
 import { Eye, EyeOff, CreditCard, User, Mail, Phone, Lock, ChevronRight, ChevronLeft, Check, X, CheckCircle } from "lucide-react"
-import { DISTRICTS } from '@fundifyhub/types'
+import { DISTRICTS, ROLES } from '@fundifyhub/types'
 import { post, postWithResult } from '@/lib/api-client'
 import { BACKEND_API_CONFIG } from '@/lib/urls'
 import { z } from 'zod';
@@ -380,7 +380,7 @@ export default function RegisterPage() {
         if (!user) {
           throw new Error('Registration succeeded but response missing user payload')
         }
-        const safeUser = { ...user, roles: Array.isArray(user.roles) ? user.roles : ['CUSTOMER'] };
+        const safeUser = { ...user, roles: Array.isArray(user.roles) ? user.roles : [ROLES.CUSTOMER] };
         toast.success("Registration successful! Your account has been created successfully.")
         // Optionally, update auth context if needed
         router.push('/dashboard')
