@@ -923,6 +923,24 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
 // ============================================
 
 /**
+ * Request context for permission checks
+ */
+export interface RequestContext {
+  customerId: string;
+  districtId: string;
+  agentId?: string | null;
+}
+
+/**
+ * User context for multi-role permission checks
+ */
+export interface UserContext {
+  id: string;
+  roles: UserRole[];
+  districts?: string[];
+}
+
+/**
  * Get all available actions for a given status and role
  */
 export function getAvailableActions(
@@ -943,6 +961,127 @@ export function getAvailableActions(
     default:
       return [];
   }
+}
+
+/**
+ * Get all available actions for a user with multiple roles
+ * Merges actions from all applicable roles and filters based on permissions
+ * 
+ * @param status - Current request status
+ * @param user - User context with roles and districts
+ * @param request - Request context for permission checks
+ * @returns Deduplicated array of available actions
+ */
+export function getActionsForUser(
+  status: REQUEST_STATUS,
+  user: UserContext,
+  request: RequestContext
+): WorkflowAction[] {
+  const state = WORKFLOW_MATRIX[status];
+  if (!state) return [];
+
+  const allActions: WorkflowAction[] = [];
+  const seenActionIds = new Set<string>();
+
+  // Helper to check district access
+  const hasDistrictAccess = (): boolean => {
+    if (user.roles.includes('SUPER_ADMIN')) return true;
+    return user.districts?.includes(request.districtId) ?? false;
+  };
+
+  // Helper to check if action passes permission checks
+  const canPerformAction = (action: WorkflowAction): boolean => {
+    // Check district access for admin actions
+    if (action.districtCheck && !hasDistrictAccess()) {
+      return false;
+    }
+
+    // Check customer ownership
+    if (action.requiresCustomerOwnership && user.id !== request.customerId) {
+      return false;
+    }
+
+    // Check agent assignment
+    if (action.requiresAgentAssignment && user.id !== request.agentId) {
+      return false;
+    }
+
+    return true;
+  };
+
+  // Collect customer actions if user is the request owner
+  if (user.roles.includes('CUSTOMER') && user.id === request.customerId) {
+    for (const action of state.customerActions) {
+      if (!seenActionIds.has(action.id) && canPerformAction(action)) {
+        allActions.push(action);
+        seenActionIds.add(action.id);
+      }
+    }
+  }
+
+  // Collect admin actions if user has admin role
+  if (user.roles.includes('SUPER_ADMIN') || user.roles.includes('DISTRICT_ADMIN')) {
+    for (const action of state.adminActions) {
+      if (!seenActionIds.has(action.id) && canPerformAction(action)) {
+        allActions.push(action);
+        seenActionIds.add(action.id);
+      }
+    }
+  }
+
+  // Collect agent actions if user has agent role
+  if (user.roles.includes('AGENT')) {
+    for (const action of state.agentActions) {
+      if (!seenActionIds.has(action.id) && canPerformAction(action)) {
+        allActions.push(action);
+        seenActionIds.add(action.id);
+      }
+    }
+  }
+
+  // Sort by priority
+  return allActions.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+}
+
+/**
+ * Check if user can view request details
+ * TO-DO IMPLEMENTATION: Detail screen should only be shown to:
+ * - Request owner (customer)
+ * - District admin of that district
+ * - Super admin
+ * - Assigned agent
+ * 
+ * @param user - User context
+ * @param request - Request context
+ * @returns true if user can view the request
+ */
+export function canViewRequestDetail(
+  user: UserContext,
+  request: RequestContext
+): boolean {
+  // Super admin can view all requests
+  if (user.roles.includes('SUPER_ADMIN')) {
+    return true;
+  }
+
+  // Customer can view their own requests
+  if (user.roles.includes('CUSTOMER') && user.id === request.customerId) {
+    return true;
+  }
+
+  // District admin can view requests in their district
+  if (user.roles.includes('DISTRICT_ADMIN')) {
+    if (user.districts?.includes(request.districtId)) {
+      return true;
+    }
+  }
+
+  // Assigned agent can view the request
+  if (user.roles.includes('AGENT') && user.id === request.agentId) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
