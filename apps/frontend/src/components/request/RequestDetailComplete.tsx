@@ -246,11 +246,11 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         {
           id: auth.user.id,
           roles: getUserRoles(),
-          districts: auth.user.district,
+          districts: auth.user.districts,
         },
         {
           customerId: request.customerId,
-          districtId: request.district,
+          district: request.district,
           agentId: request.assignedAgentId,
         }
       )
@@ -262,11 +262,11 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         {
           id: auth.user.id,
           roles: getUserRoles(),
-          districts: auth.user.district,
+          districts: auth.user.districts,
         },
         {
           customerId: request.customerId,
-          districtId: request.district,
+          district: request.district,
           agentId: request.assignedAgentId,
         }
       )

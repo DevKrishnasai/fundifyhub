@@ -299,8 +299,8 @@ model Comment {
 
 // Join table for associating users with multiple districts.
 // This is implemented as a separate model to avoid breaking existing
-// code that expects `User.district` to be a single string.
-// UserDistrict was removed in favor of `User.district: String[]`.
+// code that expects `User.districts` to be a single string.
+// UserDistrict was removed in favor of `User.districts: String[]`.
 // Kept a comment here for historical context; run `pnpm db:migrate` after
 // schema changes to apply to the database.
 

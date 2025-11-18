@@ -14,7 +14,7 @@ export async function getAgentsByDistrictController(req: Request, res: Response)
   try {
     const queryDistrict = typeof req.query.district === 'string'
       ? (req.query.district as string)
-      : (Array.isArray(req.user?.district) ? req.user!.district[0] : '');
+      : (Array.isArray(req.user?.districts) ? req.user!.districts[0] : '');
 
     if (!queryDistrict) {
       res.status(400).json({ success: false, message: 'district query parameter required' } as APIResponseType);

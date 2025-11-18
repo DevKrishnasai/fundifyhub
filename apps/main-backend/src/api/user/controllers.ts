@@ -4,7 +4,7 @@ import { ROLES } from '@fundifyhub/types';
 import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, AssetPledgePayloadType, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 import { generateSignedUrl } from '../../utils/uploadthing';
-import { normalizeDistrict } from '../../utils/district';
+import { normalizeDistricts } from '../../utils/district';
 
 /**
  * Adds new asset photos to the request (does not delete existing)
@@ -266,7 +266,7 @@ async function handleDocuments(tx: Prisma.TransactionClient, requestId: string, 
 export async function addAssetController(req: Request, res: Response): Promise<void> {
   try {
   const customerId = req.user?.id;
-  const userDistricts = Array.isArray(req.user?.district) ? req.user!.district : [];
+  const userDistricts = Array.isArray(req.user?.districts) ? req.user!.districts : [];
   const district = userDistricts.length > 0 ? userDistricts[0] : '';
 
     // Enforce non-null for required user fields
@@ -577,9 +577,14 @@ export async function getUserProfile(userId: string): Promise<{
       };
     }
 
+    const normalizedUser: UserType = {
+      ...user,
+      districts: normalizeDistricts(user.district),
+    };
+
     return {
       success: true,
-      data: { user },
+      data: { user: normalizedUser },
       message: 'Profile retrieved successfully',
     };
   } catch (error) {
@@ -636,11 +641,16 @@ export async function validateUserAuth(userId: string): Promise<{
       };
     }
 
+    const normalizedFreshUser: UserType = {
+      ...freshUser,
+      districts: normalizeDistricts(freshUser.district),
+    };
+
     return {
       success: true,
       data: {
         isAuthenticated: true,
-        user: freshUser,
+        user: normalizedFreshUser,
       },
       message: 'Authentication validated',
     };

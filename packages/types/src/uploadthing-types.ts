@@ -19,7 +19,7 @@ export interface UploadThingMetadata {
   userId: string;
   userEmail: string;
   userRoles: string[];
-  userDistrict: string;
+  userDistricts: string[];
 }
 
 export interface UploadThingListFilesResponse {

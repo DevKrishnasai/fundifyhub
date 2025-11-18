@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 interface Request {
   id: string;
   currentStatus: REQUEST_STATUS;
-  districtId: string;
+  district: string;
   customerId: string;
   agentId?: string | null;
 }
@@ -40,13 +40,13 @@ export function useRequestActions(request: Request): UseRequestActionsReturn {
     const userContext: UserContext = {
       id: user.id,
       roles: getUserRoles(user),
-      districts: user.district,
+      districts: user.districts,
     };
 
     // Build request context
     const requestContext: RequestContext = {
       customerId: request.customerId,
-      districtId: request.districtId,
+      district: request.district,
       agentId: request.agentId,
     };
 
@@ -79,7 +79,7 @@ export function useRequestActions(request: Request): UseRequestActionsReturn {
 interface User {
   id: string;
   roles: string[];
-  district: string[];
+  districts?: string[];
 }
 
 /**

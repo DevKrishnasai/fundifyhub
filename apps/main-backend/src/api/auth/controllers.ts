@@ -397,7 +397,7 @@ export async function register(
             firstName: user.firstName,
             lastName: user.lastName,
             roles: Array.isArray(user.roles) ? user.roles : [ROLES.CUSTOMER],
-            district: Array.isArray(user.district) ? user.district : (user.district ? [user.district] : []),
+            districts: Array.isArray(user.district) ? user.district : (user.district ? [user.district] : []),
             isActive: user.isActive ?? true,
           },
         },
@@ -486,7 +486,7 @@ export async function login(
       roles: user.roles,
       firstName: user.firstName,
       lastName: user.lastName,
-  district: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
+      districts: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
       isActive: user.isActive,
     });
 
@@ -530,7 +530,7 @@ export async function login(
           firstName: user.firstName,
           lastName: user.lastName,
           roles: Array.isArray(user.roles) ? user.roles : [ROLES.CUSTOMER],
-          district: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
+          districts: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
           isActive: user.isActive ?? true,
         },
       },
