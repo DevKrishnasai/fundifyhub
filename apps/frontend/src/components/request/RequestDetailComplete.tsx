@@ -31,6 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { UploadButton } from '@/components/uploadthing-components';
 import type { ClientUploadedFileData } from 'uploadthing/types';
 import { SignaturePad } from '@/components/SignaturePad';
+import PaymentModal from '@/components/payments/PaymentModal';
 import { 
   Calendar, 
   MapPin, 
@@ -219,6 +220,10 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [showBankDetails, setShowBankDetails] = useState(false);
   const [showRequestInfo, setShowRequestInfo] = useState(false);
   const [showDisbursement, setShowDisbursement] = useState(false);
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedEmiId, setSelectedEmiId] = useState<string | null>(null);
+  const [selectedEmiAmount, setSelectedEmiAmount] = useState<number>(0);
   
   // Disbursement form
   const [transactionRef, setTransactionRef] = useState('');
@@ -297,7 +302,11 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               hasLoan: !!data.data.request.loan,
               loanData: data.data.request.loan,
               hasEmiSchedule: !!data.data.request.loan?.emisSchedule,
-              emiCount: data.data.request.loan?.emisSchedule?.length || 0
+              emiCount: data.data.request.loan?.emisSchedule?.length || 0,
+              emiStatuses: data.data.request.loan?.emisSchedule?.map((e: any) => ({ id: e.id, num: e.emiNumber, status: e.status })),
+              isCustomerRole: auth.isCustomer(),
+              userId: auth.user?.id,
+              customerId: data.data.request.customerId
             });
             
             // Check sessionStorage for upload flag
@@ -881,10 +890,88 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                   </Button>
                 );
               })}
+              
+              {/* Customer Pay EMI Button */}
+              {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && (() => {
+                const nextPending = request.loan.emisSchedule.find((e: any) => e.status === 'PENDING');
+                if (!nextPending) return null;
+                
+                return (
+                  <Button
+                    key="pay-emi"
+                    variant="default"
+                    onClick={() => {
+                      setSelectedEmiId(nextPending.id);
+                      setSelectedEmiAmount(nextPending.emiAmount);
+                      setShowPaymentModal(true);
+                    }}
+                    title={`Pay EMI #${nextPending.emiNumber}`}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Pay EMI #{nextPending.emiNumber} – ₹{nextPending.emiAmount.toLocaleString()}
+                  </Button>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Customer Payment Card - Standalone for better visibility */}
+      {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && (() => {
+        const pendingEmis = request.loan!.emisSchedule!.filter((e: any) => e.status === 'PENDING' || e.status === 'OVERDUE');
+        if (pendingEmis.length === 0) return null;
+        
+        const nextEmi = pendingEmis[0];
+        const dueDate = new Date(nextEmi.dueDate);
+        const isOverdue = nextEmi.status === 'OVERDUE';
+        
+        return (
+          <Card className={`mb-6 ${isOverdue ? 'border-red-500 bg-red-50 dark:bg-red-950' : 'border-primary bg-primary/5'}`}>
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <div className={`p-3 ${isOverdue ? 'bg-red-600' : 'bg-primary'} rounded-lg shrink-0`}>
+                  <CreditCard className="h-6 w-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className={`font-semibold mb-2 text-lg ${isOverdue ? 'text-red-900 dark:text-red-100' : 'text-primary'}`}>
+                    {isOverdue ? '⚠️ EMI Payment Overdue' : '💳 EMI Payment Due'}
+                  </h3>
+                  <div className="space-y-2 mb-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">EMI #{nextEmi.emiNumber}</span>
+                      <span className="text-2xl font-bold">₹{nextEmi.emiAmount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">Due Date</span>
+                      <span className={isOverdue ? 'text-red-600 font-semibold' : 'font-medium'}>
+                        {dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    </div>
+                    {pendingEmis.length > 1 && (
+                      <div className="text-xs text-muted-foreground">
+                        + {pendingEmis.length - 1} more pending EMI{pendingEmis.length > 2 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={() => {
+                      setSelectedEmiId(nextEmi.id);
+                      setSelectedEmiAmount(nextEmi.emiAmount);
+                      setShowPaymentModal(true);
+                    }}
+                  >
+                    <CreditCard className="h-5 w-5 mr-2" />
+                    Pay Now via PhonePe
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Agent Inspection Alert - Points to upload section below */}
       {isAgent && request.currentStatus === REQUEST_STATUS.INSPECTION_IN_PROGRESS && (
@@ -1119,6 +1206,19 @@ export default function RequestDetailComplete({ id }: { id: string }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Payment Modal */}
+      {request?.loan && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          loanId={request.loan.id}
+          emiId={selectedEmiId || ''}
+          amount={selectedEmiAmount}
+          payAheadCount={1}
+          onSuccess={() => { setShowPaymentModal(false); window.location.reload(); }}
+        />
+      )}
 
       {/* Request More Info Modal */}
       <Dialog open={showRequestInfo} onOpenChange={setShowRequestInfo}>

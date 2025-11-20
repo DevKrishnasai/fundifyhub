@@ -261,6 +261,9 @@ importers:
       '@types/pdfkit':
         specifier: ^0.17.3
         version: 0.17.3
+      axios:
+        specifier: ^1.13.1
+        version: 1.13.1
       bcrypt:
         specifier: ^6.0.0
         version: 6.0.0
