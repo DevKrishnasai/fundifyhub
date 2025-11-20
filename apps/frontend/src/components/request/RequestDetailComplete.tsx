@@ -16,7 +16,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getAvailableActions, type WorkflowAction, type UserRole } from '@fundifyhub/types';
+import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getActionsForUser, canViewRequestDetail, type WorkflowAction, type UserRole, type UserContext, type RequestContext } from '@fundifyhub/types';
 import { useRouter } from 'next/navigation';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
 import { executeRequestAction } from '@/lib/request-actions';
@@ -229,18 +229,48 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const isAdmin = auth.hasRole([ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN]);
   const isAgent = auth.isAgent();
 
-  // Get user's role for workflow engine
-  const getUserRole = (): UserRole => {
-    if (auth.hasRole([ROLES.SUPER_ADMIN])) return 'SUPER_ADMIN';
-    if (auth.hasRole([ROLES.DISTRICT_ADMIN])) return 'DISTRICT_ADMIN';
-    if (auth.isAgent()) return 'AGENT';
-    return 'CUSTOMER';
+  // Build user context with all roles
+  const getUserRoles = (): UserRole[] => {
+    const roles: UserRole[] = [];
+    if (auth.hasRole([ROLES.SUPER_ADMIN])) roles.push(ROLES.SUPER_ADMIN);
+    if (auth.hasRole([ROLES.DISTRICT_ADMIN])) roles.push(ROLES.DISTRICT_ADMIN);
+    if (auth.isAgent()) roles.push(ROLES.AGENT);
+    if (auth.isCustomer()) roles.push(ROLES.CUSTOMER);
+    return roles;
   };
 
-  // Get available actions from workflow engine
-  const availableActions = request 
-    ? getAvailableActions(request.currentStatus as REQUEST_STATUS, getUserRole())
+  // Get available actions from workflow engine (supports multi-role users)
+  const availableActions = request && auth.user
+    ? getActionsForUser(
+        request.currentStatus as REQUEST_STATUS,
+        {
+          id: auth.user.id,
+          roles: getUserRoles(),
+          districts: auth.user.districts,
+        },
+        {
+          customerId: request.customerId,
+          district: request.district,
+          agentId: request.assignedAgentId,
+        }
+      )
     : [];
+
+  // Check if user can view this request
+  const canView = request && auth.user
+    ? canViewRequestDetail(
+        {
+          id: auth.user.id,
+          roles: getUserRoles(),
+          districts: auth.user.districts,
+        },
+        {
+          customerId: request.customerId,
+          district: request.district,
+          agentId: request.assignedAgentId,
+        }
+      )
+    : false;
 
   // Load request data
   useEffect(() => {
@@ -766,6 +796,21 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         <div className="text-center">
           <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
           <p className="mt-4 text-lg font-semibold">Request not found</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Access control: Only show request to authorized users
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <XCircle className="h-12 w-12 text-destructive mx-auto" />
+          <p className="mt-4 text-lg font-semibold">Access Denied</p>
+          <p className="mt-2 text-muted-foreground">
+            You do not have permission to view this request.
+          </p>
         </div>
       </div>
     );
@@ -2407,11 +2452,11 @@ function buildTimeline(request: RequestDetail) {
     const actor = h.actor || null;
     let roleLabel = '';
     if (actor && Array.isArray(actor.roles)) {
-      if (actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('DISTRICT_ADMIN')) {
+      if (actor.roles.includes(ROLES.SUPER_ADMIN) || actor.roles.includes(ROLES.DISTRICT_ADMIN)) {
         roleLabel = 'Admin';
-      } else if (actor.roles.includes('AGENT')) {
+      } else if (actor.roles.includes(ROLES.AGENT)) {
         roleLabel = 'Agent';
-      } else if (actor.roles.includes('CUSTOMER')) {
+      } else if (actor.roles.includes(ROLES.CUSTOMER)) {
         roleLabel = 'Customer';
       }
     }
@@ -2441,11 +2486,11 @@ function buildTimeline(request: RequestDetail) {
     const actor = c.author || null;
     let roleLabel = '';
     if (actor && Array.isArray(actor.roles)) {
-      if (actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('DISTRICT_ADMIN')) {
+      if (actor.roles.includes(ROLES.SUPER_ADMIN) || actor.roles.includes(ROLES.DISTRICT_ADMIN)) {
         roleLabel = 'Admin';
-      } else if (actor.roles.includes('AGENT')) {
+      } else if (actor.roles.includes(ROLES.AGENT)) {
         roleLabel = 'Agent';
-      } else if (actor.roles.includes('CUSTOMER')) {
+      } else if (actor.roles.includes(ROLES.CUSTOMER)) {
         roleLabel = 'Customer';
       }
     }

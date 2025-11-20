@@ -43,7 +43,7 @@ import { cn } from '@/lib/utils';
 interface Request {
   id: string;
   currentStatus: REQUEST_STATUS;
-  districtId: string;
+  district: string;
   customerId: string;
   agentId?: string | null;
 }
@@ -84,10 +84,10 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   UserX,
 };
 
-export function RequestNextActions({ 
-  request, 
-  onAction, 
-  className 
+export function RequestNextActions({
+  request,
+  onAction,
+  className
 }: RequestNextActionsProps) {
   const { primaryActions, canAct } = useRequestActions(request);
 

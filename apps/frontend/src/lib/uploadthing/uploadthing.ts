@@ -18,7 +18,7 @@ export const ourFileRouter: FileRouter = {
    * - Storage: Private (requires signed URLs for access)
    *
    * @middleware Authenticates user via JWT token from headers or cookies
-   * @returns Metadata including userId, userEmail, userRoles, userDistrict
+   * @returns Metadata including userId, userEmail, userRoles, userDistricts
    * @onUploadComplete Returns file metadata without public URL (private files)
    */
   assetImageUploader: f({
@@ -57,7 +57,7 @@ export const ourFileRouter: FileRouter = {
           userId: user.id,
           userEmail: user.email,
           userRoles: user.roles,
-          userDistrict: user.district,
+          userDistricts: user.districts ?? [],
         };
       } catch (validationError) {
         logger.error(
@@ -126,7 +126,7 @@ export const ourFileRouter: FileRouter = {
           userId: user.id,
           userEmail: user.email,
           userRoles: user.roles,
-          userDistrict: user.district,
+          userDistricts: user.districts ?? [],
         };
       } catch (validationError) {
         logger.error(

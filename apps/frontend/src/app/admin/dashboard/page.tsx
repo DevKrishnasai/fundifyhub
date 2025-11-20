@@ -404,7 +404,7 @@ export default function AdminDashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Districts</SelectItem>
-                  {(user?.district || []).map((d: string) => (
+                  {(user?.districts || []).map((d: string) => (
                     <SelectItem key={d} value={d}>{d}</SelectItem>
                   ))}
                 </SelectContent>

@@ -93,8 +93,8 @@ export default function RequestDetailClient({ id }: { id: string }) {
     let actor = (h as any).actor || null;
     let roleLabel = undefined;
     if (actor && Array.isArray(actor.roles)) {
-      if (actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('DISTRICT_ADMIN')) roleLabel = 'Admin';
-      else if (actor.roles.includes('AGENT')) roleLabel = 'Agent';
+      if (actor.roles.includes(ROLES.SUPER_ADMIN) || actor.roles.includes(ROLES.DISTRICT_ADMIN)) roleLabel = 'Admin';
+      else if (actor.roles.includes(ROLES.AGENT)) roleLabel = 'Agent';
       // customers or other roles: no roleLabel (display just name)
     }
     // Use shared helper to compute label and format metadata
@@ -112,8 +112,8 @@ export default function RequestDetailClient({ id }: { id: string }) {
     const actor = c.author || null;
     let roleLabel: string | undefined = undefined;
     if (actor && Array.isArray(actor.roles)) {
-      if (actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('DISTRICT_ADMIN')) roleLabel = 'Admin';
-      else if (actor.roles.includes('AGENT')) roleLabel = 'Agent';
+      if (actor.roles.includes(ROLES.SUPER_ADMIN) || actor.roles.includes(ROLES.DISTRICT_ADMIN)) roleLabel = 'Admin';
+      else if (actor.roles.includes(ROLES.AGENT)) roleLabel = 'Agent';
       // customers: omit role label
     }
     timelineEvents.push({ id: `c-${c.id}`, date: c.createdAt, type: 'comment', title: 'Comment', actor, roleLabel, description: c.content, raw: c });

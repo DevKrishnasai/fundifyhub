@@ -115,7 +115,7 @@ export default function RequestActions({
   const { primaryActions, secondaryActions, canAct } = useRequestActions({
     id: requestId,
     currentStatus: requestStatus as REQUEST_STATUS,
-    districtId: district || '',
+    district: district || '',
     customerId: '', // Will be filtered by hook based on auth context
     agentId: null,
   });

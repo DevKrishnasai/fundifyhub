@@ -185,7 +185,7 @@ export const ourFileRouter = {
   assetImageUploader: f({ image: { maxFileSize: "4MB" } })
     .middleware(async ({ req }) => {
       // Authentication logic
-      return { userId, userEmail, userRoles, userDistrict };
+      return { userId, userEmail, userRoles, userDistricts };
     })
     .onUploadComplete(async ({ metadata, file }) => {
       // Post-upload processing

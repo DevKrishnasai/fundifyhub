@@ -79,7 +79,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         id: decoded.id,
         email: decoded.email,
         roles: decoded.roles, // Store all roles
-        district: decoded.district,
+        districts: decoded.districts,
         firstName: decoded.firstName,
         lastName: decoded.lastName,
         isActive: decoded.isActive

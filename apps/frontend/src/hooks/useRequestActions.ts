@@ -1,15 +1,16 @@
 /**
  * Hook to resolve available actions for a request based on user role and permissions
+ * Updated to support multi-role users (e.g., DISTRICT_ADMIN + AGENT)
  */
 
 import { useMemo } from 'react';
-import { REQUEST_STATUS, type UserRole, getAvailableActions, getPrimaryActions, getSecondaryActions, type WorkflowAction } from '@fundifyhub/types';
+import { REQUEST_STATUS, type UserRole, getActionsForUser, type WorkflowAction, type UserContext, type RequestContext, ROLES } from '@fundifyhub/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Request {
   id: string;
   currentStatus: REQUEST_STATUS;
-  districtId: string;
+  district: string;
   customerId: string;
   agentId?: string | null;
 }
@@ -35,59 +36,36 @@ export function useRequestActions(request: Request): UseRequestActionsReturn {
       };
     }
 
-    // Determine user's role in context of this request
-    const userRole = getUserRoleForRequest(user, request);
-    
-    if (!userRole) {
-      return {
-        allActions: [],
-        primaryActions: [],
-        secondaryActions: [],
-        canAct: false,
-      };
-    }
+    // Build user context with all roles
+    const userContext: UserContext = {
+      id: user.id,
+      roles: getUserRoles(user),
+      districts: user.districts,
+    };
 
-    // Get base actions from workflow engine
-    const baseActions = getAvailableActions(request.currentStatus, userRole);
+    // Build request context
+    const requestContext: RequestContext = {
+      customerId: request.customerId,
+      district: request.district,
+      agentId: request.agentId,
+    };
 
-    // Filter actions based on permissions
-    const filteredActions = baseActions.filter(action => {
-      // Check district access for admin actions
-      if (action.districtCheck && !hasDistrictAccess(user, request.districtId)) {
-        return false;
-      }
-
-      // Check customer ownership
-      if (action.requiresCustomerOwnership && user.id !== request.customerId) {
-        return false;
-      }
-
-      // Check agent assignment
-      if (action.requiresAgentAssignment && user.id !== request.agentId) {
-        return false;
-      }
-
-      return true;
-    });
-
-    // Split into primary and secondary
-    const primary = getPrimaryActions(request.currentStatus, userRole, 2);
-    const secondary = getSecondaryActions(request.currentStatus, userRole, 2);
-
-    // Apply same filtering to primary/secondary
-    const filteredPrimary = primary.filter(action =>
-      filteredActions.some(a => a.id === action.id)
+    // Get merged actions for all user roles
+    const allActions = getActionsForUser(
+      request.currentStatus,
+      userContext,
+      requestContext
     );
-    
-    const filteredSecondary = secondary.filter(action =>
-      filteredActions.some(a => a.id === action.id)
-    );
+
+    // Split into primary and secondary based on priority
+    const primaryActions = allActions.slice(0, 2);
+    const secondaryActions = allActions.slice(2);
 
     return {
-      allActions: filteredActions,
-      primaryActions: filteredPrimary,
-      secondaryActions: filteredSecondary,
-      canAct: filteredActions.length > 0,
+      allActions,
+      primaryActions,
+      secondaryActions,
+      canAct: allActions.length > 0,
     };
   }, [user, request]);
 
@@ -105,52 +83,27 @@ interface User {
 }
 
 /**
- * Determine user's role in context of this request
+ * Extract all user roles as UserRole array
+ * Converts user.roles string array to typed UserRole array
  */
-function getUserRoleForRequest(user: User, request: Request): UserRole | null {
-  const roles = user.roles;
-
-  // Super admin has highest priority
-  if (roles.includes('SUPER_ADMIN')) {
-    return 'SUPER_ADMIN';
+function getUserRoles(user: User): UserRole[] {
+  const validRoles: UserRole[] = [];
+  
+  if (user.roles.includes(ROLES.SUPER_ADMIN)) {
+    validRoles.push(ROLES.SUPER_ADMIN);
   }
-
-  // If user is the customer
-  if (user.id === request.customerId) {
-    return 'CUSTOMER';
+  
+  if (user.roles.includes(ROLES.DISTRICT_ADMIN)) {
+    validRoles.push(ROLES.DISTRICT_ADMIN);
   }
-
-  // If user is assigned agent
-  if (user.id === request.agentId && roles.includes('AGENT')) {
-    return 'AGENT';
+  
+  if (user.roles.includes(ROLES.AGENT)) {
+    validRoles.push(ROLES.AGENT);
   }
-
-  // If user is district admin with access
-  if (roles.includes('DISTRICT_ADMIN') && hasDistrictAccess(user, request.districtId)) {
-    return 'DISTRICT_ADMIN';
+  
+  if (user.roles.includes(ROLES.CUSTOMER)) {
+    validRoles.push(ROLES.CUSTOMER);
   }
-
-  // If user is any agent (for unassigned requests)
-  if (roles.includes('AGENT')) {
-    return 'AGENT';
-  }
-
-  return null;
-}
-
-/**
- * Check if user has access to request's district
- */
-function hasDistrictAccess(user: User, districtId: string): boolean {
-  // Super admin has access to all districts
-  if (user.roles.includes('SUPER_ADMIN')) {
-    return true;
-  }
-
-  // Check if user's districts include this district
-  if (!user.districts || user.districts.length === 0) {
-    return false;
-  }
-
-  return user.districts.includes(districtId);
+  
+  return validRoles;
 }

@@ -159,9 +159,9 @@ export async function getRequestsController(req: Request, res: Response): Promis
 
     // If district admin and not super, restrict to their districts
     if (!isSuper && Array.isArray(user.roles) && user.roles.includes(ROLES.DISTRICT_ADMIN)) {
-      // user.district is string[]
+      // user.districts is string[]
       if (!where.district) {
-        where.district = { in: user.district || [] };
+        where.district = { in: user.districts || [] };
       } else {
         // ensure the requested district is within user's allowed districts
         if (!hasDistrictAccess(user, String(where.district))) {

@@ -1081,16 +1081,18 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
     }
 
     // Authorization check
-    const isCustomer = user.roles.includes('CUSTOMER');
-    const isAdmin = user.roles.includes('DISTRICT_ADMIN') || user.roles.includes('SUPER_ADMIN');
-    const isDistrictMatch = user.district === request.district;
+    const isCustomer = user.roles.includes(ROLES.CUSTOMER);
+    const isAdmin = user.roles.includes(ROLES.DISTRICT_ADMIN) || user.roles.includes(ROLES.SUPER_ADMIN);
+    const isDistrictMatch = Array.isArray(user.districts)
+      ? user.districts.includes(request.district)
+      : false;
 
     if (isCustomer && request.customerId !== user.id) {
       res.status(403).json({ success: false, error: 'Not authorized to upload agreement for this request' });
       return;
     }
 
-    if (isAdmin && !user.roles.includes('SUPER_ADMIN') && !isDistrictMatch) {
+    if (isAdmin && !user.roles.includes(ROLES.SUPER_ADMIN) && !isDistrictMatch) {
       res.status(403).json({ success: false, error: 'Not authorized for this district' });
       return;
     }

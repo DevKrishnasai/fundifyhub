@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import redis from '../../utils/redis'
 import { createOtpSession, verifyOtpSession } from '../../utils/otpStore'
 import { prisma } from '@fundifyhub/prisma';
-import { LoginAlertPayloadType, OTPVerificationPayloadType, TEMPLATE_NAMES, WelcomePayloadType, SERVICE_NAMES } from '@fundifyhub/types';
+import { LoginAlertPayloadType, OTPVerificationPayloadType, TEMPLATE_NAMES, WelcomePayloadType, SERVICE_NAMES, ROLES } from '@fundifyhub/types';
 import { loginSchema, registerSchema } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 import { APIResponseType } from '../../types';
@@ -345,7 +345,7 @@ export async function register(
             firstName,
             lastName,
             password: hashedPassword,
-            roles: ['CUSTOMER'],
+            roles: [ROLES.CUSTOMER],
             emailVerified: true,
             phoneVerified: true,
             // Cast to any to satisfy transient type differences between generated Prisma client
@@ -396,8 +396,8 @@ export async function register(
             phoneNumber: user.phoneNumber,
             firstName: user.firstName,
             lastName: user.lastName,
-            roles: Array.isArray(user.roles) ? user.roles : ['CUSTOMER'],
-            district: Array.isArray(user.district) ? user.district : (user.district ? [user.district] : []),
+            roles: Array.isArray(user.roles) ? user.roles : [ROLES.CUSTOMER],
+            districts: Array.isArray(user.district) ? user.district : (user.district ? [user.district] : []),
             isActive: user.isActive ?? true,
           },
         },
@@ -486,7 +486,7 @@ export async function login(
       roles: user.roles,
       firstName: user.firstName,
       lastName: user.lastName,
-  district: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
+      districts: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
       isActive: user.isActive,
     });
 
@@ -529,8 +529,8 @@ export async function login(
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          roles: Array.isArray(user.roles) ? user.roles : ['CUSTOMER'],
-          district: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
+          roles: Array.isArray(user.roles) ? user.roles : [ROLES.CUSTOMER],
+          districts: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
           isActive: user.isActive ?? true,
         },
       },

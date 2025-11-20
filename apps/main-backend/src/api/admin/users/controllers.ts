@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { APIResponseType } from '../../../types';
 import logger from '../../../utils/logger';
 import { Prisma, prisma } from '@fundifyhub/prisma';
+import { ROLES } from '@fundifyhub/types';
 import bcrypt from 'bcrypt';
 import { checkUserExists } from './utils';
 
@@ -35,7 +36,7 @@ export async function createUserController(req: Request, res: Response): Promise
       lastName,
       phoneNumber,
       district,
-      roles: roles || ['CUSTOMER'],
+      roles: roles || [ROLES.CUSTOMER],
       isActive: isActive !== undefined ? isActive : true,
       password: hashedPassword,
       emailVerified: false, // Admin-created users need to verify email

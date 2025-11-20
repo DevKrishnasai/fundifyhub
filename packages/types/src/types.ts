@@ -15,7 +15,7 @@ export interface UserType {
   lastName: string;
   roles: string[];
   // Districts assigned to the user. Always an array.
-  district: string[];
+  districts: string[];
   isActive: boolean;
 }
 
