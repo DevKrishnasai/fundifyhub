@@ -52,7 +52,7 @@ interface User {
   phone?: string
   roles: string[] // multiple roles from backend
   status: UserStatus
-  district?: string
+  districts?: string[]
   createdAt?: string
   lastLogin?: string
   _isActive?: boolean
@@ -68,7 +68,15 @@ export default function UsersAccessPage() {
   const [roleFilter, setRoleFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [newUser, setNewUser] = useState<Omit<User, "id" | "createdAt" | "lastLogin">>({
+  const [newUser, setNewUser] = useState<{
+    name: string
+    email: string
+    phone?: string
+    roles: string[]
+    status: UserStatus
+    district: string
+    _isActive?: boolean
+  }>({
     name: "",
     email: "",
     phone: "",
@@ -108,7 +116,7 @@ export default function UsersAccessPage() {
             phone: u.phoneNumber || '',
             roles,
             status: u.isActive ? 'active' : 'inactive',
-            district: u.district || '',
+            districts: Array.isArray(u.districts) ? u.districts : (u.district ? [u.district] : []),
             createdAt: u.createdAt,
             lastLogin: u.lastLoginAt || '—',
             _isActive: !!u.isActive,
@@ -260,7 +268,7 @@ export default function UsersAccessPage() {
         firstName,
         lastName,
         phoneNumber: newUser.phone,
-        district: newUser.district,
+        districts: newUser.district ? [newUser.district] : [],
         roles: newUser.roles, // Send as array
         isActive: newUser._isActive ?? true,
       }
@@ -278,7 +286,7 @@ export default function UsersAccessPage() {
         phone: createdUser.phoneNumber,
         roles: Array.isArray(createdUser.roles) ? createdUser.roles : [createdUser.role || ROLES.CUSTOMER],
         status: createdUser.isActive ? 'active' : 'inactive',
-        district: createdUser.district,
+        districts: Array.isArray(createdUser.districts) ? createdUser.districts : (createdUser.district ? [createdUser.district] : []),
         createdAt: createdUser.createdAt,
         lastLogin: 'Never',
         _isActive: !!createdUser.isActive,
@@ -331,7 +339,7 @@ export default function UsersAccessPage() {
       lastName: u.lastName || '',
       email: u.email,
       phone: u.phone || '',
-      district: u.district || '',
+      district: (u.districts && u.districts[0]) || '',
       roles: Array.isArray(u.roles) ? u.roles.slice() : [],
       isActive: u._isActive ?? (u.status === 'active')
     })
@@ -357,7 +365,7 @@ export default function UsersAccessPage() {
         firstName: editForm.firstName,
         lastName: editForm.lastName,
         phoneNumber: editForm.phone,
-        district: editForm.district,
+        districts: editForm.district ? [editForm.district] : [],
         roles: editForm.roles,
         isActive: editForm.isActive,
       }
@@ -370,7 +378,7 @@ export default function UsersAccessPage() {
         lastName: updated.lastName || editForm.lastName,
         name: `${updated.firstName || editForm.firstName} ${updated.lastName || editForm.lastName}`.trim(),
         phone: updated.phoneNumber || editForm.phone,
-        district: updated.district || editForm.district,
+        districts: Array.isArray(updated.districts) ? updated.districts : (updated.district ? [updated.district] : [editForm.district]),
         roles: Array.isArray(updated.roles) ? updated.roles.map((r: string) => String(r).toUpperCase()) : editForm.roles,
         status: updated.isActive ? 'active' : 'inactive',
         _isActive: !!updated.isActive,
@@ -795,7 +803,7 @@ export default function UsersAccessPage() {
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-muted-foreground" />
                         <span className="text-muted-foreground">District:</span>
-                        <span className="font-medium">{user.district}</span>
+                        <span className="font-medium">{(user.districts && user.districts[0]) || ''}</span>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Last Login:</p>

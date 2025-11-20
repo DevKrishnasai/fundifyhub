@@ -1083,7 +1083,7 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
     // Authorization check
     const isCustomer = user.roles.includes(ROLES.CUSTOMER);
     const isAdmin = user.roles.includes(ROLES.DISTRICT_ADMIN) || user.roles.includes(ROLES.SUPER_ADMIN);
-    const isDistrictMatch = user.district === request.district;
+    const isDistrictMatch = Array.isArray((user as any).districts) ? (user as any).districts.includes(request.district) : false;
 
     if (isCustomer && request.customerId !== user.id) {
       res.status(403).json({ success: false, error: 'Not authorized to upload agreement for this request' });

@@ -11,7 +11,7 @@ import logger from './logger';
  */
 type AuthUser = Partial<UserType> & {
   roles?: string[];
-  district?: string[];
+  districts?: string[];
 };
 
 export function hasRole(user: AuthUser | undefined | null, role: string): boolean {
@@ -33,8 +33,8 @@ export function hasDistrictAccess(user: AuthUser | undefined | null, district: s
   // SUPER_ADMIN has access to all districts
   if (Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN)) return true;
 
-  // User.district is an array of districts. Grant access if any district matches.
-  if (Array.isArray(user.district) && user.district.includes(district)) return true;
+  // User.districts is an array of districts. Grant access if any district matches.
+  if (Array.isArray(user.districts) && user.districts.includes(district)) return true;
 
   return false;
 }

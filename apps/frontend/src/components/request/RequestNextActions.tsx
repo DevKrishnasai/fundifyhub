@@ -43,7 +43,7 @@ import { cn } from '@/lib/utils';
 interface Request {
   id: string;
   currentStatus: REQUEST_STATUS;
-  districtId: string;
+  district: string;
   customerId: string;
   agentId?: string | null;
 }

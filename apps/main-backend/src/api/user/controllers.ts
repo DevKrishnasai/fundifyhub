@@ -266,7 +266,7 @@ async function handleDocuments(tx: Prisma.TransactionClient, requestId: string, 
 export async function addAssetController(req: Request, res: Response): Promise<void> {
   try {
   const customerId = req.user?.id;
-  const userDistricts = Array.isArray(req.user?.district) ? req.user!.district : [];
+  const userDistricts = Array.isArray(req.user?.districts) ? req.user!.districts : [];
   const district = userDistricts.length > 0 ? userDistricts[0] : '';
 
     // Enforce non-null for required user fields
@@ -577,9 +577,20 @@ export async function getUserProfile(userId: string): Promise<{
       };
     }
 
+    // Map DB shape (which uses `district` column) to shared `UserType` shape (`districts`)
+    const mappedUser: UserType = {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      roles: user.roles,
+      isActive: user.isActive,
+      districts: Array.isArray((user as any).district) ? (user as any).district : ((user as any).district ? [(user as any).district] : []),
+    };
+
     return {
       success: true,
-      data: { user },
+      data: { user: mappedUser },
       message: 'Profile retrieved successfully',
     };
   } catch (error) {
@@ -636,11 +647,21 @@ export async function validateUserAuth(userId: string): Promise<{
       };
     }
 
+    const mappedFreshUser: UserType = {
+      id: freshUser.id,
+      email: freshUser.email,
+      firstName: freshUser.firstName,
+      lastName: freshUser.lastName,
+      roles: freshUser.roles,
+      isActive: freshUser.isActive,
+      districts: Array.isArray((freshUser as any).district) ? (freshUser as any).district : ((freshUser as any).district ? [(freshUser as any).district] : []),
+    };
+
     return {
       success: true,
       data: {
         isAuthenticated: true,
-        user: freshUser,
+        user: mappedFreshUser,
       },
       message: 'Authentication validated',
     };

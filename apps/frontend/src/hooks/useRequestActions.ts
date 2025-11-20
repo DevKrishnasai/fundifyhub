@@ -4,13 +4,14 @@
  */
 
 import { useMemo } from 'react';
-import { REQUEST_STATUS, type UserRole, getActionsForUser, type WorkflowAction, type UserContext, type RequestContext, ROLES } from '@fundifyhub/types';
+import { REQUEST_STATUS, type UserRole, getActionsForUser, type WorkflowAction, type UserContext, type RequestContext, ROLES, type UserType } from '@fundifyhub/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Request {
   id: string;
   currentStatus: REQUEST_STATUS;
-  districtId: string;
+  // District name (required)
+  district: string;
   customerId: string;
   agentId?: string | null;
 }
@@ -40,13 +41,13 @@ export function useRequestActions(request: Request): UseRequestActionsReturn {
     const userContext: UserContext = {
       id: user.id,
       roles: getUserRoles(user),
-      districts: user.district,
+      districts: user.districts ?? [],
     };
 
     // Build request context
     const requestContext: RequestContext = {
       customerId: request.customerId,
-      districtId: request.districtId,
+      district: request.district,
       agentId: request.agentId,
     };
 
@@ -76,17 +77,13 @@ export function useRequestActions(request: Request): UseRequestActionsReturn {
 // HELPER FUNCTIONS
 // ============================================
 
-interface User {
-  id: string;
-  roles: string[];
-  district: string[];
-}
+// Use shared UserType from @fundifyhub/types for strict typing
 
 /**
  * Extract all user roles as UserRole array
  * Converts user.roles string array to typed UserRole array
  */
-function getUserRoles(user: User): UserRole[] {
+function getUserRoles(user: UserType): UserRole[] {
   const validRoles: UserRole[] = [];
   
   if (user.roles.includes(ROLES.SUPER_ADMIN)) {

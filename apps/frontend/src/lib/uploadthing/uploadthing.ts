@@ -57,7 +57,7 @@ export const ourFileRouter: FileRouter = {
           userId: user.id,
           userEmail: user.email,
           userRoles: user.roles,
-          userDistrict: user.district,
+          userDistrict: Array.isArray(user.districts) && user.districts.length ? user.districts[0] : '',
         };
       } catch (validationError) {
         logger.error(
@@ -126,7 +126,7 @@ export const ourFileRouter: FileRouter = {
           userId: user.id,
           userEmail: user.email,
           userRoles: user.roles,
-          userDistrict: user.district,
+          userDistrict: Array.isArray(user.districts) && user.districts.length ? user.districts[0] : '',
         };
       } catch (validationError) {
         logger.error(

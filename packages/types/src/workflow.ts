@@ -927,7 +927,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
  */
 export interface RequestContext {
   customerId: string;
-  districtId: string;
+  district: string;
   agentId?: string | null;
 }
 
@@ -986,7 +986,7 @@ export function getActionsForUser(
   // Helper to check district access
   const hasDistrictAccess = (): boolean => {
     if (user.roles.includes(ROLES.SUPER_ADMIN)) return true;
-    return user.districts?.includes(request.districtId) ?? false;
+    return user.districts?.includes(request.district) ?? false;
   };
 
   // Helper to check if action passes permission checks
@@ -1071,7 +1071,7 @@ export function canViewRequestDetail(
 
   // District admin can view requests in their district
   if (user.roles.includes(ROLES.DISTRICT_ADMIN)) {
-    if (user.districts?.includes(request.districtId)) {
+    if (user.districts?.includes(request.district)) {
       return true;
     }
   }

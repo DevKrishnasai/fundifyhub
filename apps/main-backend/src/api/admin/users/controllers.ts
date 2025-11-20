@@ -8,7 +8,7 @@ import { checkUserExists } from './utils';
 
 export async function createUserController(req: Request, res: Response): Promise<void> {
   try {
-    const { email, firstName, lastName, phoneNumber, district, roles, isActive } = req.body;
+    const { email, firstName, lastName, phoneNumber, district, districts, roles, isActive } = req.body;
 
     if (!email || !firstName) {
       res.status(400).json({ success: false, message: 'Email and firstName are required' } as APIResponseType);
@@ -30,12 +30,19 @@ export async function createUserController(req: Request, res: Response): Promise
     const tempPassword = Math.random().toString(36).slice(-12);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
+    // Accept either single `district` (legacy) or `districts` (preferred)
+    const finalDistricts = Array.isArray(districts)
+      ? districts
+      : district
+        ? (Array.isArray(district) ? district : [district])
+        : [];
+
     const userData: Prisma.UserCreateInput = {
       email: email.toLowerCase(),
       firstName,
       lastName,
       phoneNumber,
-      district,
+      district: finalDistricts as any,
       roles: roles || [ROLES.CUSTOMER],
       isActive: isActive !== undefined ? isActive : true,
       password: hashedPassword,
@@ -59,10 +66,14 @@ export async function createUserController(req: Request, res: Response): Promise
       },
     });
 
+    // Normalize response to use `districts` key for API consumers
+    const resp = { ...user, districts: user.district } as any;
+    delete (resp as any).district;
+
     res.status(201).json({
       success: true,
       message: 'User created successfully',
-      data: user
+      data: resp
     } as APIResponseType);
   } catch (error) {
     logger.error('createUserController error:', error as Error);
@@ -87,7 +98,9 @@ export async function listUsersController(req: Request, res: Response): Promise<
         updatedAt: true,
       },
     });
-    res.status(200).json({ success: true, message: 'Users retrieved', data: users } as APIResponseType);
+    // Map `district` -> `districts` in response
+    const mapped = users.map(u => ({ ...u, districts: u.district }));
+    res.status(200).json({ success: true, message: 'Users retrieved', data: mapped } as APIResponseType);
   } catch (error) {
     logger.error('listUsersController error:', error as Error);
     res.status(500).json({ success: false, message: 'Failed to retrieve users' } as APIResponseType);
@@ -135,6 +148,7 @@ export async function updateUserController(req: Request, res: Response): Promise
     if (payload.lastName !== undefined) allowed.lastName = payload.lastName;
     if (payload.phoneNumber !== undefined) allowed.phoneNumber = payload.phoneNumber;
     if (payload.district !== undefined) allowed.district = payload.district;
+    if (payload.districts !== undefined) allowed.district = payload.districts;
 
     const updated = await prisma.user.update({
       where: { id },
@@ -152,8 +166,10 @@ export async function updateUserController(req: Request, res: Response): Promise
         updatedAt: true,
       },
     });
-    
-    res.status(200).json({ success: true, message: 'User updated', data: updated } as APIResponseType);
+    const resp = { ...updated, districts: updated.district } as any;
+    delete (resp as any).district;
+
+    res.status(200).json({ success: true, message: 'User updated', data: resp } as APIResponseType);
   } catch (error) {
     logger.error('updateUserController error:', error as Error);
     res.status(500).json({ success: false, message: 'Failed to update user' } as APIResponseType);
