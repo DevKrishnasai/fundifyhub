@@ -1,0 +1,4 @@
+When the request is not yet converted into loan, the estimated EMI object displayed shd only be displaying the EMI No. Principal ,Intrest and Amount 
+in the same order as mentioned .
+
+The entire plan has to be only displayed once the laon is accepted.

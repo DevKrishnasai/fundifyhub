@@ -82,11 +82,43 @@ export interface AssetPledgePayloadType {
   supportUrl?: string;
 }
 
+export type EMIReminderPayloadType = {
+  customerName: string;
+  email: string;
+  phoneNumber: string;
+  loanNumber: string;
+  emiNumber: number;
+  emiAmount: number;
+  dueDate: string;
+  daysUntilDue?: number; // Positive = days until due, negative = days overdue
+  totalOutstanding?: number;
+  paymentUrl?: string;
+  companyName?: string;
+};
+
+export type EMIOverduePayloadType = {
+  customerName: string;
+  email: string;
+  phoneNumber: string;
+  loanNumber: string;
+  emiNumber: number;
+  emiAmount: number;
+  dueDate: string;
+  daysOverdue: number;
+  lateFee: number;
+  totalDue: number;
+  overdueCount: number; // Number of overdue EMIs
+  paymentUrl?: string;
+  companyName?: string;
+};
+
 export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.OTP_VERIFICATION]: OTPVerificationPayloadType;
   [TEMPLATE_NAMES.WELCOME]: WelcomePayloadType;
   [TEMPLATE_NAMES.LOGIN_ALERT]: LoginAlertPayloadType;
   [TEMPLATE_NAMES.ASSET_PLEDGE]: AssetPledgePayloadType;
+  [TEMPLATE_NAMES.EMI_REMINDER]: EMIReminderPayloadType;
+  [TEMPLATE_NAMES.EMI_OVERDUE]: EMIOverduePayloadType;
 };
 
 // -----------TEMPLATE RELATED END-----------

@@ -51,6 +51,12 @@ export const mainBackendEnvSchema = z.object({
 
   // UploadThing configuration
   UPLOADTHING_TOKEN: z.string().min(1, 'UPLOADTHING_TOKEN is required'),
+  
+  // Razorpay payment gateway configuration
+  RAZORPAY_KEY_ID: z.string().min(1, 'RAZORPAY_KEY_ID is required'),
+  RAZORPAY_KEY_SECRET: z.string().min(1, 'RAZORPAY_KEY_SECRET is required'),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(), // Optional: defaults to KEY_SECRET if not provided
+  
   // Optional metrics (StatsD/Datadog)
   // Optional OTP HMAC secret (if not provided, JWT_SECRET will be used)
   OTP_HMAC_SECRET: z.string().optional(),

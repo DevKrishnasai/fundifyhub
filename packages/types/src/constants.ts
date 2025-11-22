@@ -16,11 +16,14 @@ export enum TEMPLATE_NAMES {
   OTP_VERIFICATION = 'OTP_VERIFICATION',
   LOGIN_ALERT = 'LOGIN_ALERT',
   ASSET_PLEDGE = 'ASSET_PLEDGE',
+  EMI_REMINDER = 'EMI_REMINDER',
+  EMI_OVERDUE = 'EMI_OVERDUE',
 };
 
 export enum QUEUE_NAMES {
   EMAIL_QUEUE = 'EMAIL_QUEUE',
   WHATSAPP_QUEUE = 'WHATSAPP_QUEUE',
+  EMI_CRON_QUEUE = 'EMI_CRON_QUEUE',
 };
 
 export enum JOB_TYPES {
@@ -263,6 +266,9 @@ export enum EMI_STATUS {
   DEFAULTED = "DEFAULTED"
 }
 
+// Late fee starts from day 1 (no grace period for daily charges)
+export const LATE_FEE_GRACE_PERIOD_DAYS = 0;
+
 export enum INSPECTION_STATUS {
   PENDING = "PENDING",
   SCHEDULED = "SCHEDULED",
@@ -270,6 +276,30 @@ export enum INSPECTION_STATUS {
   COMPLETED = "COMPLETED",
   CANCELLED = "CANCELLED"
 }
+
+export enum PAYMENT_METHOD {
+  RAZORPAY = "RAZORPAY",
+  UPI = "UPI",
+  BANK_TRANSFER = "BANK_TRANSFER",
+  CASH = "CASH",
+  CARD = "CARD"
+}
+
+export enum PAYMENT_STATUS {
+  PENDING = "PENDING",
+  SUCCESS = "SUCCESS",
+  FAILED = "FAILED",
+  REFUNDED = "REFUNDED"
+}
+
+export enum PAYMENT_TYPE {
+  EMI = "EMI",               // Regular EMI payment
+  ADVANCE = "ADVANCE",       // Advance payment
+  LATE_FEE = "LATE_FEE"     // Late fee/penalty payment (PARTIAL removed)
+}
+
+// Penalty Configuration
+export const OVERDUE_GRACE_PERIOD_DAYS = 30; // 30 days (1 month) grace period before penalties apply
 
 // ----------- REQUEST RELATED END-----------
 

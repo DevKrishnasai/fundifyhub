@@ -4,6 +4,8 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../dialog';
 import { Button } from '../button';
 import { Input } from '../input';
+import { BACKEND_API_CONFIG } from '@/lib/urls';
+import { api } from '@/lib/api-client';
 
 export default function AssignAgentModal({ open, onOpenChange, onSubmit, district }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (agentId: string) => void; district?: string; }) {
   const [agentId, setAgentId] = React.useState('');
@@ -20,14 +22,8 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
       setLoadingAgents(true);
       setError(null);
       try {
-        const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/agents?district=${encodeURIComponent(district)}`;
-        const res = await fetch(url, { credentials: 'include' });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body?.message || 'Failed to fetch agents');
-        }
-        const body = await res.json();
-        if (mounted) setAgents(body.data?.agents || []);
+        const body = await api.get(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_AGENTS_BY_DISTRICT(district));
+        if (mounted) setAgents(body?.data?.agents || []);
       } catch (err: any) {
         // fallback: clear agents and let user enter id manually
         if (mounted) setError(err?.message || String(err));

@@ -3,6 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { REQUEST_STATUS, ROLES } from '@fundifyhub/types';
+import { BACKEND_API_CONFIG } from '@/lib/urls';
+import { api } from '@/lib/api-client';
 import CreateOfferModal from './CreateOfferModal';
 import AssignAgentModal from './AssignAgentModal';
 import { MoreHorizontal, UserPlus, FilePlus, CheckCircle, XCircle, Clipboard, Calendar } from 'lucide-react';
@@ -73,9 +75,8 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
 
   async function fetchFullRequest() {
     try {
-      const rresp = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}`, { credentials: 'include' });
-      const rjson = await rresp.json();
-      if (rresp.ok && rjson?.data?.request) return rjson.data.request;
+      const rjson = await api.get(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(requestId));
+      if (rjson?.data?.request) return rjson.data.request;
       return null;
     } catch (err) {
       return null;
@@ -86,24 +87,18 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
     const { amount, tenureMonths, interestRate } = payload;
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/offer`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, tenureMonths, interestRate })
+      const data = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.CREATE_OFFER(requestId), {
+        amount, tenureMonths, interestRate
       });
-      const payload = await res.json();
-      if (res.ok) {
-        onUpdated?.(payload.data.request);
+      if (data) {
+        onUpdated?.(data.data.request);
         setShowOffer(false);
         setInitialOffer(null);
-      } else {
-        alert(payload.message || 'Failed to create offer');
       }
-    } catch (err) {
+    } catch (err: any) {
       // eslint-disable-next-line no-console
       console.error(err);
-      alert('Network error');
+      alert(err?.message || 'Failed to create offer');
     } finally {
       setLoading(false);
     }
@@ -112,69 +107,58 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
   async function acceptOffer() {
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/status`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: REQUEST_STATUS.OFFER_ACCEPTED })
+      const p = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(requestId), {
+        status: REQUEST_STATUS.OFFER_ACCEPTED
       });
-      const p = await res.json();
-      if (res.ok) {
+      if (p) {
         // re-fetch the full request (including requestHistory) to ensure UI shows latest history
         try {
-          const rresp = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}`, { credentials: 'include' });
-          const rjson = await rresp.json();
-          if (rresp.ok && rjson?.data?.request) onUpdated?.(rjson.data.request);
+          const rjson = await api.get(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(requestId));
+          if (rjson?.data?.request) onUpdated?.(rjson.data.request);
           else onUpdated?.(p.data.request);
         } catch (err) {
           // fallback to returned partial request
           onUpdated?.(p.data.request);
         }
       }
-      else alert(p.message || 'Failed to accept offer');
-    } catch (e) {
-      // eslint-disable-next-line no-console
+    } catch (e: any) {
       console.error(e);
-      alert('Network error');
-    } finally { setLoading(false); }
+      alert(e?.message || 'Failed to accept offer');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function rejectOffer() {
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/status`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: REQUEST_STATUS.OFFER_DECLINED })
+      const p = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(requestId), {
+        status: REQUEST_STATUS.OFFER_DECLINED
       });
-      const p = await res.json();
-      if (res.ok) {
+      if (p) {
         try {
-          const rresp = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}`, { credentials: 'include' });
-          const rjson = await rresp.json();
-          if (rresp.ok && rjson?.data?.request) onUpdated?.(rjson.data.request);
+          const rjson = await api.get(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(requestId));
+          if (rjson?.data?.request) onUpdated?.(rjson.data.request);
           else onUpdated?.(p.data.request);
         } catch (err) {
           onUpdated?.(p.data.request);
         }
       }
-      else alert(p.message || 'Failed to reject offer');
-    } catch (e) {
+    } catch (e: any) {
       // eslint-disable-next-line no-console
       console.error(e);
-      alert('Network error');
-    } finally { setLoading(false); }
+      alert(e?.message || 'Failed to reject offer');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function finalizeAction() {
     setLoading(true);
     try {
-      const url = `/api/v1/requests/${requestId}/offers/admin-offer/confirm`;
-      const resp = await fetch(url, { method: 'POST', credentials: 'include' });
-      const payload = await resp.json();
-      if (resp.ok) onUpdated?.(payload.data?.loan ? payload.data.loan : payload.data.request);
-      else alert(payload.message || 'Failed to finalize');
+      const payload = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.CONFIRM_OFFER(requestId));
+      if (payload) onUpdated?.(payload.data?.loan ? payload.data.loan : payload.data.request);
+      else alert('Failed to finalize');
     } catch (e) { console.error(e); alert('Network error'); } finally { setLoading(false); }
   }
 
@@ -238,9 +222,8 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
         <Button title="Start inspection" onClick={async () => {
           setLoading(true);
           try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/status`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: REQUEST_STATUS.INSPECTION_IN_PROGRESS }) });
-            const p = await res.json();
-            if (res.ok) {
+            const p = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(requestId), { status: REQUEST_STATUS.INSPECTION_IN_PROGRESS });
+            if (p) {
               const full = await fetchFullRequest();
               if (full) onUpdated?.(full);
               else onUpdated?.(p.data.request);
@@ -256,9 +239,8 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
         <Button title="Mark inspection complete" onClick={async () => {
           setLoading(true);
           try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/status`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: REQUEST_STATUS.INSPECTION_COMPLETED }) });
-            const p = await res.json();
-            if (res.ok) {
+            const p = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(requestId), { status: REQUEST_STATUS.INSPECTION_COMPLETED });
+            if (p) {
               const full = await fetchFullRequest();
               if (full) onUpdated?.(full);
               else onUpdated?.(p.data.request);
@@ -308,13 +290,10 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
                       <DropdownMenuItem key={key} onClick={async () => {
                         setLoading(true);
                         try {
-                          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/status`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: REQUEST_STATUS.INSPECTION_IN_PROGRESS }) });
-                          const p = await res.json();
-                          if (res.ok) {
-                            const full = await fetchFullRequest();
-                            if (full) onUpdated?.(full);
-                            else onUpdated?.(p.data.request);
-                          }
+                          const p = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(requestId), { status: REQUEST_STATUS.INSPECTION_IN_PROGRESS });
+                          const full = await fetchFullRequest();
+                          if (full) onUpdated?.(full);
+                          else onUpdated?.(p.data.request);
                         } catch (e) {
                           console.error(e);
                           alert('Failed to start inspection');
@@ -328,9 +307,8 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
                       <DropdownMenuItem key={key} onClick={async () => {
                         setLoading(true);
                         try {
-                          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/status`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: REQUEST_STATUS.INSPECTION_COMPLETED }) });
-                          const p = await res.json();
-                          if (res.ok) {
+                          const p = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(requestId), { status: REQUEST_STATUS.INSPECTION_COMPLETED });
+                          if (p) {
                             const full = await fetchFullRequest();
                             if (full) onUpdated?.(full);
                             else onUpdated?.(p.data.request);
@@ -378,18 +356,12 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
       <AssignAgentModal open={showAssign} onOpenChange={(v: boolean) => setShowAssign(v)} district={district} onSubmit={async (agentId: string) => {
             setLoading(true);
             try {
-              const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/assign`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ agentId })
-              });
-              const data = await res.json();
-              if (res.ok) {
+              const data = await api.post(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ASSIGN_AGENT(requestId), { agentId });
+              if (data) {
                 onUpdated?.(data.data.request);
                 setShowAssign(false);
               } else {
-                alert(data.message || 'Failed to assign agent');
+                alert('Failed to assign agent');
               }
             } catch (err) {
               // eslint-disable-next-line no-console

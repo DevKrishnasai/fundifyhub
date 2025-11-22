@@ -50,6 +50,23 @@ export const BACKEND_API_CONFIG = {
       GET_BULK_SIGNED_URLS: '/api/v1/documents/signed-urls',
       DELETE: (id: string) => `/api/v1/documents/${id}`,
       VERIFY: (id: string) => `/api/v1/documents/${id}/verify`,
+      SIGNED_URL: (fileKey: string) => `/api/v1/documents/${fileKey}/signed-url`,
+    },
+    REQUESTS: {
+      GET_BY_ID: (id: string) => `/api/v1/requests/${id}`,
+      GET_AGENTS_BY_DISTRICT: (district: string) => `/api/v1/requests/agents/${district}`,
+      ASSIGN_AGENT: (id: string) => `/api/v1/requests/${id}/assign`,
+      CREATE_OFFER: (id: string) => `/api/v1/requests/${id}/offer`,
+      UPDATE_STATUS: (id: string) => `/api/v1/requests/${id}/status`,
+      UPDATE_BANK_DETAILS: (id: string) => `/api/v1/requests/${id}/bank-details`,
+      GENERATE_AGREEMENT: (id: string) => `/api/v1/requests/${id}/generate-agreement`,
+      UPLOAD_SIGNED_AGREEMENT: (id: string) => `/api/v1/requests/${id}/upload-signed-agreement`,
+      OFFER_PREVIEW: (id: string, amount: number, tenureMonths: number, interestRate: number) => `/api/v1/requests/${id}/offer-preview?amount=${amount}&tenureMonths=${tenureMonths}&interestRate=${interestRate}`,
+      ADD_COMMENT: (id: string) => `/api/v1/user/request/${id}/comment`,
+      CONFIRM_OFFER: (id: string) => `/api/v1/requests/${id}/offers/admin-offer/confirm`,
+    },
+    PAYMENTS: {
+      RAZORPAY_CREATE_ORDER: '/api/v1/payments/razorpay/create-order',
     },
   }
 }

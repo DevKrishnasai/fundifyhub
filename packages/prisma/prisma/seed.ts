@@ -9,6 +9,9 @@ async function main() {
 
   const defaultPassword = process.env.SEED_USER_PASSWORD || "Password123!";
   const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+  // Penalty (one-time) and Late Fee (daily percentage) defaults used by the seed
+  const DEFAULT_PENALTY_PERCENTAGE = 4; // 4% penalty
+  const DEFAULT_LATE_FEE_PERCENTAGE = 1; // 1% late fee per day
 
   // Helper to increment/get serial counters in a safe way
   async function nextSerial(id: string, startAt = 1000) {
@@ -237,6 +240,8 @@ async function main() {
           assetCondition: ['EXCELLENT', 'GOOD', 'FAIR'][Math.floor(Math.random() * 3)],
           AdditionalDescription: `Demo asset ${i + 1} for ${cust.firstName}`,
           assignedAgentId: assigned ? assigned.id : null,
+          penaltyPercentage: DEFAULT_PENALTY_PERCENTAGE,
+          LateFeePercentage: DEFAULT_LATE_FEE_PERCENTAGE,
         },
       });
 
@@ -257,6 +262,28 @@ async function main() {
         const toStatus = 'OFFER_SENT';
         // perform update and then best-effort history insert
         const updatedReq = await prisma.request.update({ where: { id: req.id }, data: { adminOfferedAmount: offerAmount, adminTenureMonths: tenure, adminInterestRate: interest, offerMadeDate: new Date(), currentStatus: toStatus } });
+        // Set penalty and late fee percentages on the request if DB and Prisma client support it.
+        // Use the module-level constants for consistency
+        const defaultPenaltyPercentage = DEFAULT_PENALTY_PERCENTAGE; // one-time after grace period
+        const defaultLateFeePercentage = DEFAULT_LATE_FEE_PERCENTAGE; // per day
+        try {
+          // Try typed update (works if Prisma client was regenerated and schema applied)
+          // Cast to any to avoid TypeScript errors in dev environments where the schema has not yet been applied
+          // @ts-ignore
+          await prisma.request.update({ where: { id: req.id }, data: { penaltyPercentage: defaultPenaltyPercentage, LateFeePercentage: defaultLateFeePercentage } as any });
+        } catch (err) {
+          // Fallback: use raw SQL to set columns directly (works even if prisma client doesn't have fields yet)
+          try {
+            await prisma.$executeRawUnsafe(`UPDATE "requests" SET "penaltyPercentage" = $1, "LateFeePercentage" = $2 WHERE "id" = $3`, defaultPenaltyPercentage, defaultLateFeePercentage, req.id);
+          } catch (rawErr) {
+            // Best-effort: if the DB uses snake_case or lowercased columns, try lowercase names
+            try {
+              await prisma.$executeRawUnsafe(`UPDATE requests SET penaltypercentage = $1, latefeepercentage = $2 WHERE id = $3`, defaultPenaltyPercentage, defaultLateFeePercentage, req.id);
+            } catch (e) {
+              // Ignore if update fails; this seed remains best-effort until migrations are applied
+            }
+          }
+        }
         if (hasRequestHistory) {
           try {
             await prisma.requestHistory.create({ data: { requestId: req.id, actorId: admin.id, action: 'OFFER_CREATED', metadata: { amount: offerAmount, tenure, interest } } });
@@ -328,6 +355,21 @@ async function main() {
         },
       });
       emis.push(emi);
+      // Seed late fees for overdue EMIs (best-effort demo values)
+      try {
+        const dueMs = new Date(emi.dueDate as Date).getTime();
+        const nowMs = Date.now();
+        const daysLate = Math.max(0, Math.floor((nowMs - dueMs) / (24 * 60 * 60 * 1000)));
+        if (daysLate > 0 && emi.status !== 'PAID') {
+          const dailyLateRate = DEFAULT_LATE_FEE_PERCENTAGE / 100;
+          const dailyLateFee = Number((emi.emiAmount * dailyLateRate * daysLate).toFixed(2));
+          const overduePenalty = daysLate > 30 ? Number((emi.emiAmount * (DEFAULT_PENALTY_PERCENTAGE / 100)).toFixed(2)) : 0;
+          const totalLateFee = Math.round((dailyLateFee + overduePenalty) * 100) / 100;
+          if (totalLateFee > 0) {
+            await prisma.eMISchedule.update({ where: { id: emi.id }, data: { lateFee: totalLateFee } });
+          }
+        }
+      } catch (err) { /* best-effort: ignore */ }
 
       if (n === 1) {
         const payment = await prisma.payment.create({

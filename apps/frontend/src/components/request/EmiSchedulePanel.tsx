@@ -47,12 +47,11 @@ export default function EmiSchedulePanel({ request, triggerLabel = 'View EMI Sch
               {snapshot.emiSchedule.map((e: any, idx: number) => (
                 <div key={idx} className="p-2 border rounded flex justify-between">
                   <div>
-                    <div className="text-sm font-medium">Installment #{e.installment}</div>
-                    <div className="text-xs text-muted-foreground">Due: {e.paymentDate ? new Date(e.paymentDate).toLocaleDateString() : '-'}</div>
+                    <div className="text-sm font-medium">EMI #{e.installment}</div>
+                    <div className="text-xs text-muted-foreground">Principal: ₹{Number(e.principal).toLocaleString()} • Interest: ₹{Number(e.interest).toLocaleString()}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold">₹{Number(e.paymentAmount).toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground">Principal: ₹{Number(e.principal).toLocaleString()} • Interest: ₹{Number(e.interest).toLocaleString()}</div>
                   </div>
                 </div>
               ))}

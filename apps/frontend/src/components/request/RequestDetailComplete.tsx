@@ -16,7 +16,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getActionsForUser, canViewRequestDetail, type WorkflowAction, type UserRole, type UserContext, type RequestContext } from '@fundifyhub/types';
+import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getActionsForUser, canViewRequestDetail, type WorkflowAction, type UserRole, type UserContext, type RequestContext, EMI_STATUS } from '@fundifyhub/types';
 import { useRouter } from 'next/navigation';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
 import { executeRequestAction } from '@/lib/request-actions';
@@ -31,7 +31,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { UploadButton } from '@/components/uploadthing-components';
 import type { ClientUploadedFileData } from 'uploadthing/types';
 import { SignaturePad } from '@/components/SignaturePad';
-import PaymentModal from '@/components/payments/PaymentModal';
+import PaymentModal from '@/components/payments/RazorpayPaymentModal';
+import { ActiveLoanSummary } from '@/components/request/ActiveLoanSummary';
+import { DocumentGallery } from '@/components/request/DocumentGallery';
 import { 
   Calendar, 
   MapPin, 
@@ -44,14 +46,13 @@ import {
   AlertCircle,
   MessageCircle,
   TrendingUp,
-  Download,
   Upload,
-  Users,
   PenTool,
   CreditCard,
   Send,
+  Loader2,
   Eye,
-  Loader2
+  Users
 } from 'lucide-react';
 
 interface RequestDetail {
@@ -224,6 +225,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedEmiId, setSelectedEmiId] = useState<string | null>(null);
   const [selectedEmiAmount, setSelectedEmiAmount] = useState<number>(0);
+  const [selectedEmiNumber, setSelectedEmiNumber] = useState<number>(0);
   
   // Disbursement form
   const [transactionRef, setTransactionRef] = useState('');
@@ -283,7 +285,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}`, { 
+        const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(id)}`, { 
           credentials: 'include' 
         });
         if (res.status === 401) {
@@ -294,20 +296,6 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         if (res.ok) {
           if (mounted) {
             setRequest(data.data.request as RequestDetail);
-            
-            // Debug: Log loan data
-            console.log('🔍 Request loaded:', {
-              id: data.data.request.id,
-              status: data.data.request.currentStatus,
-              hasLoan: !!data.data.request.loan,
-              loanData: data.data.request.loan,
-              hasEmiSchedule: !!data.data.request.loan?.emisSchedule,
-              emiCount: data.data.request.loan?.emisSchedule?.length || 0,
-              emiStatuses: data.data.request.loan?.emisSchedule?.map((e: any) => ({ id: e.id, num: e.emiNumber, status: e.status })),
-              isCustomerRole: auth.isCustomer(),
-              userId: auth.user?.id,
-              customerId: data.data.request.customerId
-            });
             
             // Check sessionStorage for upload flag
             const hasUploaded = sessionStorage.getItem(`uploaded_docs_${id}`) === 'true';
@@ -332,7 +320,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const loadAgents = async () => {
     if (!request?.district) return;
     try {
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/agents/${request.district}`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_AGENTS_BY_DISTRICT(request.district)}`, {
         credentials: 'include'
       });
       const data = await res.json();
@@ -358,7 +346,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     setAssigningAgent(true);
     try {
       const inspectionDateTime = `${inspectionDate}T${inspectionTime}`;
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/assign`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ASSIGN_AGENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -397,7 +385,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     setCreatingOffer(true);
     try {
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/offer`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.CREATE_OFFER(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -425,7 +413,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   // Handle status updates
   const handleStatusUpdate = async (newStatus: string, note?: string) => {
     try {
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/status`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -458,7 +446,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     setSubmittingBank(true);
     try {
       // Submit bank details to backend
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/bank-details`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_BANK_DETAILS(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -513,7 +501,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         description: `Transaction Ref: ${transactionRef}`,
       }));
 
-      const docRes = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/bulk`, {
+      const docRes = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.CREATE_BULK}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -521,12 +509,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       });
 
       if (!docRes.ok) {
-        console.error('Failed to create document records');
+        throw new Error('Failed to create document records');
         // Continue anyway, don't block disbursement
       }
 
       // Then, add a comment with transaction details (no file keys)
-      await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ADD_COMMENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -536,7 +524,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       });
 
       // Finally, update status to AMOUNT_DISBURSED
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/status`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -572,7 +560,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     setSubmittingInfo(true);
     try {
       // Post comment with the requested info
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ADD_COMMENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -600,7 +588,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     setPostingComment(true);
     try {
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ADD_COMMENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -645,7 +633,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         description: `${documentCategory} photo uploaded`
       }));
 
-      const response = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/bulk`, {
+      const response = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.CREATE_BULK}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -662,7 +650,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         sessionStorage.setItem(`uploaded_docs_${request?.id}`, 'true');
         
         // Refetch request to get updated documents with signed URLs
-        const refreshResponse = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}`, {
+        const refreshResponse = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(id)}`, {
           credentials: 'include'
         });
         
@@ -688,14 +676,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
   // Get signed URL for document display
   const getSignedUrl = (fileKey: string) => {
-    return `${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/${fileKey}/signed-url?expiresIn=900`;
+    return `${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.SIGNED_URL(fileKey)}?expiresIn=900`;
   };
 
   // Handle workflow actions
   const handleWorkflowAction = async (action: WorkflowAction) => {
-    console.log('🎯 handleWorkflowAction called with:', action.id);
-    
-    // Special handlers for actions requiring input/modals
+    // Executing workflow action    // Special handlers for actions requiring input/modals
     if (action.id === 'make-offer' || action.id === 'revise-offer') {
       setShowOffer(true);
       return;
@@ -729,7 +715,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       if (!preferredTime || !preferredTime.trim()) return;
       
       // Post comment with reschedule request details
-      await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ADD_COMMENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -745,7 +731,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     // For actions with custom handlers (like create-emi-schedule)
     if (action.id === 'create-emi-schedule') {
-      console.log('🚀 Executing create-emi-schedule action');
+    // Executing create-emi-schedule action
       
       if (action.requiresConfirmation) {
         const confirmed = confirm(`Are you sure you want to ${action.label.toLowerCase()}? This will create the loan and EMI schedule.`);
@@ -757,12 +743,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         {
           requestId: id,
           onSuccess: (data) => {
-            console.log('✅ Action succeeded:', data);
+            // Action succeeded
             // Reload the page to show the updated loan data
             window.location.reload();
           },
           onError: (error) => {
-            console.error('❌ Action failed:', error);
+            // Action failed
             alert(error || 'Failed to create loan and EMI schedule');
           }
         }
@@ -893,7 +879,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               
               {/* Customer Pay EMI Button */}
               {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && (() => {
-                const nextPending = request.loan.emisSchedule.find((e: any) => e.status === 'PENDING');
+                const nextPending = request.loan.emisSchedule.find((e: any) => e.status === EMI_STATUS.PENDING);
                 if (!nextPending) return null;
                 
                 return (
@@ -903,6 +889,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                     onClick={() => {
                       setSelectedEmiId(nextPending.id);
                       setSelectedEmiAmount(nextPending.emiAmount);
+                      setSelectedEmiNumber(nextPending.emiNumber);
                       setShowPaymentModal(true);
                     }}
                     title={`Pay EMI #${nextPending.emiNumber}`}
@@ -919,12 +906,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
       {/* Customer Payment Card - Standalone for better visibility */}
       {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && (() => {
-        const pendingEmis = request.loan!.emisSchedule!.filter((e: any) => e.status === 'PENDING' || e.status === 'OVERDUE');
+        const pendingEmis = request.loan!.emisSchedule!.filter((e: any) => e.status === EMI_STATUS.PENDING || e.status === EMI_STATUS.OVERDUE);
         if (pendingEmis.length === 0) return null;
         
         const nextEmi = pendingEmis[0];
         const dueDate = new Date(nextEmi.dueDate);
-        const isOverdue = nextEmi.status === 'OVERDUE';
+        const isOverdue = nextEmi.status === EMI_STATUS.OVERDUE;
         
         return (
           <Card className={`mb-6 ${isOverdue ? 'border-red-500 bg-red-50 dark:bg-red-950' : 'border-primary bg-primary/5'}`}>
@@ -960,6 +947,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                     onClick={() => {
                       setSelectedEmiId(nextEmi.id);
                       setSelectedEmiAmount(nextEmi.emiAmount);
+                      setSelectedEmiNumber(nextEmi.emiNumber);
                       setShowPaymentModal(true);
                     }}
                   >
@@ -1214,8 +1202,8 @@ export default function RequestDetailComplete({ id }: { id: string }) {
           onClose={() => setShowPaymentModal(false)}
           loanId={request.loan.id}
           emiId={selectedEmiId || ''}
+          emiNumber={selectedEmiNumber || 0}
           amount={selectedEmiAmount}
-          payAheadCount={1}
           onSuccess={() => { setShowPaymentModal(false); window.location.reload(); }}
         />
       )}
@@ -1395,45 +1383,6 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                   <p className="text-sm text-muted-foreground">{request.AdditionalDescription}</p>
                 </div>
               )}
-              
-              {/* Inspection Details - Show when agent is assigned */}
-              {request.assignedAgent && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm font-medium mb-3 flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    Inspection Details
-                  </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Assigned Agent</p>
-                      <p className="text-sm font-medium">{request.assignedAgent.firstName} {request.assignedAgent.lastName}</p>
-                      {request.assignedAgent.phoneNumber && (
-                        <p className="text-xs text-muted-foreground">{request.assignedAgent.phoneNumber}</p>
-                      )}
-                    </div>
-                    {request.inspectionScheduledAt && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Scheduled Date & Time</p>
-                        <p className="text-sm font-medium flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {new Date(request.inspectionScheduledAt).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric'
-                          })}
-                        </p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {new Date(request.inspectionScheduledAt).toLocaleTimeString('en-IN', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
 
@@ -1579,7 +1528,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                         // Step 1: Download the generated PDF from backend
                         setUploadProgress('Downloading agreement...');
                         const pdfResponse = await fetch(
-                          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${request.id}/generate-agreement`,
+                          `${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GENERATE_AGREEMENT(request.id)}`,
                           { credentials: 'include' }
                         );
                         
@@ -1625,7 +1574,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                         // Step 4: Send to backend to upload to UploadThing and save
                         setUploadProgress('Uploading signed agreement...');
                         const uploadResponse = await fetch(
-                          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${request.id}/upload-signed-agreement`,
+                          `${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPLOAD_SIGNED_AGREEMENT(request.id)}`,
                           {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1653,7 +1602,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                         window.location.reload();
                         
                       } catch (error) {
-                        console.error('Signature process failed:', error);
+                        // Signature process failed
                         setUploadProgress('');
                         alert(error instanceof Error ? error.message : 'Failed to process signature. Please try again.');
                       }
@@ -1737,292 +1686,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
               {/* Document Grid */}
               {request.documents && request.documents.length > 0 ? (
-                <>
-                  {/* Customer Asset Photos */}
-                  {request.documents.filter(doc => doc.documentCategory === 'ASSET').length > 0 && (
-                    <div className="mb-6">
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Customer Asset Photos
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {request.documents.filter(doc => doc.documentCategory === 'ASSET').map((doc) => {
-                          const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf');
-                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
-                          
-                          return (
-                            <div key={doc.id} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {doc.fileKey && (
-                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
-                                  {isPdf ? (
-                                    <div className="flex flex-col items-center justify-center p-4">
-                                      <FileText className="h-16 w-16 text-muted-foreground mb-2" />
-                                      <p className="text-xs text-center text-muted-foreground">PDF Document</p>
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="mt-2 text-xs text-primary hover:underline flex items-center gap-1"
-                                      >
-                                        <Eye className="h-3 w-3" />
-                                        View PDF
-                                      </a>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <img 
-                                        src={signedUrl || ''} 
-                                        alt={doc.fileName || 'Document'} 
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          const target = e.target as HTMLImageElement;
-                                          target.style.display = 'none';
-                                          const parent = target.parentElement;
-                                          if (parent) {
-                                            parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
-                                          }
-                                        }}
-                                      />
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                      >
-                                        <Eye className="h-8 w-8 text-white" />
-                                      </a>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                              <div className="p-3 border-t bg-background">
-                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Document'}>
-                                  {doc.fileName || 'Document'}
-                                </p>
-                                <p className="text-xs text-muted-foreground">{doc.documentType || 'General'}</p>
-                                {doc.isVerified && (
-                                  <Badge variant="outline" className="mt-1 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Verified
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Agent Inspection Photos */}
-                  {request.documents.filter(doc => doc.documentCategory === 'INSPECTION').length > 0 && (
-                    <div className="mb-6">
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-blue-700 dark:text-blue-400">
-                        <User className="h-4 w-4" />
-                        Agent Inspection Photos
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {request.documents.filter(doc => doc.documentCategory === 'INSPECTION').map((doc) => {
-                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
-                          
-                          return (
-                            <div key={doc.id} className="border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {doc.fileKey && (
-                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
-                                  <img 
-                                    src={signedUrl || ''} 
-                                    alt={doc.fileName || 'Inspection Photo'} 
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement;
-                                      target.style.display = 'none';
-                                      const parent = target.parentElement;
-                                      if (parent) {
-                                        parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
-                                      }
-                                    }}
-                                  />
-                                  <a 
-                                    href={signedUrl || '#'} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                  >
-                                    <Eye className="h-8 w-8 text-white" />
-                                  </a>
-                                </div>
-                              )}
-                              <div className="p-3 border-t bg-blue-50 dark:bg-blue-950">
-                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Inspection Photo'}>
-                                  {doc.fileName || 'Inspection Photo'}
-                                </p>
-                                <p className="text-xs text-blue-600 dark:text-blue-400">Inspection Photo</p>
-                                {doc.isVerified && (
-                                  <Badge variant="outline" className="mt-1 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Verified
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Disbursement Proof - Show transfer proof documents */}
-                  {request.documents.filter(doc => doc.documentCategory === 'PAYMENT').length > 0 && (
-                    <div className="mb-6">
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-green-700 dark:text-green-400">
-                        <Send className="h-4 w-4" />
-                        Disbursement Proof ({request.documents.filter(doc => doc.documentCategory === 'PAYMENT').length})
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {request.documents.filter(doc => doc.documentCategory === 'PAYMENT').map((doc) => {
-                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
-                          const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf');
-                          
-                          return (
-                            <div key={doc.id} className="border border-green-200 dark:border-green-800 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {doc.fileKey && (
-                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
-                                  {isPdf ? (
-                                    <div className="flex flex-col items-center justify-center p-4">
-                                      <FileText className="h-16 w-16 text-green-600 mb-2" />
-                                      <p className="text-xs text-center text-muted-foreground">Transfer Proof PDF</p>
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="mt-2 text-xs text-primary hover:underline flex items-center gap-1"
-                                      >
-                                        <Eye className="h-3 w-3" />
-                                        View PDF
-                                      </a>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <img 
-                                        src={signedUrl || ''} 
-                                        alt={doc.fileName || 'Transfer Proof'} 
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          const target = e.target as HTMLImageElement;
-                                          target.style.display = 'none';
-                                          const parent = target.parentElement;
-                                          if (parent) {
-                                            parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
-                                          }
-                                        }}
-                                      />
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                      >
-                                        <Eye className="h-8 w-8 text-white" />
-                                      </a>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                              <div className="p-3 border-t bg-green-50 dark:bg-green-950">
-                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Transfer Proof'}>
-                                  {doc.fileName || 'Transfer Proof'}
-                                </p>
-                                <p className="text-xs text-green-600 dark:text-green-400">
-                                  Disbursement Document
-                                </p>
-                                <Badge variant="outline" className="mt-1 text-xs border-green-600 text-green-600">
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                  Verified
-                                </Badge>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Other Documents */}
-                  {request.documents.filter(doc => doc.documentCategory !== 'ASSET' && doc.documentCategory !== 'INSPECTION' && doc.documentCategory !== 'PAYMENT').length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Other Documents
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {request.documents.filter(doc => doc.documentCategory !== 'ASSET' && doc.documentCategory !== 'INSPECTION').map((doc) => {
-                          const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf');
-                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
-                          
-                          return (
-                            <div key={doc.id} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {doc.fileKey && (
-                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
-                                  {isPdf ? (
-                                    <div className="flex flex-col items-center justify-center p-4">
-                                      <FileText className="h-16 w-16 text-muted-foreground mb-2" />
-                                      <p className="text-xs text-center text-muted-foreground">PDF Document</p>
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="mt-2 text-xs text-primary hover:underline flex items-center gap-1"
-                                      >
-                                        <Eye className="h-3 w-3" />
-                                        View PDF
-                                      </a>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <img 
-                                        src={signedUrl || ''} 
-                                        alt={doc.fileName || 'Document'} 
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          const target = e.target as HTMLImageElement;
-                                          target.style.display = 'none';
-                                          const parent = target.parentElement;
-                                          if (parent) {
-                                            parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
-                                          }
-                                        }}
-                                      />
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                      >
-                                        <Eye className="h-8 w-8 text-white" />
-                                      </a>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                              <div className="p-3 border-t bg-background">
-                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Document'}>
-                                  {doc.fileName || 'Document'}
-                                </p>
-                                <p className="text-xs text-muted-foreground">{doc.documentType || 'General'}</p>
-                                {doc.isVerified && (
-                                  <Badge variant="outline" className="mt-1 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Verified
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </>
+                <DocumentGallery 
+                  documents={request.documents.map(doc => ({
+                    ...doc,
+                    url: doc.fileKey ? getSignedUrl(doc.fileKey) : null
+                  }))} 
+                />
               ) : (
                 <p className="text-sm text-muted-foreground">{DOCUMENT_MESSAGES.NO_DOCUMENTS}</p>
               )}
@@ -2079,9 +1748,6 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                             <th className="text-right p-2 font-semibold">Principal</th>
                             <th className="text-right p-2 font-semibold">Interest</th>
                             <th className="text-center p-2 font-semibold">Status</th>
-                            {(auth.user?.roles?.includes(ROLES.SUPER_ADMIN) || auth.user?.roles?.includes(ROLES.DISTRICT_ADMIN)) && (
-                              <th className="text-center p-2 font-semibold">Action</th>
-                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -2128,29 +1794,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                                     </Badge>
                                   )}
                                 </td>
-                                {(auth.user?.roles?.includes(ROLES.SUPER_ADMIN) || auth.user?.roles?.includes(ROLES.DISTRICT_ADMIN)) && (
-                                  <td className="p-2 text-center">
-                                    {isPending && (
-                                      <Button 
-                                        size="sm" 
-                                        variant="outline"
-                                        className="text-xs"
-                                        onClick={() => {
-                                          // TODO: Implement payment recording
-                                          alert('Payment recording will be implemented next!');
-                                        }}
-                                      >
-                                        <CheckCircle className="h-3 w-3 mr-1" />
-                                        Mark Paid
-                                      </Button>
-                                    )}
-                                    {isPaid && emi.paidDate && (
-                                      <span className="text-xs text-muted-foreground">
-                                        Paid on {new Date(emi.paidDate).toLocaleDateString()}
-                                      </span>
-                                    )}
-                                  </td>
-                                )}
+
                               </tr>
                             );
                           })}
@@ -2309,19 +1953,19 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               <CardTitle className="text-lg">Request Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <InfoItem 
-                label="District" 
+              <InfoItem
+                label="District"
                 value={request.district}
                 icon={<MapPin className="h-4 w-4" />}
               />
               {request.offerMadeDate && (
-                <InfoItem 
-                  label="Offer Date" 
+                <InfoItem
+                  label="Offer Date"
                   value={new Date(request.offerMadeDate).toLocaleDateString('en-IN')}
                   icon={<Calendar className="h-4 w-4" />}
                 />
               )}
-              
+
               {(isAdmin || isAgent) && request.customer && (
                 <div className="pt-4 border-t">
                   <p className="text-sm font-medium mb-2 flex items-center gap-2">
@@ -2335,61 +1979,102 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
 
-              {request.assignedAgent && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    Assigned Agent
-                  </p>
-                  <div className="space-y-1 text-sm text-muted-foreground">
-                    <p>{request.assignedAgent.firstName} {request.assignedAgent.lastName}</p>
-                    {request.assignedAgent.phoneNumber && <p>{request.assignedAgent.phoneNumber}</p>}
-                    {request.inspectionScheduledAt && (
-                      <p className="flex items-center gap-1 text-xs pt-2 border-t mt-2">
-                        <Calendar className="h-3 w-3" />
-                        Scheduled: {new Date(request.inspectionScheduledAt).toLocaleString('en-IN', {
-                          dateStyle: 'medium',
-                          timeStyle: 'short'
-                        })}
-                      </p>
+          {/* Agent Details - Separate Card */}
+          {request.assignedAgent && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Agent Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">{request.assignedAgent.firstName} {request.assignedAgent.lastName}</p>
+                    {request.assignedAgent.phoneNumber && (
+                      <p className="text-sm text-muted-foreground">{request.assignedAgent.phoneNumber}</p>
                     )}
                   </div>
-                </div>
-              )}
 
-              {/* Bank Details Section - Show to Admin/Agent or Customer (if submitted) */}
-              {request.bankAccountNumber && request.bankDetailsSubmittedAt && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    Bank Details
-                  </p>
-                  <div className="space-y-1 text-sm text-muted-foreground">
+                  {request.inspectionScheduledAt && (
+                    <div className="pt-3 border-t">
+                      <p className="text-xs text-muted-foreground mb-2">Inspection Scheduled</p>
+                      <div className="space-y-1">
+                        <p className="text-sm flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(request.inspectionScheduledAt).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </p>
+                        <p className="text-sm flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {new Date(request.inspectionScheduledAt).toLocaleTimeString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {request.currentStatus === REQUEST_STATUS.INSPECTION_COMPLETED && (
+                    <div className="pt-3 border-t">
+                      <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400 border-green-300">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Inspection Completed
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Bank Details - Separate Card */}
+          {request.bankAccountNumber && request.bankDetailsSubmittedAt && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Bank Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex justify-between">
-                      <span className="font-medium">Account Name:</span>
-                      <span>{request.bankAccountName}</span>
+                      <span className="text-sm font-medium">Account Name:</span>
+                      <span className="text-sm">{request.bankAccountName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-medium">Account Number:</span>
-                      <span className="font-mono">
-                        {isCustomer 
+                      <span className="text-sm font-medium">Account Number:</span>
+                      <span className="text-sm font-mono">
+                        {isCustomer
                           ? `**** **** ${request.bankAccountNumber.slice(-4)}`
                           : request.bankAccountNumber
                         }
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-medium">IFSC Code:</span>
-                      <span className="font-mono">{request.bankIfscCode}</span>
+                      <span className="text-sm font-medium">IFSC Code:</span>
+                      <span className="text-sm font-mono">{request.bankIfscCode}</span>
                     </div>
                     {request.upiId && (
                       <div className="flex justify-between">
-                        <span className="font-medium">UPI ID:</span>
-                        <span className="font-mono">{request.upiId}</span>
+                        <span className="text-sm font-medium">UPI ID:</span>
+                        <span className="text-sm font-mono">{request.upiId}</span>
                       </div>
                     )}
-                    <p className="flex items-center gap-1 text-xs pt-2 border-t mt-2 text-green-600 dark:text-green-400">
+                  </div>
+
+                  <div className="pt-3 border-t">
+                    <p className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
                       <CheckCircle className="h-3 w-3" />
                       Submitted: {new Date(request.bankDetailsSubmittedAt).toLocaleString('en-IN', {
                         dateStyle: 'medium',
@@ -2398,9 +2083,9 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                     </p>
                   </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Timeline */}
           <Card>
@@ -2414,9 +2099,9 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                 {timelineEvents.length > 0 ? (
                   timelineEvents.map((event, index) => (
-                    <TimelineEvent 
-                      key={event.id} 
-                      event={event} 
+                    <TimelineEvent
+                      key={event.id}
+                      event={event}
                       isLast={index === timelineEvents.length - 1}
                     />
                   ))

@@ -80,9 +80,10 @@ model Request {
   adminEmiSchedule   Json?      // JSON snapshot of EMI schedule/admin offer (immutable snapshot)
   offerMadeDate      DateTime?  // When admin made the offer
   offerResponseDate  DateTime?  // When customer responded
-  
+  penaltyPercentage   Float?     // Penalty percentage for late payment
+  LateFeePercentage    Float?     // Late fee percentage for overdue payments
   // Admin requested information (when status is MORE_INFO_REQUIRED)
-  adminRequestedInfo String?    // What additional info/documents admin needs
+  adminRequestedInfo String?    // What additionWal info/documents admin needs
   
   // Bank Details (for disbursement)
   bankAccountNumber  String?    // Customer's bank account number
@@ -183,8 +184,8 @@ model EMISchedule {
   interestAmount  Float     // Interest component of this EMI
   status          String   @default("PENDING")
   paidDate        DateTime? // When this EMI was paid
-  paidAmount      Float?    // Amount actually paid (could be partial)
-  lateFee         Float     @default(0) // Late fee if paid after due date
+  paidAmount      Float?    // Amount paid (kept for audit trail, always equals emiAmount + lateFee)
+  lateFee         Float     @default(0) // Penalty charged (4% of overdue amount)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -207,10 +208,10 @@ model Payment {
   loanId           String
   requestId        String
   emiScheduleId    String?    // Which EMI this payment is for (if EMI payment)
-  amount           Float      // Amount paid
-  paymentType      String     @default("EMI") // "EMI", "PARTIAL", "ADVANCE", "LATE_FEE"
-  paymentMethod    String     // "UPI", "BANK_TRANSFER", "CASH", "CARD"
-  paymentReference String?    // Transaction ID/reference
+  amount           Float      // Full amount paid (no partial payments allowed)
+  paymentType      String     @default("EMI") // "EMI", "ADVANCE", "LATE_FEE" (PARTIAL removed)
+  paymentMethod    String     // "UPI", "BANK_TRANSFER", "CASH", "CARD", "RAZORPAY"
+  paymentReference String?    // Transaction ID/reference (Razorpay payment ID)
   paidDate         DateTime   @default(now())
   processedBy      String?    // User ID who processed/verified payment
   remarks          String?    // Any remarks about the payment

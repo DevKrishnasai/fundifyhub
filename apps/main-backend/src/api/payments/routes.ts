@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
-import { createPhonePeOrderController, verifyPhonePePaymentController } from './phonepe';
-import { phonePeWebhookController } from './webhook';
+import { createRazorpayOrderController, verifyRazorpayPaymentController, razorpayWebhookController } from './razorpay';
 import { getLoanTotalDueController } from './controllers';
 import { authMiddleware } from '../../utils/jwt';
 
@@ -14,22 +13,22 @@ const router: ExpressRouter = Router();
 router.get('/loan/:loanId/total-due', authMiddleware, getLoanTotalDueController);
 
 /**
- * POST /api/v1/payments/phonepe/create-order
- * Create a PhonePe payment order
+ * POST /api/v1/payments/razorpay/create-order
+ * Create a Razorpay payment order for EMI payment
  */
-router.post('/phonepe/create-order', authMiddleware, createPhonePeOrderController);
+router.post('/razorpay/create-order', authMiddleware, createRazorpayOrderController);
 
 /**
- * POST /api/v1/payments/phonepe/verify
- * Verify PhonePe payment after redirect
+ * POST /api/v1/payments/razorpay/verify
+ * Verify Razorpay payment after completion
  */
-router.post('/phonepe/verify', authMiddleware, verifyPhonePePaymentController);
+router.post('/razorpay/verify', authMiddleware, verifyRazorpayPaymentController);
 
 /**
- * POST /api/v1/payments/phonepe/webhook
- * PhonePe webhook endpoint for async notifications
- * Note: Webhook should have raw body parsing for signature verification
+ * POST /api/v1/payments/razorpay/webhook
+ * Razorpay webhook endpoint (NO AUTH - signature verified)
+ * Handles payment.captured and payment.failed events
  */
-router.post('/phonepe/webhook', phonePeWebhookController);
+router.post('/razorpay/webhook', razorpayWebhookController);
 
 export default router;

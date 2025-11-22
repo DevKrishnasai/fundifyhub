@@ -3,8 +3,8 @@ import { prisma } from '@fundifyhub/prisma';
 import logger from '../../utils/logger';
 import { APIResponseType } from '../../types';
 import { hasAnyRole, hasDistrictAccess } from '../../utils/rbac';
-import { calculateEmiSchedule } from '@fundifyhub/utils';
-import { ROLES } from '@fundifyhub/types';
+import { calculateEmiSchedule, calculateEmiBreakdown, isEmiOverdue, type EMIBreakdown } from '@fundifyhub/utils';
+import { ROLES, EMI_STATUS, OVERDUE_GRACE_PERIOD_DAYS } from '@fundifyhub/types';
 import { REQUEST_STATUS, TEMPLATE_NAMES, SERVICE_NAMES } from '@fundifyhub/types';
 import queueClient from '../../utils/queues';
 
@@ -59,6 +59,99 @@ export async function getRequestDetailController(req: Request, res: Response): P
     } catch (e) {
       // non-fatal, continue returning request without actor enrichment
       logger.error('Failed to enrich requestHistory with actor details', e as Error);
+    }
+
+    // Calculate penalty breakdown and lazy update DB for each EMI if loan exists
+    if ((request as any).loan && (request as any).loan.emisSchedule) {
+      const emis = (request as any).loan.emisSchedule;
+      const loanId = (request as any).loan.id;
+      
+      // Get penalty rates from request (with defaults)
+      const penaltyRate = (request as any).penaltyPercentage || 4; // Default 4%
+      const lateFeeRate = (request as any).LateFeePercentage || 0.01; // Default 0.01%
+      
+      // Track EMIs that need DB updates
+      const emisToUpdate: Array<{ id: string; status: string; lateFee: number }> = [];
+      
+      // Add breakdown data to each EMI
+      (request as any).loan.emisSchedule = emis.map((emi: any) => {
+        let breakdown: EMIBreakdown | null = null;
+        
+        // Check if EMI should be marked as overdue (crossed grace period)
+        const shouldBeOverdue = emi.status === EMI_STATUS.PENDING && 
+          isEmiOverdue(emi.dueDate.toISOString(), emi.status, OVERDUE_GRACE_PERIOD_DAYS);
+        
+        // Calculate breakdown only for pending or overdue EMIs
+        if (emi.status === EMI_STATUS.PENDING || emi.status === EMI_STATUS.OVERDUE || shouldBeOverdue) {
+          try {
+            breakdown = calculateEmiBreakdown(
+              {
+                emiNumber: emi.emiNumber,
+                emiAmount: emi.emiAmount,
+                principalAmount: emi.principalAmount,
+                interestAmount: emi.interestAmount,
+                status: emi.status,
+                dueDate: emi.dueDate.toISOString(),
+              },
+              emis.map((e: any) => ({
+                emiNumber: e.emiNumber,
+                status: e.status,
+                emiAmount: e.emiAmount,
+                lateFee: e.lateFee || 0,
+                dueDate: e.dueDate.toISOString(),
+              })),
+              penaltyRate,
+              lateFeeRate,
+              new Date(), // Pass current date for days late calculation
+              OVERDUE_GRACE_PERIOD_DAYS
+            );
+            
+            // Lazy update: if status changed or lateFee changed, queue for DB update
+            if (shouldBeOverdue && emi.status !== EMI_STATUS.OVERDUE) {
+              emisToUpdate.push({
+                id: emi.id,
+                status: EMI_STATUS.OVERDUE,
+                lateFee: breakdown.lateFee
+              });
+            } else if (breakdown.lateFee !== (emi.lateFee || 0) && breakdown.lateFee > 0) {
+              // Update lateFee if it has changed
+              emisToUpdate.push({
+                id: emi.id,
+                status: shouldBeOverdue ? EMI_STATUS.OVERDUE : emi.status,
+                lateFee: breakdown.lateFee
+              });
+            }
+          } catch (err) {
+            logger.error(`Failed to calculate EMI breakdown for EMI #${emi.emiNumber}`, err as Error);
+          }
+        }
+        
+        return {
+          ...emi,
+          breakdown, // Add breakdown data
+          isOverdue: shouldBeOverdue || emi.status === EMI_STATUS.OVERDUE,
+          status: shouldBeOverdue ? EMI_STATUS.OVERDUE : emi.status
+        };
+      });
+      
+      // Lazy DB update: Update EMIs that need status/lateFee changes (non-blocking)
+      if (emisToUpdate.length > 0) {
+        setImmediate(async () => {
+          try {
+            await prisma.$transaction(
+              emisToUpdate.map(({ id, status, lateFee }) =>
+                prisma.eMISchedule.update({
+                  where: { id },
+                  data: { status, lateFee }
+                })
+              )
+            );
+            logger.info(`Lazy updated ${emisToUpdate.length} EMI(s) for loan ${loanId}`);
+          } catch (err) {
+            logger.error(`Failed to lazy update EMIs for loan ${loanId}`, err as Error);
+          }
+        });
+      }
     }
 
   const user = req.user as any;
@@ -430,7 +523,14 @@ export async function updateRequestStatusController(req: Request, res: Response)
 export async function createOfferController(req: Request, res: Response): Promise<void> {
   try {
     const requestId = req.params.id;
-    const { amount, tenureMonths, interestRate, notes } = req.body as { amount?: number; tenureMonths?: number; interestRate?: number; notes?: string };
+    const { amount, tenureMonths, interestRate, penaltyPercentage, LateFeePercentage, notes } = req.body as { 
+      amount?: number; 
+      tenureMonths?: number; 
+      interestRate?: number; 
+      penaltyPercentage?: number;
+      LateFeePercentage?: number;
+      notes?: string;
+    };
 
     if (!requestId || typeof amount !== 'number' || typeof tenureMonths !== 'number' || typeof interestRate !== 'number') {
       res.status(400).json({ success: false, message: 'request id, amount, tenureMonths, interestRate required' } as APIResponseType);
@@ -473,9 +573,41 @@ export async function createOfferController(req: Request, res: Response): Promis
     // compute EMI snapshot and persist as immutable JSON on the request for preview/audit
     const emiSnapshot = calculateEmiSchedule({ principal: amount, annualRate: interestRate, tenureMonths, firstPaymentDate: undefined });
 
+    // Set penalty rates - use provided values or defaults
+    const penaltyRate = typeof penaltyPercentage === 'number' ? penaltyPercentage : 4;
+    const lateFeeRate = typeof LateFeePercentage === 'number' ? LateFeePercentage : 0.01;
+
     const [updatedRequest, historyEntry] = await prisma.$transaction([
-      prisma.request.update({ where: { id: dbId }, data: { adminOfferedAmount: amount, adminTenureMonths: tenureMonths, adminInterestRate: interestRate, offerMadeDate: new Date(), currentStatus: toStatus, adminEmiSchedule: emiSnapshot } }),
-      prisma.requestHistory.create({ data: { requestId: dbId, actorId: user.id, action: 'OFFER_CREATED', metadata: { fromStatus, toStatus, amount, tenureMonths, interestRate, notes } } })
+      prisma.request.update({ 
+        where: { id: dbId }, 
+        data: { 
+          adminOfferedAmount: amount, 
+          adminTenureMonths: tenureMonths, 
+          adminInterestRate: interestRate, 
+          penaltyPercentage: penaltyRate,
+          LateFeePercentage: lateFeeRate,
+          offerMadeDate: new Date(), 
+          currentStatus: toStatus, 
+          adminEmiSchedule: emiSnapshot 
+        } 
+      }),
+      prisma.requestHistory.create({ 
+        data: { 
+          requestId: dbId, 
+          actorId: user.id, 
+          action: 'OFFER_CREATED', 
+          metadata: { 
+            fromStatus, 
+            toStatus, 
+            amount, 
+            tenureMonths, 
+            interestRate, 
+            penaltyPercentage: penaltyRate,
+            LateFeePercentage: lateFeeRate,
+            notes 
+          } 
+        } 
+      })
     ]);
 
     // Return full request with relations so client sees the complete audit trail immediately

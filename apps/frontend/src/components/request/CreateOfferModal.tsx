@@ -5,6 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '../button';
 import { Input } from '../input';
 import { useEffect } from 'react';
+import { BACKEND_API_CONFIG } from '@/lib/urls';
+import { api } from '@/lib/api-client';
 
 type EMIRow = {
   installment: number;
@@ -54,10 +56,8 @@ export default function CreateOfferModal({ open, onOpenChange, onSubmit, request
       }
       setPreviewLoading(true);
       try {
-        const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${requestId}/offer-preview?amount=${a}&tenureMonths=${t}&interestRate=${i}`;
-        const res = await fetch(url, { credentials: 'include' });
-        const data = await res.json();
-        if (res.ok) setPreview(data.data as EMIPreview);
+        const data = await api.get(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.OFFER_PREVIEW(requestId, a, t, i));
+        if (data) setPreview(data.data as EMIPreview);
         else setPreview(null);
       } catch (e) {
         setPreview(null);
@@ -126,17 +126,15 @@ export default function CreateOfferModal({ open, onOpenChange, onSubmit, request
                   <div className="mt-2 max-h-48 overflow-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-left"><th>#</th><th>Due</th><th>Payment</th><th>Principal</th><th>Interest</th><th>Balance</th></tr>
+                        <tr className="text-left"><th>EMI No.</th><th className="text-right">Principal</th><th className="text-right">Interest</th><th className="text-right">Amount</th></tr>
                       </thead>
                       <tbody>
                         {preview.emiSchedule.map(e => (
                           <tr key={e.installment}>
                             <td>{e.installment}</td>
-                            <td>{new Date(e.paymentDate).toLocaleDateString()}</td>
-                            <td>₹{e.paymentAmount.toFixed(2)}</td>
-                            <td>₹{e.principal.toFixed(2)}</td>
-                            <td>₹{e.interest.toFixed(2)}</td>
-                            <td>₹{e.remainingBalance.toFixed(2)}</td>
+                            <td className="text-right">₹{e.principal.toFixed(2)}</td>
+                            <td className="text-right">₹{e.interest.toFixed(2)}</td>
+                            <td className="text-right">₹{e.paymentAmount.toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
