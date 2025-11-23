@@ -100,11 +100,11 @@ export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
             select: {
               id: true,
               loanNumber: true,
-              request: {
-                select: {
-                  requestNumber: true,
-                  penaltyPercentage: true,
-                  LateFeePercentage: true,
+                  request: {
+                    select: {
+                      requestNumber: true,
+                      penaltyPercentage: true,
+                      lateFeePercentage: true,
                   customer: {
                     select: {
                       firstName: true,
@@ -166,7 +166,7 @@ export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
               dueDate: e.dueDate.toISOString()
             })),
             emi.loan.request.penaltyPercentage || 4,
-            emi.loan.request.LateFeePercentage || 0.01
+            emi.loan.request.lateFeePercentage || 0.01
           );
 
           // Update EMI with OVERDUE status and calculated late fee

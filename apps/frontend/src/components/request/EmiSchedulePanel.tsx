@@ -37,7 +37,6 @@ export default function EmiSchedulePanel({ request, triggerLabel = 'View EMI Sch
               <EmiScheduleTable rows={snapshot.emiSchedule} mode="preview" />
             </div>
           ) : (
-          ) : (
             <div className="text-sm text-muted-foreground">No EMI schedule available.</div>
           )}
         </div>

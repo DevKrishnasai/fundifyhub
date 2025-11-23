@@ -82,14 +82,7 @@ export async function getPendingRequestsController(req: Request, res: Response):
             phoneNumber: true
           }
         },
-        loan: {
-          select: {
-            id: true,
-            status: true,
-            approvedAmount: true,
-            disbursedDate: true
-          }
-        },
+        
         _count: {
           select: {
             comments: true,
