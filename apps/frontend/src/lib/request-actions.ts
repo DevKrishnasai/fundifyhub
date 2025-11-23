@@ -20,9 +20,12 @@ export interface ActionInput {
   amount?: number;
   tenureMonths?: number;
   interestRate?: number;
+  penaltyPercentage?: number;
+  lateFeePercentage?: number;
   
   // For agent assignment
   agentId?: string;
+  inspectionDateTime?: string;
   
   // For generic comments/notes
   notes?: string;
@@ -80,14 +83,14 @@ export async function executeRequestAction(
           onError?.('Please select an agent');
           return false;
         }
-        return await assignAgent(requestId, input.agentId, onSuccess, onError);
+        return await assignAgent(requestId, input.agentId, input.inspectionDateTime, onSuccess, onError);
       
       case 'reassign-agent':
         if (!input?.agentId) {
           onError?.('Please select an agent');
           return false;
         }
-        return await assignAgent(requestId, input.agentId, onSuccess, onError);
+        return await assignAgent(requestId, input.agentId, input.inspectionDateTime, onSuccess, onError);
       
       case 'reject':
         return await updateStatus(
@@ -405,14 +408,18 @@ async function createOffer(
       body: JSON.stringify({
         amount: offer.amount,
         tenureMonths: offer.tenureMonths,
-        interestRate: offer.interestRate
+        interestRate: offer.interestRate,
+        penaltyPercentage: offer.penaltyPercentage,
+        lateFeePercentage: offer.lateFeePercentage
       })
     });
     
     const data = await res.json();
     
     if (res.ok) {
-      onSuccess?.(data.data?.request);
+        // Fetch full request to ensure we pass the complete request including relations (history/comments)
+        const fullRequest = await fetchFullRequest(requestId);
+        onSuccess?.(fullRequest || data.data?.request);
       return true;
     } else {
       onError?.(data.message || 'Failed to create offer');
@@ -427,15 +434,17 @@ async function createOffer(
 async function assignAgent(
   requestId: string,
   agentId: string,
+  inspectionDateTime?: string,
   onSuccess?: (data: any) => void,
   onError?: (error: string) => void
 ): Promise<boolean> {
+  console.debug('assignAgent helper:', { requestId, agentId, inspectionDateTime });
   try {
     const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}/assign`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId })
+      body: JSON.stringify({ agentId, inspectionDateTime })
     });
     
     const data = await res.json();

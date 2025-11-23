@@ -1,5 +1,5 @@
 import { Router, type Router as ExpressRouter } from 'express';
-import { getProfileController, validateController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController, getUserRequestsController, getUserRequestController, postCommentController } from './controllers';
+import { getProfileController, validateController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController, getUserRequestsController, getUserRequestController, postCommentController, getDashboardStatsController } from './controllers';
 
 const router: ExpressRouter = Router();
 
@@ -64,6 +64,12 @@ router.post('/request/:identifier/comment', postCommentController);
  * Returns total borrowed and outstanding amounts (protected)
  */
 router.get('/total-borrow', totalBorrowController);
+
+/**
+ * GET /user/dashboard-stats
+ * Returns dashboard statistics based on user role (protected)
+ */
+router.get('/dashboard-stats', getDashboardStatsController);
 
 
 export default router;

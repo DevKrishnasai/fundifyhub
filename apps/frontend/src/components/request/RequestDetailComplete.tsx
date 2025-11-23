@@ -16,7 +16,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getActionsForUser, canViewRequestDetail, type WorkflowAction, type UserRole, type UserContext, type RequestContext } from '@fundifyhub/types';
+import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getActionsForUser, canViewRequestDetail, type WorkflowAction, type UserRole, type UserContext, type RequestContext, EMI_STATUS, type AdminEMISchedulePreview } from '@fundifyhub/types';
 import { useRouter } from 'next/navigation';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
 import { executeRequestAction } from '@/lib/request-actions';
@@ -31,6 +31,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { UploadButton } from '@/components/uploadthing-components';
 import type { ClientUploadedFileData } from 'uploadthing/types';
 import { SignaturePad } from '@/components/SignaturePad';
+import PaymentModal from '@/components/payments/RazorpayPaymentModal';
+import { ActiveLoanSummary } from '@/components/request/ActiveLoanSummary';
+import { DocumentGallery } from '@/components/request/DocumentGallery';
+import { EMIPaymentCard } from '@/components/request/EMIPaymentCard';
+import CreateOfferModal from '@/components/request/CreateOfferModal';
+import AssignAgentModal from '@/components/request/AssignAgentModal';
+import EmiScheduleTable from '@/components/request/EmiScheduleTable';
 import { 
   Calendar, 
   MapPin, 
@@ -43,14 +50,13 @@ import {
   AlertCircle,
   MessageCircle,
   TrendingUp,
-  Download,
   Upload,
-  Users,
   PenTool,
   CreditCard,
   Send,
+  Loader2,
   Eye,
-  Loader2
+  Users
 } from 'lucide-react';
 
 interface RequestDetail {
@@ -73,7 +79,9 @@ interface RequestDetail {
   adminTenureMonths?: number | null;
   adminInterestRate?: number | null;
   offerMadeDate?: string | null;
-  adminEmiSchedule?: any;
+  adminEmiSchedule?: AdminEMISchedulePreview | null;
+  penaltyPercentage?: number | null;
+  lateFeePercentage?: number | null;
   
   // Assignment
   assignedAgentId?: string | null;
@@ -100,7 +108,7 @@ interface RequestDetail {
     createdAt: string;
     action: string;
     actorId?: string | null;
-    metadata?: any;
+    metadata?: Record<string, unknown> | null;
     actor?: {
       id: string;
       firstName?: string;
@@ -196,6 +204,8 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [offerAmount, setOfferAmount] = useState('');
   const [offerTenure, setOfferTenure] = useState('');
   const [offerRate, setOfferRate] = useState('');
+  const [penaltyPercentage, setPenaltyPercentage] = useState('');
+  const [lateFeePercentage, setLateFeePercentage] = useState('');
   const [creatingOffer, setCreatingOffer] = useState(false);
   
   // Bank details
@@ -219,15 +229,44 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [showBankDetails, setShowBankDetails] = useState(false);
   const [showRequestInfo, setShowRequestInfo] = useState(false);
   const [showDisbursement, setShowDisbursement] = useState(false);
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedEmiId, setSelectedEmiId] = useState<string | null>(null);
+  const [selectedEmiAmount, setSelectedEmiAmount] = useState<number>(0);
+  const [selectedEmiNumber, setSelectedEmiNumber] = useState<number>(0);
+  const [selectedEmiBreakdown, setSelectedEmiBreakdown] = useState<any>(null);
   
   // Disbursement form
   const [transactionRef, setTransactionRef] = useState('');
   const [disbursementProof, setDisbursementProof] = useState<string[]>([]);
   const [submittingDisbursement, setSubmittingDisbursement] = useState(false);
 
-  const isCustomer = auth.isCustomer();
-  const isAdmin = auth.hasRole([ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN]);
-  const isAgent = auth.isAgent();
+  /**
+   * Permission Model:
+   * - Customer: Can only act on their OWN requests (customerId === userId)
+   * - Agent: Can only act on requests ASSIGNED to them (assignedAgentId === userId)
+   * - District Admin: Can only act on requests in THEIR districts
+   * - Super Admin: Can act on ALL requests
+   * 
+   * Users with multiple roles are determined by actual ownership/assignment for this specific request.
+   */
+  const isSuperAdmin = auth.hasRole([ROLES.SUPER_ADMIN]);
+  const isDistrictAdmin = auth.hasRole([ROLES.DISTRICT_ADMIN]);
+  const hasAgentRole = auth.isAgent();
+  const hasCustomerRole = auth.isCustomer();
+  
+  // Check actual ownership/assignment for THIS request
+  const isRequestOwner = request && auth.user && request.customerId === auth.user.id;
+  const isAssignedAgent = request && auth.user && request.assignedAgentId === auth.user.id;
+  const hasDistrictAccess = request && auth.user && (
+    isSuperAdmin || 
+    (isDistrictAdmin && auth.user.districts.includes(request.district))
+  );
+
+  // Determine effective role for THIS request (based on actual permissions)
+  const isCustomer = isRequestOwner && hasCustomerRole;
+  const isAgent = isAssignedAgent && hasAgentRole;
+  const isAdmin = hasDistrictAccess && (isSuperAdmin || isDistrictAdmin);
 
   // Build user context with all roles
   const getUserRoles = (): UserRole[] => {
@@ -278,7 +317,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}`, { 
+        const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(id)}`, { 
           credentials: 'include' 
         });
         if (res.status === 401) {
@@ -289,16 +328,6 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         if (res.ok) {
           if (mounted) {
             setRequest(data.data.request as RequestDetail);
-            
-            // Debug: Log loan data
-            console.log('🔍 Request loaded:', {
-              id: data.data.request.id,
-              status: data.data.request.currentStatus,
-              hasLoan: !!data.data.request.loan,
-              loanData: data.data.request.loan,
-              hasEmiSchedule: !!data.data.request.loan?.emisSchedule,
-              emiCount: data.data.request.loan?.emisSchedule?.length || 0
-            });
             
             // Check sessionStorage for upload flag
             const hasUploaded = sessionStorage.getItem(`uploaded_docs_${id}`) === 'true';
@@ -323,7 +352,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const loadAgents = async () => {
     if (!request?.district) return;
     try {
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/agents/${request.district}`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_AGENTS_BY_DISTRICT(request.district)}`, {
         credentials: 'include'
       });
       const data = await res.json();
@@ -349,7 +378,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     setAssigningAgent(true);
     try {
       const inspectionDateTime = `${inspectionDate}T${inspectionTime}`;
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/assign`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ASSIGN_AGENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -380,6 +409,8 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     const amount = parseFloat(offerAmount);
     const tenure = parseInt(offerTenure);
     const rate = parseFloat(offerRate);
+    const penalty = parseFloat(penaltyPercentage) || 4;
+    const lateFee = parseFloat(lateFeePercentage) || 0.01;
     
     if (!amount || !tenure || !rate) {
       alert('Please fill all offer details');
@@ -388,14 +419,16 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     setCreatingOffer(true);
     try {
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/offer`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.CREATE_OFFER(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ 
           amount, 
           tenureMonths: tenure, 
-          interestRate: rate 
+          interestRate: rate,
+          penaltyPercentage: penalty,
+          lateFeePercentage: lateFee
         })
       });
       const data = await res.json();
@@ -416,7 +449,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   // Handle status updates
   const handleStatusUpdate = async (newStatus: string, note?: string) => {
     try {
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/status`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -449,7 +482,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     setSubmittingBank(true);
     try {
       // Submit bank details to backend
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/bank-details`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_BANK_DETAILS(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -504,7 +537,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         description: `Transaction Ref: ${transactionRef}`,
       }));
 
-      const docRes = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/bulk`, {
+      const docRes = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.CREATE_BULK}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -512,12 +545,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       });
 
       if (!docRes.ok) {
-        console.error('Failed to create document records');
+        throw new Error('Failed to create document records');
         // Continue anyway, don't block disbursement
       }
 
       // Then, add a comment with transaction details (no file keys)
-      await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ADD_COMMENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -527,7 +560,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       });
 
       // Finally, update status to AMOUNT_DISBURSED
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}/status`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPDATE_STATUS(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -563,7 +596,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     setSubmittingInfo(true);
     try {
       // Post comment with the requested info
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ADD_COMMENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -591,7 +624,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     setPostingComment(true);
     try {
-      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ADD_COMMENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -636,7 +669,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         description: `${documentCategory} photo uploaded`
       }));
 
-      const response = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/bulk`, {
+      const response = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.CREATE_BULK}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -653,7 +686,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         sessionStorage.setItem(`uploaded_docs_${request?.id}`, 'true');
         
         // Refetch request to get updated documents with signed URLs
-        const refreshResponse = await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/requests/${id}`, {
+        const refreshResponse = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(id)}`, {
           credentials: 'include'
         });
         
@@ -679,15 +712,25 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
   // Get signed URL for document display
   const getSignedUrl = (fileKey: string) => {
-    return `${BACKEND_API_CONFIG.BASE_URL}/api/v1/documents/${fileKey}/signed-url?expiresIn=900`;
+    return `${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.SIGNED_URL(fileKey)}?expiresIn=900`;
   };
 
   // Handle workflow actions
   const handleWorkflowAction = async (action: WorkflowAction) => {
-    console.log('🎯 handleWorkflowAction called with:', action.id);
-    
-    // Special handlers for actions requiring input/modals
-    if (action.id === 'make-offer' || action.id === 'revise-offer') {
+    if (action.id === 'make-offer' || action.id === 'revise-offer' || action.id === 'make-new-offer') {
+      if ((action.id === 'revise-offer' || action.id === 'make-new-offer') && request) {
+        setOfferAmount(request.adminOfferedAmount?.toString() || '');
+        setOfferTenure(request.adminTenureMonths?.toString() || '');
+        setOfferRate(request.adminInterestRate?.toString() || '');
+        setPenaltyPercentage(request.penaltyPercentage?.toString() || '4');
+        setLateFeePercentage(request.lateFeePercentage?.toString() || '0.01');
+      } else {
+        setOfferAmount('');
+        setOfferTenure('');
+        setOfferRate('');
+        setPenaltyPercentage('4');
+        setLateFeePercentage('0.01');
+      }
       setShowOffer(true);
       return;
     }
@@ -720,7 +763,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       if (!preferredTime || !preferredTime.trim()) return;
       
       // Post comment with reschedule request details
-      await fetch(`${BACKEND_API_CONFIG.BASE_URL}/api/v1/user/request/${id}/comment`, {
+      await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ADD_COMMENT(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -736,7 +779,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     
     // For actions with custom handlers (like create-emi-schedule)
     if (action.id === 'create-emi-schedule') {
-      console.log('🚀 Executing create-emi-schedule action');
+    // Executing create-emi-schedule action
       
       if (action.requiresConfirmation) {
         const confirmed = confirm(`Are you sure you want to ${action.label.toLowerCase()}? This will create the loan and EMI schedule.`);
@@ -748,12 +791,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         {
           requestId: id,
           onSuccess: (data) => {
-            console.log('✅ Action succeeded:', data);
+            // Action succeeded
             // Reload the page to show the updated loan data
             window.location.reload();
           },
           onError: (error) => {
-            console.error('❌ Action failed:', error);
+            // Action failed
             alert(error || 'Failed to create loan and EMI schedule');
           }
         }
@@ -825,14 +868,15 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   ].includes(request.currentStatus as REQUEST_STATUS);
 
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-7xl">
-      {/* Header */}
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold">Request #{request.requestNumber || request.id.slice(0, 8)}</h1>
           <p className="text-muted-foreground mt-1">Track your loan request status</p>
         </div>
-        <StatusBadge status={request.currentStatus} />
+        <StatusBadge status={request.currentStatus} />  
       </div>
 
       {/* Action Buttons - Using Centralized Workflow Engine */}
@@ -881,9 +925,44 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                   </Button>
                 );
               })}
+              
+              {/* Customer Pay EMI Button */}
+              {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && request.currentStatus === REQUEST_STATUS.ACTIVE && (() => {
+                const nextPending = request.loan.emisSchedule.find((e) => e.status === EMI_STATUS.PENDING);
+                if (!nextPending) return null;
+                
+                return (
+                  <Button
+                    key="pay-emi"
+                    variant="default"
+                    onClick={() => {
+                      setSelectedEmiId(nextPending.id);
+                      setSelectedEmiAmount(nextPending.emiAmount);
+                      setSelectedEmiNumber(nextPending.emiNumber);
+                      setShowPaymentModal(true);
+                    }}
+                    title={`Pay EMI #${nextPending.emiNumber}`}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Pay EMI #{nextPending.emiNumber} – ₹{nextPending.emiAmount.toLocaleString()}
+                  </Button>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* EMI Payment Card */}
+      {isCustomer && request.loan && request.currentStatus === REQUEST_STATUS.ACTIVE && (
+        <EMIPaymentCard
+          loan={request.loan}
+          onPayEMI={(emiId, breakdown) => {
+            setSelectedEmiId(emiId);
+            setSelectedEmiBreakdown(breakdown);
+            setShowPaymentModal(true);
+          }}
+        />
       )}
 
       {/* Agent Inspection Alert - Points to upload section below */}
@@ -911,7 +990,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         </Card>
       )}
 
-      {/* Signature Upload Alert - For Customer in PENDING_SIGNATURE status */}
+      {/* Signature Upload Alert - For Customer Only in PENDING_SIGNATURE status */}
       {isCustomer && request.currentStatus === REQUEST_STATUS.PENDING_SIGNATURE && (
         <Card className="mb-6 border-green-500 bg-green-50 dark:bg-green-950">
           <CardContent className="pt-6">
@@ -1120,6 +1199,19 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         </DialogContent>
       </Dialog>
 
+      {/* Payment Modal */}
+      {request?.loan && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          loanId={request.loan.id}
+          emiId={selectedEmiId || ''}
+          emiNumber={selectedEmiNumber || 0}
+          amount={selectedEmiAmount}
+          onSuccess={() => { setShowPaymentModal(false); window.location.reload(); }}
+        />
+      )}
+
       {/* Request More Info Modal */}
       <Dialog open={showRequestInfo} onOpenChange={setShowRequestInfo}>
         <DialogContent>
@@ -1145,95 +1237,68 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       </Dialog>
 
       {/* Offer Creation Modal */}
-      <Dialog open={showOffer} onOpenChange={setShowOffer}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Loan Offer</DialogTitle>
-            <DialogDescription>Set terms for this loan request</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Offered Amount (₹) *</Label>
-              <Input type="number" value={offerAmount} onChange={(e) => setOfferAmount(e.target.value)} placeholder="50000" />
-            </div>
-            <div>
-              <Label>Tenure (Months) *</Label>
-              <Input type="number" value={offerTenure} onChange={(e) => setOfferTenure(e.target.value)} placeholder="12" />
-            </div>
-            <div>
-              <Label>Interest Rate (% per annum) *</Label>
-              <Input type="number" step="0.1" value={offerRate} onChange={(e) => setOfferRate(e.target.value)} placeholder="10.5" />
-            </div>
-            <Button onClick={handleCreateOffer} disabled={creatingOffer} className="w-full">
-              {creatingOffer ? 'Creating...' : 'Send Offer'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CreateOfferModal 
+        open={showOffer}
+        onOpenChange={setShowOffer}
+        requestId={request.id}
+        onSubmit={async (payload) => {
+          setCreatingOffer(true);
+          try {
+            const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.CREATE_OFFER(id)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ 
+                amount: payload.amount, 
+                tenureMonths: payload.tenureMonths, 
+                interestRate: payload.interestRate,
+                penaltyPercentage: payload.penaltyPercentage,
+                lateFeePercentage: payload.lateFeePercentage
+              })
+            });
+            const data = await res.json();
+            if (res.ok) {
+              setRequest(data.data.request);
+              setShowOffer(false);
+            } else {
+              throw new Error(data.message || 'Failed to create offer');
+            }
+          } catch (err: any) {
+            throw err;
+          } finally {
+            setCreatingOffer(false);
+          }
+        }}
+      />
 
       {/* Agent Assignment Modal */}
-      <Dialog open={showAssignAgent} onOpenChange={(open) => {
-        setShowAssignAgent(open);
-        if (open) loadAgents();
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {request.assignedAgentId ? 'Reassign Agent' : 'Assign Agent for Inspection'}
-            </DialogTitle>
-            <DialogDescription>
-              {request.assignedAgentId 
-                ? `Currently assigned: ${request.assignedAgent?.firstName} ${request.assignedAgent?.lastName}. Select a different agent in ${request.district}`
-                : `Select an agent in ${request.district}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Select Agent *</Label>
-              <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  {agents.map(agent => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.firstName} {agent.lastName} {agent.phoneNumber && `(${agent.phoneNumber})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {agents.length === 0 && <p className="text-sm text-muted-foreground mt-1">No available agents in this district</p>}
-            </div>
-            
-            <div>
-              <Label>Inspection Date *</Label>
-              <Input 
-                type="date" 
-                value={inspectionDate} 
-                onChange={(e) => setInspectionDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-              />
-            </div>
-            
-            <div>
-              <Label>Inspection Time *</Label>
-              <Input 
-                type="time" 
-                value={inspectionTime} 
-                onChange={(e) => setInspectionTime(e.target.value)}
-              />
-            </div>
-            
-            <Button 
-              onClick={handleAssignAgent} 
-              disabled={assigningAgent || !selectedAgent || !inspectionDate || !inspectionTime} 
-              className="w-full"
-            >
-              {assigningAgent ? 'Assigning...' : 'Assign Agent & Schedule Inspection'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AssignAgentModal 
+        open={showAssignAgent}
+        onOpenChange={setShowAssignAgent}
+        district={request.district}
+        onSubmit={async (agentId: string, inspectionDate: string, inspectionTime: string) => {
+          setAssigningAgent(true);
+          try {
+            const inspectionDateTime = inspectionDate && inspectionTime ? new Date(`${inspectionDate}T${inspectionTime}`).toISOString() : undefined;
+            const ok = await executeRequestAction('assign-agent', {
+              requestId: id,
+              onSuccess: (data) => {
+                setRequest(data);
+                setShowAssignAgent(false);
+              },
+              onError: (error) => {
+                alert(error || 'Failed to assign agent');
+              }
+            }, { agentId, inspectionDateTime });
+            return Boolean(ok);
+          } catch (err: any) {
+            alert('Failed to assign agent');
+            return false;
+          } finally {
+            setAssigningAgent(false);
+          }
+        }}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -1295,108 +1360,9 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                   <p className="text-sm text-muted-foreground">{request.AdditionalDescription}</p>
                 </div>
               )}
-              
-              {/* Inspection Details - Show when agent is assigned */}
-              {request.assignedAgent && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm font-medium mb-3 flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    Inspection Details
-                  </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Assigned Agent</p>
-                      <p className="text-sm font-medium">{request.assignedAgent.firstName} {request.assignedAgent.lastName}</p>
-                      {request.assignedAgent.phoneNumber && (
-                        <p className="text-xs text-muted-foreground">{request.assignedAgent.phoneNumber}</p>
-                      )}
-                    </div>
-                    {request.inspectionScheduledAt && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Scheduled Date & Time</p>
-                        <p className="text-sm font-medium flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {new Date(request.inspectionScheduledAt).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric'
-                          })}
-                        </p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {new Date(request.inspectionScheduledAt).toLocaleTimeString('en-IN', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
 
-          {/* Offer Details - Customer Only */}
-          {showOfferToCustomer && (
-            <Card className="border-primary">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  Loan Offer Details
-                </CardTitle>
-                <CardDescription>Review the offer from our team</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-primary/5 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Amount</p>
-                    <p className="text-2xl font-bold text-primary">₹{request.adminOfferedAmount?.toLocaleString()}</p>
-                  </div>
-                  <div className="text-center p-4 bg-primary/5 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Tenure</p>
-                    <p className="text-2xl font-bold">{request.adminTenureMonths} months</p>
-                  </div>
-                  <div className="text-center p-4 bg-primary/5 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Interest</p>
-                    <p className="text-2xl font-bold">{request.adminInterestRate}%</p>
-                  </div>
-                </div>
-
-                {request.adminEmiSchedule && (
-                  <div className="pt-4 border-t">
-                    <h4 className="font-semibold mb-4">EMI Schedule</h4>
-                    <div className="rounded-lg border overflow-hidden">
-                      <div className="overflow-x-auto max-h-96">
-                        <table className="w-full text-sm">
-                          <thead className="bg-muted sticky top-0">
-                            <tr>
-                              <th className="text-left p-3 font-medium">EMI #</th>
-                              <th className="text-left p-3 font-medium">Due Date</th>
-                              <th className="text-right p-3 font-medium">Amount</th>
-                              <th className="text-right p-3 font-medium">Principal</th>
-                              <th className="text-right p-3 font-medium">Interest</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {request.adminEmiSchedule.emiSchedule?.map((emi: any, idx: number) => (
-                              <tr key={idx} className="border-t hover:bg-muted/50">
-                                <td className="p-3">{emi.installment}</td>
-                                <td className="p-3">{new Date(emi.paymentDate).toLocaleDateString('en-IN')}</td>
-                                <td className="p-3 text-right font-medium">₹{Number(emi.paymentAmount).toLocaleString()}</td>
-                                <td className="p-3 text-right">₹{Number(emi.principal).toLocaleString()}</td>
-                                <td className="p-3 text-right">₹{Number(emi.interest).toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
 
           {/* Documents */}
           <Card>
@@ -1479,7 +1445,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                         // Step 1: Download the generated PDF from backend
                         setUploadProgress('Downloading agreement...');
                         const pdfResponse = await fetch(
-                          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${request.id}/generate-agreement`,
+                          `${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GENERATE_AGREEMENT(request.id)}`,
                           { credentials: 'include' }
                         );
                         
@@ -1525,7 +1491,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                         // Step 4: Send to backend to upload to UploadThing and save
                         setUploadProgress('Uploading signed agreement...');
                         const uploadResponse = await fetch(
-                          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/requests/${request.id}/upload-signed-agreement`,
+                          `${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.UPLOAD_SIGNED_AGREEMENT(request.id)}`,
                           {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1553,7 +1519,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                         window.location.reload();
                         
                       } catch (error) {
-                        console.error('Signature process failed:', error);
+                        // Signature process failed
                         setUploadProgress('');
                         alert(error instanceof Error ? error.message : 'Failed to process signature. Please try again.');
                       }
@@ -1637,292 +1603,12 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
               {/* Document Grid */}
               {request.documents && request.documents.length > 0 ? (
-                <>
-                  {/* Customer Asset Photos */}
-                  {request.documents.filter(doc => doc.documentCategory === 'ASSET').length > 0 && (
-                    <div className="mb-6">
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Customer Asset Photos
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {request.documents.filter(doc => doc.documentCategory === 'ASSET').map((doc) => {
-                          const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf');
-                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
-                          
-                          return (
-                            <div key={doc.id} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {doc.fileKey && (
-                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
-                                  {isPdf ? (
-                                    <div className="flex flex-col items-center justify-center p-4">
-                                      <FileText className="h-16 w-16 text-muted-foreground mb-2" />
-                                      <p className="text-xs text-center text-muted-foreground">PDF Document</p>
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="mt-2 text-xs text-primary hover:underline flex items-center gap-1"
-                                      >
-                                        <Eye className="h-3 w-3" />
-                                        View PDF
-                                      </a>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <img 
-                                        src={signedUrl || ''} 
-                                        alt={doc.fileName || 'Document'} 
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          const target = e.target as HTMLImageElement;
-                                          target.style.display = 'none';
-                                          const parent = target.parentElement;
-                                          if (parent) {
-                                            parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
-                                          }
-                                        }}
-                                      />
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                      >
-                                        <Eye className="h-8 w-8 text-white" />
-                                      </a>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                              <div className="p-3 border-t bg-background">
-                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Document'}>
-                                  {doc.fileName || 'Document'}
-                                </p>
-                                <p className="text-xs text-muted-foreground">{doc.documentType || 'General'}</p>
-                                {doc.isVerified && (
-                                  <Badge variant="outline" className="mt-1 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Verified
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Agent Inspection Photos */}
-                  {request.documents.filter(doc => doc.documentCategory === 'INSPECTION').length > 0 && (
-                    <div className="mb-6">
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-blue-700 dark:text-blue-400">
-                        <User className="h-4 w-4" />
-                        Agent Inspection Photos
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {request.documents.filter(doc => doc.documentCategory === 'INSPECTION').map((doc) => {
-                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
-                          
-                          return (
-                            <div key={doc.id} className="border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {doc.fileKey && (
-                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
-                                  <img 
-                                    src={signedUrl || ''} 
-                                    alt={doc.fileName || 'Inspection Photo'} 
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement;
-                                      target.style.display = 'none';
-                                      const parent = target.parentElement;
-                                      if (parent) {
-                                        parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
-                                      }
-                                    }}
-                                  />
-                                  <a 
-                                    href={signedUrl || '#'} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                  >
-                                    <Eye className="h-8 w-8 text-white" />
-                                  </a>
-                                </div>
-                              )}
-                              <div className="p-3 border-t bg-blue-50 dark:bg-blue-950">
-                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Inspection Photo'}>
-                                  {doc.fileName || 'Inspection Photo'}
-                                </p>
-                                <p className="text-xs text-blue-600 dark:text-blue-400">Inspection Photo</p>
-                                {doc.isVerified && (
-                                  <Badge variant="outline" className="mt-1 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Verified
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Disbursement Proof - Show transfer proof documents */}
-                  {request.documents.filter(doc => doc.documentCategory === 'PAYMENT').length > 0 && (
-                    <div className="mb-6">
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-green-700 dark:text-green-400">
-                        <Send className="h-4 w-4" />
-                        Disbursement Proof ({request.documents.filter(doc => doc.documentCategory === 'PAYMENT').length})
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {request.documents.filter(doc => doc.documentCategory === 'PAYMENT').map((doc) => {
-                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
-                          const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf');
-                          
-                          return (
-                            <div key={doc.id} className="border border-green-200 dark:border-green-800 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {doc.fileKey && (
-                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
-                                  {isPdf ? (
-                                    <div className="flex flex-col items-center justify-center p-4">
-                                      <FileText className="h-16 w-16 text-green-600 mb-2" />
-                                      <p className="text-xs text-center text-muted-foreground">Transfer Proof PDF</p>
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="mt-2 text-xs text-primary hover:underline flex items-center gap-1"
-                                      >
-                                        <Eye className="h-3 w-3" />
-                                        View PDF
-                                      </a>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <img 
-                                        src={signedUrl || ''} 
-                                        alt={doc.fileName || 'Transfer Proof'} 
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          const target = e.target as HTMLImageElement;
-                                          target.style.display = 'none';
-                                          const parent = target.parentElement;
-                                          if (parent) {
-                                            parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
-                                          }
-                                        }}
-                                      />
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                      >
-                                        <Eye className="h-8 w-8 text-white" />
-                                      </a>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                              <div className="p-3 border-t bg-green-50 dark:bg-green-950">
-                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Transfer Proof'}>
-                                  {doc.fileName || 'Transfer Proof'}
-                                </p>
-                                <p className="text-xs text-green-600 dark:text-green-400">
-                                  Disbursement Document
-                                </p>
-                                <Badge variant="outline" className="mt-1 text-xs border-green-600 text-green-600">
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                  Verified
-                                </Badge>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Other Documents */}
-                  {request.documents.filter(doc => doc.documentCategory !== 'ASSET' && doc.documentCategory !== 'INSPECTION' && doc.documentCategory !== 'PAYMENT').length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Other Documents
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {request.documents.filter(doc => doc.documentCategory !== 'ASSET' && doc.documentCategory !== 'INSPECTION').map((doc) => {
-                          const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf');
-                          const signedUrl = doc.fileKey ? getSignedUrl(doc.fileKey) : null;
-                          
-                          return (
-                            <div key={doc.id} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {doc.fileKey && (
-                                <div className="w-full h-48 bg-muted flex items-center justify-center relative group">
-                                  {isPdf ? (
-                                    <div className="flex flex-col items-center justify-center p-4">
-                                      <FileText className="h-16 w-16 text-muted-foreground mb-2" />
-                                      <p className="text-xs text-center text-muted-foreground">PDF Document</p>
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="mt-2 text-xs text-primary hover:underline flex items-center gap-1"
-                                      >
-                                        <Eye className="h-3 w-3" />
-                                        View PDF
-                                      </a>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <img 
-                                        src={signedUrl || ''} 
-                                        alt={doc.fileName || 'Document'} 
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          const target = e.target as HTMLImageElement;
-                                          target.style.display = 'none';
-                                          const parent = target.parentElement;
-                                          if (parent) {
-                                            parent.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><svg class="h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-xs text-muted-foreground mt-2">Failed to load</p></div>';
-                                          }
-                                        }}
-                                      />
-                                      <a 
-                                        href={signedUrl || '#'} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                      >
-                                        <Eye className="h-8 w-8 text-white" />
-                                      </a>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                              <div className="p-3 border-t bg-background">
-                                <p className="text-sm font-medium truncate" title={doc.fileName || 'Document'}>
-                                  {doc.fileName || 'Document'}
-                                </p>
-                                <p className="text-xs text-muted-foreground">{doc.documentType || 'General'}</p>
-                                {doc.isVerified && (
-                                  <Badge variant="outline" className="mt-1 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Verified
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </>
+                <DocumentGallery 
+                  documents={request.documents.map(doc => ({
+                    ...doc,
+                    url: doc.fileKey ? getSignedUrl(doc.fileKey) : null
+                  }))} 
+                />
               ) : (
                 <p className="text-sm text-muted-foreground">{DOCUMENT_MESSAGES.NO_DOCUMENTS}</p>
               )}
@@ -1970,92 +1656,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
                     {/* Actual EMI Schedule Table */}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2 font-semibold">#</th>
-                            <th className="text-left p-2 font-semibold">Due Date</th>
-                            <th className="text-right p-2 font-semibold">EMI Amount</th>
-                            <th className="text-right p-2 font-semibold">Principal</th>
-                            <th className="text-right p-2 font-semibold">Interest</th>
-                            <th className="text-center p-2 font-semibold">Status</th>
-                            {(auth.user?.roles?.includes(ROLES.SUPER_ADMIN) || auth.user?.roles?.includes(ROLES.DISTRICT_ADMIN)) && (
-                              <th className="text-center p-2 font-semibold">Action</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {request.loan.emisSchedule.map((emi: any) => {
-                            const isPending = emi.status === 'PENDING';
-                            const isPaid = emi.status === 'PAID';
-                            const isOverdue = emi.status === 'OVERDUE';
-                            const dueDate = new Date(emi.dueDate);
-                            const isUpcoming = dueDate > new Date();
-                            
-                            return (
-                              <tr key={emi.id} className={`border-b hover:bg-muted/50 ${isPaid ? 'bg-green-50 dark:bg-green-950/20' : isOverdue ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
-                                <td className="p-2 font-medium">#{emi.emiNumber}</td>
-                                <td className="p-2">
-                                  <div className="flex flex-col">
-                                    <span>{dueDate.toLocaleDateString()}</span>
-                                    {isUpcoming && isPending && (
-                                      <span className="text-xs text-muted-foreground">
-                                        ({Math.ceil((dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days left)
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="p-2 text-right font-semibold">₹{emi.emiAmount.toLocaleString()}</td>
-                                <td className="p-2 text-right text-muted-foreground">₹{emi.principalAmount.toLocaleString()}</td>
-                                <td className="p-2 text-right text-muted-foreground">₹{emi.interestAmount.toLocaleString()}</td>
-                                <td className="p-2 text-center">
-                                  {isPaid && (
-                                    <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400 border-green-300">
-                                      <CheckCircle className="h-3 w-3 mr-1" />
-                                      Paid
-                                    </Badge>
-                                  )}
-                                  {isOverdue && (
-                                    <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-400 border-red-300">
-                                      <AlertCircle className="h-3 w-3 mr-1" />
-                                      Overdue
-                                    </Badge>
-                                  )}
-                                  {isPending && !isOverdue && (
-                                    <Badge variant="outline" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-400 border-yellow-300">
-                                      <Clock className="h-3 w-3 mr-1" />
-                                      Pending
-                                    </Badge>
-                                  )}
-                                </td>
-                                {(auth.user?.roles?.includes(ROLES.SUPER_ADMIN) || auth.user?.roles?.includes(ROLES.DISTRICT_ADMIN)) && (
-                                  <td className="p-2 text-center">
-                                    {isPending && (
-                                      <Button 
-                                        size="sm" 
-                                        variant="outline"
-                                        className="text-xs"
-                                        onClick={() => {
-                                          // TODO: Implement payment recording
-                                          alert('Payment recording will be implemented next!');
-                                        }}
-                                      >
-                                        <CheckCircle className="h-3 w-3 mr-1" />
-                                        Mark Paid
-                                      </Button>
-                                    )}
-                                    {isPaid && emi.paidDate && (
-                                      <span className="text-xs text-muted-foreground">
-                                        Paid on {new Date(emi.paidDate).toLocaleDateString()}
-                                      </span>
-                                    )}
-                                  </td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                      <EmiScheduleTable rows={request.loan.emisSchedule} mode="loan" />
                     </div>
 
                     {/* Loan Summary */}
@@ -2084,57 +1685,16 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                     <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                       <p className="text-sm text-blue-800 dark:text-blue-400 flex items-center gap-2">
                         <AlertCircle className="h-4 w-4" />
-                        <span className="font-medium">Preview:</span> This is the proposed EMI schedule. Actual payment dates will start after amount disbursement.
+                        <span className="font-medium">Preview:</span> This is the proposed EMI schedule. Actual payment dates will start after loan approval.
                       </p>
                     </div>
 
-                    {/* Preview Summary */}
-                    <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Loan Amount</p>
-                        <p className="text-lg font-bold">₹{request.adminOfferedAmount?.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Monthly EMI</p>
-                        <p className="text-lg font-bold">₹{request.adminEmiSchedule.monthlyPayment?.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Interest Rate</p>
-                        <p className="text-lg font-bold">{request.adminInterestRate}% p.a.</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Tenure</p>
-                        <p className="text-lg font-bold">{request.adminTenureMonths} months</p>
-                      </div>
-                    </div>
-
-                    {/* Preview EMI Table - Without dates */}
+                    {/* Simplified Preview - Only Principal, Interest, Amount */}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2 font-semibold">Installment</th>
-                            <th className="text-right p-2 font-semibold">EMI Amount</th>
-                            <th className="text-right p-2 font-semibold">Principal</th>
-                            <th className="text-right p-2 font-semibold">Interest</th>
-                            <th className="text-right p-2 font-semibold">Balance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {request.adminEmiSchedule.emiSchedule?.map((emi: any, idx: number) => (
-                            <tr key={idx} className="border-b hover:bg-muted/50">
-                              <td className="p-2 font-medium">#{emi.installment}</td>
-                              <td className="p-2 text-right font-semibold">₹{emi.paymentAmount?.toLocaleString()}</td>
-                              <td className="p-2 text-right text-muted-foreground">₹{emi.principal?.toLocaleString()}</td>
-                              <td className="p-2 text-right text-muted-foreground">₹{emi.interest?.toLocaleString()}</td>
-                              <td className="p-2 text-right text-muted-foreground">₹{emi.remainingBalance?.toLocaleString()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <EmiScheduleTable rows={request.adminEmiSchedule.emiSchedule} mode="preview" />
                     </div>
 
-                    {/* Preview Summary */}
+                    {/* Summary */}
                     <div className="mt-6 p-4 bg-muted rounded-lg grid grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
                         <p className="text-xs text-muted-foreground mb-1">Total Interest</p>
@@ -2209,19 +1769,19 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               <CardTitle className="text-lg">Request Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <InfoItem 
-                label="District" 
+              <InfoItem
+                label="District"
                 value={request.district}
                 icon={<MapPin className="h-4 w-4" />}
               />
               {request.offerMadeDate && (
-                <InfoItem 
-                  label="Offer Date" 
+                <InfoItem
+                  label="Offer Date"
                   value={new Date(request.offerMadeDate).toLocaleDateString('en-IN')}
                   icon={<Calendar className="h-4 w-4" />}
                 />
               )}
-              
+
               {(isAdmin || isAgent) && request.customer && (
                 <div className="pt-4 border-t">
                   <p className="text-sm font-medium mb-2 flex items-center gap-2">
@@ -2235,61 +1795,102 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
 
-              {request.assignedAgent && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    Assigned Agent
-                  </p>
-                  <div className="space-y-1 text-sm text-muted-foreground">
-                    <p>{request.assignedAgent.firstName} {request.assignedAgent.lastName}</p>
-                    {request.assignedAgent.phoneNumber && <p>{request.assignedAgent.phoneNumber}</p>}
-                    {request.inspectionScheduledAt && (
-                      <p className="flex items-center gap-1 text-xs pt-2 border-t mt-2">
-                        <Calendar className="h-3 w-3" />
-                        Scheduled: {new Date(request.inspectionScheduledAt).toLocaleString('en-IN', {
-                          dateStyle: 'medium',
-                          timeStyle: 'short'
-                        })}
-                      </p>
+          {/* Agent Details - Separate Card */}
+          {request.assignedAgent && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Agent Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">{request.assignedAgent.firstName} {request.assignedAgent.lastName}</p>
+                    {request.assignedAgent.phoneNumber && (
+                      <p className="text-sm text-muted-foreground">{request.assignedAgent.phoneNumber}</p>
                     )}
                   </div>
-                </div>
-              )}
 
-              {/* Bank Details Section - Show to Admin/Agent or Customer (if submitted) */}
-              {request.bankAccountNumber && request.bankDetailsSubmittedAt && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    Bank Details
-                  </p>
-                  <div className="space-y-1 text-sm text-muted-foreground">
+                  {request.inspectionScheduledAt && (
+                    <div className="pt-3 border-t">
+                      <p className="text-xs text-muted-foreground mb-2">Inspection Scheduled</p>
+                      <div className="space-y-1">
+                        <p className="text-sm flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(request.inspectionScheduledAt).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </p>
+                        <p className="text-sm flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {new Date(request.inspectionScheduledAt).toLocaleTimeString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {request.currentStatus === REQUEST_STATUS.INSPECTION_COMPLETED && (
+                    <div className="pt-3 border-t">
+                      <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400 border-green-300">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Inspection Completed
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Bank Details - Separate Card */}
+          {request.bankAccountNumber && request.bankDetailsSubmittedAt && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Bank Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex justify-between">
-                      <span className="font-medium">Account Name:</span>
-                      <span>{request.bankAccountName}</span>
+                      <span className="text-sm font-medium">Account Name:</span>
+                      <span className="text-sm">{request.bankAccountName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-medium">Account Number:</span>
-                      <span className="font-mono">
-                        {isCustomer 
+                      <span className="text-sm font-medium">Account Number:</span>
+                      <span className="text-sm font-mono">
+                        {isCustomer
                           ? `**** **** ${request.bankAccountNumber.slice(-4)}`
                           : request.bankAccountNumber
                         }
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-medium">IFSC Code:</span>
-                      <span className="font-mono">{request.bankIfscCode}</span>
+                      <span className="text-sm font-medium">IFSC Code:</span>
+                      <span className="text-sm font-mono">{request.bankIfscCode}</span>
                     </div>
                     {request.upiId && (
                       <div className="flex justify-between">
-                        <span className="font-medium">UPI ID:</span>
-                        <span className="font-mono">{request.upiId}</span>
+                        <span className="text-sm font-medium">UPI ID:</span>
+                        <span className="text-sm font-mono">{request.upiId}</span>
                       </div>
                     )}
-                    <p className="flex items-center gap-1 text-xs pt-2 border-t mt-2 text-green-600 dark:text-green-400">
+                  </div>
+
+                  <div className="pt-3 border-t">
+                    <p className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
                       <CheckCircle className="h-3 w-3" />
                       Submitted: {new Date(request.bankDetailsSubmittedAt).toLocaleString('en-IN', {
                         dateStyle: 'medium',
@@ -2298,9 +1899,9 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                     </p>
                   </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Timeline */}
           <Card>
@@ -2314,9 +1915,9 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                 {timelineEvents.length > 0 ? (
                   timelineEvents.map((event, index) => (
-                    <TimelineEvent 
-                      key={event.id} 
-                      event={event} 
+                    <TimelineEvent
+                      key={event.id}
+                      event={event}
                       isLast={index === timelineEvents.length - 1}
                     />
                   ))
@@ -2327,6 +1928,28 @@ export default function RequestDetailComplete({ id }: { id: string }) {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && selectedEmiId && request?.loan && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setSelectedEmiId(null);
+            setSelectedEmiBreakdown(null);
+          }}
+          loanId={request.loan.id}
+          emiId={selectedEmiId}
+          emiNumber={selectedEmiNumber}
+          amount={selectedEmiBreakdown?.totalDue || selectedEmiAmount}
+          breakdown={selectedEmiBreakdown}
+          onSuccess={() => {
+            // Reload the page to show updated EMI status
+            window.location.reload();
+          }}
+        />
+      )}
       </div>
     </div>
   );
@@ -2347,7 +1970,7 @@ function StatusBadge({ status }: { status: string }) {
   };
 
   return (
-    <Badge variant={getVariant() as any} className="px-4 py-2 text-sm flex items-center gap-2 w-fit">
+    <Badge variant={getVariant()} className="px-4 py-2 text-sm flex items-center gap-2 w-fit">
       {getIcon()}
       {status.replace(/_/g, ' ')}
     </Badge>
@@ -2366,7 +1989,22 @@ function InfoItem({ label, value, icon }: { label: string; value: string; icon?:
   );
 }
 
-function TimelineEvent({ event, isLast }: { event: any; isLast: boolean }) {
+interface TimelineEvent {
+  id: string;
+  date: string;
+  type: string;
+  title: string;
+  action: string;
+  actor?: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+  } | null;
+  roleLabel?: string;
+  description?: string | Array<{ key: string; value: string }>;
+}
+
+function TimelineEvent({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
   const getIcon = () => {
     const action = event.action?.toUpperCase() || '';
     if (action.includes('REJECT') || action.includes('CANCEL') || action.includes('DECLINE')) {
@@ -2408,7 +2046,7 @@ function TimelineEvent({ event, isLast }: { event: any; isLast: boolean }) {
               <p>{event.description}</p>
             ) : Array.isArray(event.description) ? (
               <ul className="list-disc list-inside space-y-1">
-                {event.description.map((item: any, idx: number) => (
+                {event.description.map((item, idx) => (
                   <li key={idx}>
                     <strong>{item.key}:</strong> {item.value}
                   </li>
@@ -2423,8 +2061,8 @@ function TimelineEvent({ event, isLast }: { event: any; isLast: boolean }) {
 }
 
 // Helper Functions
-function buildTimeline(request: RequestDetail) {
-  const events: any[] = [];
+function buildTimeline(request: RequestDetail): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
 
   // Add initial submission event using request createdAt
   // Fallback to earliest history entry if createdAt not available
@@ -2439,10 +2077,10 @@ function buildTimeline(request: RequestDetail) {
     type: 'history',
     title: 'Request Submitted',
     action: 'REQUEST_SUBMITTED',
-    actor: request.customer,
+    actor: request.customer || null,
     roleLabel: 'Customer',
     description: [
-      { key: 'Asset Type', value: request.assetType },
+      { key: 'Asset Type', value: request.assetType || 'N/A' },
       { key: 'Requested Amount', value: `₹${request.requestedAmount.toLocaleString()}` },
       { key: 'District', value: request.district },
     ],

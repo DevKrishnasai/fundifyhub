@@ -3,13 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
-  Bell,
   Plus,
   Smartphone,
   Laptop,
@@ -18,23 +12,21 @@ import {
   CheckCircle,
   Calendar,
   IndianRupee,
-  Eye,
   CreditCard,
-  User,
-  LogOut,
-  Filter,
-  AlertTriangle,
-  ExternalLink,
+  AlertCircle,
+  Eye,
 } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect } from "react"
 import { getWithResult } from "@/lib/api-client"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
 import toast from "@/lib/toast"
-import { REQUEST_STATUS, ALLOWED_UPDATE_STATUSES, PENDING_REQUEST_STATUSES, LOAN_STATUS } from '@fundifyhub/types'
-
-// Client-side state will hold paginated requests fetched from backend
-const notifications: any[] = []
+import { REQUEST_STATUS, PENDING_REQUEST_STATUSES, LOAN_STATUS } from '@fundifyhub/types'
+import RequestActions from '@/components/request/RequestActions'
+import { StatsCard } from "@/components/dashboard/StatsCard"
+import { DashboardFilters } from "@/components/dashboard/DashboardFilters"
+import { DashboardPagination } from "@/components/dashboard/DashboardPagination"
+import { useDashboardStats } from "@/hooks/useDashboardStats"
 
 function getAssetIcon(type: string) {
   switch (type) {
@@ -74,30 +66,29 @@ function getStatusBadge(status: string) {
   }
 }
 
-// Payment dialog removed for requests – requests are shown as cards with actions below
-
 export default function UserDashboard() {
   const [statusFilter, setStatusFilter] = useState("all")
-  const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [requests, setRequests] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [page, setPage] = useState<number>(1)
-  const [pageSize] = useState<number>(10)
+  const [pageSize, setPageSize] = useState<number>(10)
   const [total, setTotal] = useState<number>(0)
   const [loading, setLoading] = useState<boolean>(false)
 
+  // Fetch dashboard stats
+  const { stats, loading: statsLoading } = useDashboardStats({ status: statusFilter })
+
   useEffect(() => {
-    // whenever page or statusFilter changes, fetch the matching page
     fetchRequests(page)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, statusFilter])
+  }, [page, pageSize, statusFilter])
 
   async function fetchRequests(pageToFetch = 1) {
     try {
       setLoading(true)
-  const statusParam = statusFilter && statusFilter !== 'all' ? `&status=${encodeURIComponent(statusFilter)}` : ''
-  const searchParam = searchTerm && searchTerm.trim().length > 0 ? `&search=${encodeURIComponent(searchTerm.trim())}` : ''
-  const url = `${BACKEND_API_CONFIG.ENDPOINTS.USER.LIST_REQUESTS}?page=${pageToFetch}&pageSize=${pageSize}${statusParam}${searchParam}`
+      const statusParam = statusFilter && statusFilter !== 'all' ? `&status=${encodeURIComponent(statusFilter)}` : ''
+      const searchParam = searchTerm && searchTerm.trim().length > 0 ? `&search=${encodeURIComponent(searchTerm.trim())}` : ''
+      const url = `${BACKEND_API_CONFIG.ENDPOINTS.USER.LIST_REQUESTS}?page=${pageToFetch}&pageSize=${pageSize}${statusParam}${searchParam}`
       const resp = await getWithResult<{ items: any[]; total: number; page: number; pageSize: number }>(url)
       if (!resp.ok) {
         toast.error(resp.error?.message || 'Failed to load requests')
@@ -114,16 +105,29 @@ export default function UserDashboard() {
     }
   }
 
-  // Server-side filtering in place. Use the returned requests directly.
-  const filteredLoans = requests
+  const handleSearch = () => {
+    setPage(1)
+    fetchRequests(1)
+  }
 
-  // no-op payment handler removed — requests are not loans and do not support in-page payments here
+  const handleClearFilters = () => {
+    setSearchTerm('')
+    setStatusFilter('all')
+    setPage(1)
+  }
+
+  const handleRequestUpdate = (updatedRequest: any) => {
+    // Refresh the requests list after an action is taken
+    fetchRequests(page)
+  }
+
+  const totalPages = Math.ceil(total / pageSize)
+
+  const filteredLoans = requests
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header removed — global Navbar renders the app header */}
-
-      <div className="container mx-auto px-4 py-6 sm:py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Welcome Section */}
         <div className="mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold mb-2">Welcome back, John!</h1>
@@ -134,57 +138,34 @@ export default function UserDashboard() {
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-          <Card>
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Active Loans</p>
-                  <p className="text-xl sm:text-2xl font-bold">
-                    {requests.filter((r) => r.loan && r.loan.status === LOAN_STATUS.ACTIVE).length}
-                  </p>
-                </div>
-                <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-chart-3" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Pending Requests</p>
-                  <p className="text-xl sm:text-2xl font-bold">
-                    {requests.filter((r) => PENDING_REQUEST_STATUSES.includes(r.currentStatus)).length}
-                  </p>
-                </div>
-                <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Total Borrowed</p>
-                  <p className="text-xl sm:text-2xl font-bold">₹74,000</p>
-                </div>
-                <IndianRupee className="w-6 h-6 sm:w-8 sm:h-8 text-accent" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Next EMI</p>
-                  <p className="text-xl sm:text-2xl font-bold">₹7,500</p>
-                </div>
-                <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-600" />
-              </div>
-            </CardContent>
-          </Card>
+          <StatsCard
+            title="Total Requests"
+            value={stats?.totalRequests || 0}
+            icon={<CreditCard className="w-5 h-5" />}
+            iconColor="text-blue-600"
+            loading={statsLoading}
+          />
+          <StatsCard
+            title="Active Loans"
+            value={stats?.activeLoans || 0}
+            icon={<CheckCircle className="w-5 h-5" />}
+            iconColor="text-green-600"
+            loading={statsLoading}
+          />
+          <StatsCard
+            title="Total Borrowed"
+            value={`₹${(stats?.totalDisbursed || 0).toLocaleString('en-IN')}`}
+            icon={<IndianRupee className="w-5 h-5" />}
+            iconColor="text-purple-600"
+            loading={statsLoading}
+          />
+          <StatsCard
+            title="Pending EMIs"
+            value={stats?.overduEMIs || 0}
+            icon={<AlertCircle className="w-5 h-5" />}
+            iconColor="text-orange-600"
+            loading={statsLoading}
+          />
         </div>
 
         {/* Main Content */}
@@ -193,36 +174,28 @@ export default function UserDashboard() {
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-3">
               <h2 className="text-xl sm:text-2xl font-bold">Your Loan Requests</h2>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Search by ref, brand or model"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm((e.target as HTMLInputElement).value)}
-                    className="w-[220px]"
-                  />
-                  <Button size="sm" onClick={() => { setPage(1); fetchRequests(1); }}>Search</Button>
-                </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <Filter className="w-4 h-4 mr-2" />
-                    <SelectValue placeholder="Filter by status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                    <SelectItem value="closed">Closed</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button size="sm" className="w-full sm:w-auto" asChild>
-                  <Link href="/upload-asset">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Pledge New Asset
-                  </Link>
-                </Button>
-              </div>
+              <Button size="sm" asChild>
+                <Link href="/upload-asset">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Pledge New Asset
+                </Link>
+              </Button>
+            </div>
+
+            {/* Filters */}
+            <div className="mb-6">
+              <DashboardFilters
+                searchValue={searchTerm}
+                onSearchChange={setSearchTerm}
+                statusFilter={statusFilter}
+                onStatusChange={setStatusFilter}
+                onClearFilters={handleClearFilters}
+                customFilters={
+                  <Button size="sm" onClick={handleSearch}>
+                    Search
+                  </Button>
+                }
+              />
             </div>
 
             <div className="space-y-4">
@@ -238,7 +211,7 @@ export default function UserDashboard() {
                     <CardContent className="p-4 sm:p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
                             {getAssetIcon((req.assetType || '').toString().toLowerCase())}
                           </div>
                           <div>
@@ -269,15 +242,21 @@ export default function UserDashboard() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <Button variant="outline" size="sm" className="w-full sm:w-auto bg-transparent" asChild>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <RequestActions
+                          requestId={req.id}
+                          requestStatus={req.currentStatus}
+                          district={req.district}
+                          customerId={req.customerId ?? req.customer?.id}
+                          dashboardContext="customer"
+                          onUpdated={handleRequestUpdate}
+                        />
+                        <Button variant="outline" size="sm" asChild className="shrink-0">
                           <Link href={`/asset-detail/${req.requestNumber ?? req.id}`}>
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Details
+                            <Eye className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">View Details</span>
                           </Link>
                         </Button>
-
-                        {/* Editing is not allowed once customer submits assets; Edit button intentionally removed */}
                       </div>
                     </CardContent>
                   </Card>
@@ -285,15 +264,16 @@ export default function UserDashboard() {
               )}
 
               {/* Pagination */}
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-muted-foreground">
-                  Showing {total === 0 ? 0 : (page - 1) * pageSize + 1} - {Math.min(page * pageSize, total)} of {total}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
-                  <Button size="sm" disabled={page * pageSize >= total} onClick={() => setPage(page + 1)}>Next</Button>
-                </div>
-              </div>
+              {total > 0 && (
+                <DashboardPagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  totalItems={total}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                />
+              )}
             </div>
           </div>
         </div>

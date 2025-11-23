@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
-  ArrowLeft,
   Smartphone,
   Laptop,
   Car,
@@ -16,533 +15,588 @@ import {
   FileText,
   MessageSquare,
   Clock,
-  CheckCircle,
-  XCircle,
   AlertCircle,
-  Calendar,
+  XCircle,
+  Percent,
+  TrendingUp,
+  Info,
 } from "lucide-react"
-import Link from "next/link"
 import { useState, useEffect } from "react"
-import Image from "next/image"
-import { useSearchParams, useParams } from "next/navigation"
+import { useSearchParams, useParams, useRouter } from "next/navigation"
+import apiClient from "@/lib/api-client"
+import RequestActions from "@/components/request/RequestActions"
 
-// TODO: Replace with actual API call to fetch asset details
-const assetDetails: any = null
+interface RequestType {
+  id: string;
+  requestNumber: string | null;
+  customerId: string;
+  requestedAmount: number;
+  district: string;
+  currentStatus: string;
+  purchaseYear: number | null;
+  assetType: string;
+  assetBrand: string;
+  assetModel: string;
+  assetCondition: string;
+  AdditionalDescription: string | null;
+  adminOfferedAmount: number | null;
+  adminTenureMonths: number | null;
+  adminInterestRate: number | null;
+  offerMadeDate: string | null;
+  penaltyPercentage: number | null;
+  lateFeePercentage: number | null;
+  adminRequestedInfo: string | null;
+  submittedDate: string;
+  loan?: LoanType | null;
+  documents?: DocumentType[];
+  comments?: CommentType[];
+  assignedAgentId?: string | null;
+}
 
-// TODO: Replace with actual EMI schedule calculation
-const emiSchedule: any[] = []
+interface LoanType {
+  id: string;
+  approvedAmount: number;
+  interestRate: number;
+  tenureMonths: number;
+  emiAmount: number;
+  totalInterest: number;
+  totalAmount: number;
+  status: string;
+  disbursedDate: string | null;
+  firstEMIDate: string | null;
+}
+
+interface EMIScheduleType {
+  id: string;
+  emiNumber: number;
+  dueDate: string;
+  emiAmount: number;
+  principalAmount: number;
+  interestAmount: number;
+  status: string;
+  paidDate: string | null;
+  lateFee: number;
+}
+
+interface DocumentType {
+  id: string;
+  fileKey: string;
+  fileName: string;
+  documentType: string;
+  documentCategory: string;
+}
+
+interface CommentType {
+  id: string;
+  content: string;
+  authorId: string;
+  createdAt: string;
+  author?: {
+    firstName: string;
+    lastName: string;
+    roles: string[];
+  };
+}
 
 function getAssetIcon(type: string) {
-  switch (type) {
-    case "phone":
-      return <Smartphone className="w-5 h-5" />
-    case "laptop":
-      return <Laptop className="w-5 h-5" />
-    case "vehicle":
-      return <Car className="w-5 h-5" />
-    default:
-      return <CreditCard className="w-5 h-5" />
-  }
+  const lowerType = type.toLowerCase()
+  if (lowerType.includes('phone') || lowerType.includes('mobile')) return <Smartphone className="w-5 h-5" />
+  if (lowerType.includes('laptop') || lowerType.includes('computer')) return <Laptop className="w-5 h-5" />
+  if (lowerType.includes('vehicle') || lowerType.includes('car') || lowerType.includes('bike')) return <Car className="w-5 h-5" />
+  return <CreditCard className="w-5 h-5" />
 }
 
 function getStatusBadge(status: string) {
-  switch (status) {
-    case "active":
-      return <Badge className="bg-chart-3/10 text-chart-3 hover:bg-chart-3/20">Active</Badge>
-    case "pending":
-      return <Badge variant="secondary">Pending</Badge>
-    case "rejected":
-      return <Badge className="bg-destructive/10 text-destructive hover:bg-destructive/20">Rejected</Badge>
-    case "closed":
-      return <Badge variant="outline">Closed</Badge>
-    default:
-      return <Badge variant="secondary">{status}</Badge>
+  const statusUpper = status.toUpperCase()
+  if (statusUpper.includes('ACTIVE') || statusUpper.includes('DISBURSED')) {
+    return <Badge className="bg-chart-3/10 text-chart-3 hover:bg-chart-3/20">Active</Badge>
   }
-}
-
-function getTimelineIcon(status: string) {
-  switch (status) {
-    case "submitted":
-    case "under_review":
-    case "inspection":
-      return <Clock className="w-4 h-4" />
-    case "approved":
-    case "disbursed":
-      return <CheckCircle className="w-4 h-4 text-chart-3" />
-    case "rejected":
-      return <XCircle className="w-4 h-4 text-destructive" />
-    default:
-      return <AlertCircle className="w-4 h-4" />
+  if (statusUpper === 'PENDING') {
+    return <Badge variant="secondary">Pending</Badge>
   }
+  if (statusUpper.includes('REJECT')) {
+    return <Badge className="bg-destructive/10 text-destructive hover:bg-destructive/20">Rejected</Badge>
+  }
+  if (statusUpper === 'CLOSED') {
+    return <Badge variant="outline">Closed</Badge>
+  }
+  return <Badge variant="secondary">{status}</Badge>
 }
 
 export default function AssetDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const id = params.id as string
-  const [newComment, setNewComment] = useState("")
-  const [rejectionReason, setRejectionReason] = useState("")
   const searchParams = useSearchParams()
   const isAdminView = searchParams.get("admin") === "true"
+  
+  const [requestData, setRequestData] = useState<RequestType | null>(null)
+  const [emiSchedule, setEmiSchedule] = useState<EMIScheduleType[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [newComment, setNewComment] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleAddComment = () => {
-    if (newComment.trim()) {
-      // Add comment logic here
+  useEffect(() => {
+    const fetchRequestData = async () => {
+      try {
+        setLoading(true)
+        const response = await apiClient.get(`/api/v1/requests/${id}`)
+        if (response.data.success) {
+          setRequestData(response.data.data)
+          if (response.data.data.loan?.id) {
+            const emiResponse = await apiClient.get(`/api/v1/loans/${response.data.data.loan.id}/emis`)
+            if (emiResponse.data.success) {
+              setEmiSchedule(emiResponse.data.data)
+            }
+          }
+        }
+      } catch (err: any) {
+        setError(err.response?.data?.message || 'Failed to load request details')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchRequestData()
+  }, [id])
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !requestData) return
+    try {
+      setIsSubmitting(true)
+      setActionError(null)
+      await apiClient.post(`/api/v1/requests/${id}/comments`, {
+        content: newComment,
+        commentType: 'GENERAL'
+      })
       setNewComment("")
+      window.location.reload()
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Failed to add comment'
+      setActionError(errorMsg)
+      console.error('Failed to add comment:', err)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const handleAcceptConditionalApproval = () => {
-    // TODO: Handle accept logic here
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Clock className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading request details...</p>
+        </div>
+      </div>
+    )
   }
 
-  const handleRejectConditionalApproval = () => {
-    if (rejectionReason.trim()) {
-      // Handle reject logic here
-      // TODO: Handle rejection with reason
-      setRejectionReason("")
-    }
+  if (error || !requestData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <XCircle className="w-5 h-5" />
+              Error Loading Request
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">{error || 'Request not found'}</p>
+            <Button onClick={() => router.back()}>Go Back</Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
-  const handleAdminAccept = () => {
-    // TODO: Handle admin acceptance
-  }
-
-  const handleAdminReject = () => {
-    if (rejectionReason.trim()) {
-      // TODO: Handle admin rejection with reason
-      setRejectionReason("")
-    }
-  }
-
-  const handleAdminNegotiate = () => {
-    // TODO: Handle admin negotiation
-  }
-
-  const showLoanDetails = !["pending", "cancelled", "rejected"].includes(assetDetails.status)
+  const showLoanDetails = requestData.loan !== null && requestData.loan !== undefined
+  const hasOffer = requestData.adminOfferedAmount !== null && requestData.adminOfferedAmount !== undefined
+  const assetPhotos = requestData.documents?.filter(doc => doc.documentCategory === 'ASSET') || []
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header removed - global Navbar renders the header */}
-
       <div className="container mx-auto px-4 py-4 sm:py-6 lg:py-8">
-        {/* Asset Header */}
+        {/* Action Error Alert */}
+        {actionError && (
+          <div className="mb-4 p-4 bg-destructive/10 border border-destructive/30 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-destructive mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-destructive mb-1">Action Failed</p>
+              <p className="text-sm text-destructive/90">{actionError}</p>
+            </div>
+            <button
+              onClick={() => setActionError(null)}
+              className="text-destructive hover:text-destructive/80"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
+        {/* Request Header */}
         <div className="mb-4 sm:mb-6 lg:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                {getAssetIcon(assetDetails.type)}
+                {getAssetIcon(requestData.assetType)}
               </div>
               <div className="min-w-0">
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold truncate">{assetDetails.asset}</h1>
-                <p className="text-sm sm:text-base text-muted-foreground">Loan ID: {assetDetails.id}</p>
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold truncate">
+                  {requestData.assetBrand} {requestData.assetModel}
+                </h1>
+                <p className="text-sm sm:text-base text-muted-foreground">
+                  Request ID: {requestData.requestNumber || requestData.id.slice(0, 8)}
+                </p>
               </div>
             </div>
-            <div className="shrink-0">{getStatusBadge(assetDetails.status)}</div>
+            <div className="shrink-0">{getStatusBadge(requestData.currentStatus)}</div>
           </div>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-            {isAdminView && assetDetails.status === "pending" && (
-              <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/8 via-background to-accent/8 shadow-xl">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-primary/10 to-transparent rounded-full -translate-y-20 translate-x-20" />
-                <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-accent/10 to-transparent rounded-full translate-y-16 -translate-x-16" />
-                <div className="absolute top-1/2 right-1/4 w-24 h-24 bg-gradient-to-bl from-chart-3/5 to-transparent rounded-full" />
-
-                <CardHeader className="relative pb-3 sm:pb-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center animate-pulse shadow-lg">
-                        <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
-                      </div>
-                      <CardTitle className="text-xl sm:text-2xl lg:text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-bold">
-                        Admin Action Required
-                      </CardTitle>
-                    </div>
-                    <Badge className="bg-gradient-to-r from-primary/15 to-accent/15 text-primary border-primary/30 text-xs sm:text-sm w-fit font-semibold px-3 py-1">
-                      🔔 Loan Request Review
-                    </Badge>
-                  </div>
-                  <p className="text-sm sm:text-base text-muted-foreground mt-3 leading-relaxed">
-                    Review this loan request and make a decision. You can accept, reject, or negotiate the requested
-                    amount.
-                  </p>
-                </CardHeader>
-
-                <CardContent className="relative space-y-5 sm:space-y-6">
-                  <div className="p-4 sm:p-5 lg:p-6 bg-gradient-to-r from-card/90 to-card/70 backdrop-blur-sm rounded-2xl border border-border/60 shadow-md">
-                    <div className="flex items-start gap-3 sm:gap-4">
-                      <div className="w-10 h-10 bg-gradient-to-br from-accent/20 to-accent/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                        <IndianRupee className="w-5 h-5 text-accent" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <p className="text-sm font-semibold text-accent">Requested Amount</p>
-                          <div className="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
-                        </div>
-                        <p className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground">
-                          ₹{assetDetails.requestedAmount.toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 sm:space-y-5">
-                    <Button
-                      onClick={handleAdminAccept}
-                      className="w-full h-14 sm:h-16 text-base sm:text-lg font-bold bg-gradient-to-r from-chart-3 via-chart-3/95 to-chart-3/90 hover:from-chart-3/95 hover:via-chart-3/90 hover:to-chart-3/85 text-white shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] rounded-xl"
-                      size="lg"
-                    >
-                      <div className="flex items-center justify-center gap-3">
-                        <CheckCircle className="w-6 h-6" />
-                        <span>Accept Request</span>
-                      </div>
-                    </Button>
-
-                    <Button
-                      onClick={handleAdminNegotiate}
-                      variant="outline"
-                      className="w-full h-12 sm:h-14 text-base sm:text-lg font-semibold bg-transparent border-2 border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all duration-300 rounded-xl"
-                      size="lg"
-                    >
-                      <div className="flex items-center justify-center gap-3">
-                        <MessageSquare className="w-5 h-5" />
-                        <span>Negotiate Amount</span>
-                      </div>
-                    </Button>
-
-                    <div className="space-y-3 sm:space-y-4">
-                      <Textarea
-                        placeholder="Reason for rejection (required)"
-                        value={rejectionReason}
-                        onChange={(e) => setRejectionReason(e.target.value)}
-                        className="min-h-[80px] sm:min-h-[100px] resize-none bg-card/60 border-border/60 focus:border-primary/60 rounded-xl text-sm sm:text-base"
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={handleAdminReject}
-                        disabled={!rejectionReason.trim()}
-                        className="w-full h-12 sm:h-14 text-base sm:text-lg font-semibold bg-transparent border-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all duration-300 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                        size="lg"
-                      >
-                        <div className="flex items-center justify-center gap-3">
-                          <XCircle className="w-5 h-5" />
-                          <span>Reject Request</span>
-                        </div>
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="p-3 sm:p-4 bg-muted/40 border border-border/40 rounded-xl">
-                    <p className="text-xs sm:text-sm text-muted-foreground text-center">
-                      💡 <strong>Note:</strong> Your decision will be immediately communicated to the borrower. Make
-                      sure to review all asset details before making a decision.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {assetDetails.hasConditionalApproval && !isAdminView && (
-              <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/8 via-background to-accent/8 shadow-xl">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-primary/10 to-transparent rounded-full -translate-y-20 translate-x-20" />
-                <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-accent/10 to-transparent rounded-full translate-y-16 -translate-x-16" />
-                <div className="absolute top-1/2 right-1/4 w-24 h-24 bg-gradient-to-bl from-chart-3/5 to-transparent rounded-full" />
-
-                <CardHeader className="relative pb-3 sm:pb-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center animate-pulse shadow-lg">
-                        <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
-                      </div>
-                      <CardTitle className="text-xl sm:text-2xl lg:text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-bold">
-                        Action Required
-                      </CardTitle>
-                    </div>
-                    <Badge className="bg-gradient-to-r from-primary/15 to-accent/15 text-primary border-primary/30 text-xs sm:text-sm w-fit font-semibold px-3 py-1">
-                      🔔 Loan Decision Pending
-                    </Badge>
-                  </div>
-                  <p className="text-sm sm:text-base text-muted-foreground mt-3 leading-relaxed">
-                    The admin has reviewed your application and made a counter-offer. Please review and respond below.
-                  </p>
-                </CardHeader>
-
-                <CardContent className="relative space-y-5 sm:space-y-6">
-                  <div className="p-4 sm:p-5 lg:p-6 bg-gradient-to-r from-card/90 to-card/70 backdrop-blur-sm rounded-2xl border border-border/60 shadow-md">
-                    <div className="flex items-start gap-3 sm:gap-4">
-                      <div className="w-10 h-10 bg-gradient-to-br from-accent/20 to-accent/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                        <MessageSquare className="w-5 h-5 text-accent" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <p className="text-sm font-semibold text-accent">Admin Message</p>
-                          <div className="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
-                        </div>
-                        <p className="text-sm sm:text-base text-foreground leading-relaxed font-medium">
-                          {assetDetails.adminMessage}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                    <div className="p-5 sm:p-6 bg-gradient-to-br from-destructive/8 to-destructive/5 border-2 border-destructive/25 rounded-2xl text-center shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex items-center justify-center gap-2 mb-3">
-                        <div className="w-6 h-6 bg-destructive/20 rounded-full flex items-center justify-center">
-                          <XCircle className="w-4 h-4 text-destructive" />
-                        </div>
-                        <p className="text-sm font-semibold text-destructive">Requested Amount</p>
-                      </div>
-                      <p className="text-2xl sm:text-3xl lg:text-4xl font-bold text-destructive mb-1">
-                        ₹{assetDetails.requestedAmount.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-destructive/70">Original request</p>
-                    </div>
-                    <div className="p-5 sm:p-6 bg-gradient-to-br from-chart-3/8 to-chart-3/5 border-2 border-chart-3/25 rounded-2xl text-center shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex items-center justify-center gap-2 mb-3">
-                        <div className="w-6 h-6 bg-chart-3/30 rounded-full flex items-center justify-center">
-                          <CheckCircle className="w-4 h-4 text-chart-3" />
-                        </div>
-                        <p className="text-sm font-semibold text-chart-3">Approved Amount</p>
-                      </div>
-                      <p className="text-2xl sm:text-3xl lg:text-4xl font-bold text-chart-3 mb-1">
-                        ₹{assetDetails.conditionalAmount.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-chart-3/70">Admin approved</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 sm:space-y-5">
-                    <Button
-                      onClick={handleAcceptConditionalApproval}
-                      className="w-full h-14 sm:h-16 text-base sm:text-lg font-bold bg-gradient-to-r from-chart-3 via-chart-3/95 to-chart-3/90 hover:from-chart-3/95 hover:via-chart-3/90 hover:to-chart-3/85 text-white shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] rounded-xl"
-                      size="lg"
-                    >
-                      <div className="flex items-center justify-center gap-3">
-                        <CheckCircle className="w-6 h-6" />
-                        <span>Accept ₹{assetDetails.conditionalAmount.toLocaleString()}</span>
-                      </div>
-                    </Button>
-
-                    <div className="space-y-3 sm:space-y-4">
-                      <Textarea
-                        placeholder="Reason for rejection (optional but recommended)"
-                        value={rejectionReason}
-                        onChange={(e) => setRejectionReason(e.target.value)}
-                        className="min-h-[80px] sm:min-h-[100px] resize-none bg-card/60 border-border/60 focus:border-primary/60 rounded-xl text-sm sm:text-base"
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={handleRejectConditionalApproval}
-                        className="w-full h-12 sm:h-14 text-base sm:text-lg font-semibold bg-transparent border-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all duration-300 rounded-xl"
-                        size="lg"
-                      >
-                        <div className="flex items-center justify-center gap-3">
-                          <XCircle className="w-5 h-5" />
-                          <span>Reject Offer</span>
-                        </div>
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="p-3 sm:p-4 bg-muted/40 border border-border/40 rounded-xl">
-                    <p className="text-xs sm:text-sm text-muted-foreground text-center">
-                      💡 <strong>Note:</strong> Once you accept, the loan will be processed within 24 hours. If you
-                      reject, you can submit a new application with different terms.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
+            {/* Action Card */}
+            <Card className="border-2 border-primary/30 bg-linear-to-br from-primary/5 to-background">
               <CardHeader>
-                <CardTitle className="text-lg sm:text-xl">Asset Details</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-primary" />
+                  Available Actions
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Actions available for current request status.
+                </p>
               </CardHeader>
-              <CardContent className="space-y-4 sm:space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-1">Asset Type</p>
-                    <p className="text-sm sm:text-base font-semibold capitalize">{assetDetails.type}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-1">Condition</p>
-                    <p className="text-sm sm:text-base font-semibold">{assetDetails.condition}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-1">Purchase Date</p>
-                    <p className="text-sm sm:text-base font-semibold">
-                      {new Date(assetDetails.purchaseDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-1">Original Price</p>
-                    <p className="text-sm sm:text-base font-semibold">₹{assetDetails.originalPrice.toLocaleString()}</p>
-                  </div>
+              <CardContent>
+                <div className="p-4 bg-background rounded-lg border mb-4">
+                  <p className="text-sm text-muted-foreground mb-1">Requested Amount</p>
+                  <p className="text-3xl font-bold">₹{requestData.requestedAmount.toLocaleString()}</p>
                 </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground mb-2">Description</p>
-                  <p className="text-sm sm:text-base font-semibold leading-relaxed">{assetDetails.description}</p>
-                </div>
-
-                {/* Asset Photos */}
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground mb-3">Asset Photos</p>
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                    {assetDetails.photos.map((photo: any, index: number) => (
-                      <div
-                        key={index}
-                        className="relative aspect-square rounded-lg overflow-hidden bg-muted border border-border hover:border-primary/30 transition-colors"
-                      >
-                        <Image
-                          src={photo || `/placeholder.svg?height=200&width=200&query=asset photo`}
-                          alt={`${assetDetails.asset} photo ${index + 1}`}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  <RequestActions 
+                    requestId={requestData.id}
+                    requestStatus={requestData.currentStatus}
+                    district={requestData.district}
+                    customerId={requestData.customerId}
+                    assignedAgentId={requestData.assignedAgentId}
+                    onUpdated={(updatedData) => {
+                      // Reload page to show updated data
+                      window.location.reload();
+                    }}
+                  />
                 </div>
               </CardContent>
             </Card>
 
-            {showLoanDetails && (
+            {/* Loan Offer Details */}
+            {hasOffer && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg sm:text-xl">Loan Details</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Loan Offer Details
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Requested</p>
-                      <p className="text-sm sm:text-base font-semibold">
-                        ₹{assetDetails.requestedAmount.toLocaleString()}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <IndianRupee className="w-4 h-4 text-primary" />
+                        <p className="text-xs text-muted-foreground">Offered Amount</p>
+                      </div>
+                      <p className="text-2xl font-bold text-primary">
+                        ₹{requestData.adminOfferedAmount?.toLocaleString() || '0'}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Approved</p>
-                      <p className="text-sm sm:text-base font-semibold">
-                        ₹{assetDetails.approvedAmount.toLocaleString()}
+
+                    <div className="p-4 bg-accent/5 rounded-lg border border-accent/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="w-4 h-4 text-accent" />
+                        <p className="text-xs text-muted-foreground">Tenure</p>
+                      </div>
+                      <p className="text-2xl font-bold text-accent">
+                        {requestData.adminTenureMonths || 0} <span className="text-sm">mo</span>
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Interest Rate</p>
-                      <p className="text-sm sm:text-base font-semibold">{assetDetails.interestRate}% p.a.</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Tenure</p>
-                      <p className="text-sm sm:text-base font-semibold">{assetDetails.tenure} months</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">EMI Amount</p>
-                      <p className="text-sm sm:text-base font-semibold">₹{assetDetails.emiAmount.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Next EMI</p>
-                      <p className="text-sm sm:text-base font-semibold">
-                        {new Date(assetDetails.nextEMI).toLocaleDateString()}
+
+                    <div className="p-4 bg-chart-3/5 rounded-lg border border-chart-3/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Percent className="w-4 h-4 text-chart-3" />
+                        <p className="text-xs text-muted-foreground">Interest Rate</p>
+                      </div>
+                      <p className="text-2xl font-bold text-chart-3">
+                        {requestData.adminInterestRate || 0}% <span className="text-sm">p.a.</span>
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Submitted</p>
-                      <p className="text-sm sm:text-base font-semibold">
-                        {new Date(assetDetails.submittedDate).toLocaleDateString()}
+
+                    <div className="p-4 bg-orange-500/5 rounded-lg border border-orange-500/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertCircle className="w-4 h-4 text-orange-600" />
+                        <p className="text-xs text-muted-foreground">Penalty %</p>
+                      </div>
+                      <p className="text-2xl font-bold text-orange-600">
+                        {requestData.penaltyPercentage || 4}%
                       </p>
+                      <p className="text-xs text-muted-foreground mt-1">Late payment</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Approved</p>
-                      <p className="text-sm sm:text-base font-semibold">
-                        {new Date(assetDetails.approvedDate).toLocaleDateString()}
+
+                    <div className="p-4 bg-red-500/5 rounded-lg border border-red-500/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <TrendingUp className="w-4 h-4 text-red-600" />
+                        <p className="text-xs text-muted-foreground">Late Fee %</p>
+                      </div>
+                      <p className="text-2xl font-bold text-red-600">
+                        {requestData.lateFeePercentage || 0.01}%
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">Per day overdue</p>
+                    </div>
+
+                    <div className="p-4 bg-blue-500/5 rounded-lg border border-blue-500/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Info className="w-4 h-4 text-blue-600" />
+                        <p className="text-xs text-muted-foreground">EMI Amount</p>
+                      </div>
+                      <p className="text-2xl font-bold text-blue-600">
+                        ₹{requestData.loan?.emiAmount?.toLocaleString() || 'TBD'}
                       </p>
                     </div>
                   </div>
 
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" className="w-full sm:w-auto bg-transparent" size="sm">
-                        <Calendar className="w-4 h-4 mr-2" />
-                        View EMI Schedule
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden">
-                      <DialogHeader>
-                        <DialogTitle>EMI Schedule</DialogTitle>
-                      </DialogHeader>
-                      <div className="max-h-96 overflow-y-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-xs sm:text-sm">Month</TableHead>
-                              <TableHead className="text-xs sm:text-sm">Due Date</TableHead>
-                              <TableHead className="text-xs sm:text-sm">EMI</TableHead>
-                              <TableHead className="text-xs sm:text-sm">Principal</TableHead>
-                              <TableHead className="text-xs sm:text-sm">Interest</TableHead>
-                              <TableHead className="text-xs sm:text-sm">Status</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {emiSchedule.map((emi) => (
-                              <TableRow key={emi.month}>
-                                <TableCell className="text-xs sm:text-sm">{emi.month}</TableCell>
-                                <TableCell className="text-xs sm:text-sm">
-                                  {new Date(emi.date).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell className="text-xs sm:text-sm">₹{emi.amount.toLocaleString()}</TableCell>
-                                <TableCell className="text-xs sm:text-sm">₹{emi.principal.toLocaleString()}</TableCell>
-                                <TableCell className="text-xs sm:text-sm">₹{emi.interest.toLocaleString()}</TableCell>
-                                <TableCell>
-                                  <Badge variant="secondary" className="text-xs capitalize">
-                                    {emi.status}
-                                  </Badge>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                  {requestData.offerMadeDate && (
+                    <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Offer made:</strong> {new Date(requestData.offerMadeDate).toLocaleDateString()}
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
 
+            {/* Customer Offer Response Card */}
+            {requestData.currentStatus === 'OFFER_SENT' && !isAdminView && hasOffer && (
+              <Card className="border-2 border-primary/30 bg-linear-to-br from-primary/5 to-background">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-primary" />
+                    Action Required
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    The admin has made you an offer. Please review and respond.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-muted rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Requested</p>
+                      <p className="text-xl font-bold">₹{requestData.requestedAmount.toLocaleString()}</p>
+                    </div>
+                    <div className="p-4 bg-primary/10 rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Offered</p>
+                      <p className="text-xl font-bold text-primary">
+                        ₹{requestData.adminOfferedAmount?.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <RequestActions 
+                      requestId={requestData.id}
+                      requestStatus={requestData.currentStatus}
+                      district={requestData.district}
+                      customerId={requestData.customerId}
+                      assignedAgentId={requestData.assignedAgentId}
+                      dashboardContext="customer"
+                      onUpdated={(updatedData) => {
+                        window.location.reload();
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Asset Details */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Comments
+                <CardTitle>Asset Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Asset Type</p>
+                    <p className="font-semibold capitalize">{requestData.assetType}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Condition</p>
+                    <p className="font-semibold">{requestData.assetCondition}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Brand</p>
+                    <p className="font-semibold">{requestData.assetBrand}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Model</p>
+                    <p className="font-semibold">{requestData.assetModel}</p>
+                  </div>
+                  {requestData.purchaseYear && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Purchase Year</p>
+                      <p className="font-semibold">{requestData.purchaseYear}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">District</p>
+                    <p className="font-semibold">{requestData.district}</p>
+                  </div>
+                </div>
+                {requestData.AdditionalDescription && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Description</p>
+                    <p className="text-sm leading-relaxed">{requestData.AdditionalDescription}</p>
+                  </div>
+                )}
+
+                {/* Asset Photos from Documents */}
+                {assetPhotos.length > 0 && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3">Asset Photos</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {assetPhotos.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="relative aspect-square rounded-lg overflow-hidden bg-muted border"
+                        >
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-2">
+                            <FileText className="w-8 h-8 text-muted-foreground mb-2" />
+                            <p className="text-xs text-muted-foreground text-center">{doc.fileName}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Loan & EMI Details */}
+            {showLoanDetails && requestData.loan && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Loan Details</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Approved Amount</p>
+                      <p className="font-semibold">₹{requestData.loan.approvedAmount.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Interest Rate</p>
+                      <p className="font-semibold">{requestData.loan.interestRate}% p.a.</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Tenure</p>
+                      <p className="font-semibold">{requestData.loan.tenureMonths} months</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">EMI Amount</p>
+                      <p className="font-semibold">₹{requestData.loan.emiAmount.toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  {emiSchedule.length > 0 && (
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          View EMI Schedule ({emiSchedule.length} EMIs)
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden">
+                        <DialogHeader>
+                          <DialogTitle>EMI Schedule</DialogTitle>
+                        </DialogHeader>
+                        <div className="max-h-96 overflow-y-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>EMI #</TableHead>
+                                <TableHead>Due Date</TableHead>
+                                <TableHead>EMI</TableHead>
+                                <TableHead>Principal</TableHead>
+                                <TableHead>Interest</TableHead>
+                                <TableHead>Late Fee</TableHead>
+                                <TableHead>Status</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {emiSchedule.map((emi) => (
+                                <TableRow key={emi.id}>
+                                  <TableCell>{emi.emiNumber}</TableCell>
+                                  <TableCell>{new Date(emi.dueDate).toLocaleDateString()}</TableCell>
+                                  <TableCell>₹{emi.emiAmount.toLocaleString()}</TableCell>
+                                  <TableCell>₹{emi.principalAmount.toLocaleString()}</TableCell>
+                                  <TableCell>₹{emi.interestAmount.toLocaleString()}</TableCell>
+                                  <TableCell>
+                                    {emi.lateFee > 0 ? `₹${emi.lateFee.toLocaleString()}` : '-'}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={emi.status === 'PAID' ? 'default' : 'secondary'}>
+                                      {emi.status}
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Comments */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5" />
+                  Comments ({requestData.comments?.length || 0})
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 sm:space-y-4">
-                {assetDetails.comments.map((comment: any) => (
-                  <div key={comment.id} className="p-3 sm:p-4 bg-muted/50 rounded-lg border border-border">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm sm:text-base">{comment.author}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {comment.role}
-                        </Badge>
+              <CardContent className="space-y-4">
+                {requestData.comments && requestData.comments.length > 0 ? (
+                  requestData.comments.map((comment) => (
+                    <div key={comment.id} className="p-3 bg-muted/50 rounded-lg border">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-sm">
+                          {comment.author ? `${comment.author.firstName} ${comment.author.lastName}` : 'User'}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(comment.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(comment.date).toLocaleDateString()}
-                      </span>
+                      <p className="text-sm">{comment.content}</p>
                     </div>
-                    <p className="text-sm sm:text-base leading-relaxed">{comment.message}</p>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No comments yet</p>
+                )}
 
-                {/* Add Comment */}
                 <div className="space-y-3">
                   <Textarea
-                    placeholder={isAdminView ? "Add admin comment..." : "Add a comment..."}
+                    placeholder="Add a comment..."
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
-                    className="min-h-[80px] sm:min-h-[100px] resize-none"
+                    className="min-h-20"
                   />
-                  <Button onClick={handleAddComment} size="sm" className="w-full sm:w-auto">
+                  <Button
+                    onClick={handleAddComment}
+                    size="sm"
+                    disabled={!newComment.trim() || isSubmitting}
+                  >
                     Add Comment
                   </Button>
                 </div>
@@ -550,61 +604,41 @@ export default function AssetDetailPage() {
             </Card>
           </div>
 
-          <div className="space-y-4 sm:space-y-6">
-            {/* Timeline */}
+          {/* Sidebar */}
+          <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                  <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Timeline
-                </CardTitle>
+                <CardTitle className="text-lg">Request Summary</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3 sm:space-y-4">
-                  {assetDetails.timeline.map((event: any, index: number) => (
-                    <div key={index} className="flex items-start gap-3">
-                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                        {getTimelineIcon(event.status)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                          <h4 className="font-semibold text-sm sm:text-base">{event.title}</h4>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(event.date).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground mt-1 leading-relaxed">
-                          {event.description}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+              <CardContent className="space-y-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Status</p>
+                  {getStatusBadge(requestData.currentStatus)}
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Requested Amount</p>
+                  <p className="text-lg font-bold">₹{requestData.requestedAmount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Submitted</p>
+                  <p className="text-sm">{new Date(requestData.submittedDate).toLocaleDateString()}</p>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Quick Actions */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg sm:text-xl">Quick Actions</CardTitle>
+                <CardTitle className="text-lg">Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {!isAdminView && assetDetails.status === "active" && (
-                  <Button className="w-full" size="sm" asChild>
-                    <Link href={`/repayment/${assetDetails.id}`}>
-                      <IndianRupee className="w-4 h-4 mr-2" />
-                      Make Payment
-                    </Link>
-                  </Button>
-                )}
-                <Button variant="outline" className="w-full bg-transparent" size="sm">
+                <Button variant="outline" className="w-full" size="sm">
                   <FileText className="w-4 h-4 mr-2" />
                   Download Agreement
                 </Button>
                 {isAdminView && (
-                  <Button variant="outline" className="w-full bg-transparent" size="sm">
+                  <Button variant="outline" className="w-full" size="sm">
                     <MessageSquare className="w-4 h-4 mr-2" />
-                    Contact Borrower
+                    Contact Customer
                   </Button>
                 )}
               </CardContent>

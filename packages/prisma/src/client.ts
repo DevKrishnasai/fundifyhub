@@ -1,13 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 
-// Create a global variable to store the Prisma client instance
-declare global {
-  var __prisma: PrismaClient | undefined;
-}
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+};
 
-// Create Prisma client instance with minimal logging (only info and errors)
 export const prisma =
-  globalThis.__prisma ||
+  globalForPrisma.prisma ??
   new PrismaClient({
     log: [
       { emit: "stdout", level: "info" },
@@ -15,14 +13,9 @@ export const prisma =
     ],
   });
 
-// Store the instance globally in development to prevent multiple instances
+// In development, reuse the same PrismaClient instance across HMR reloads
 if (process.env.NODE_ENV !== "production") {
-  globalThis.__prisma = prisma;
+  globalForPrisma.prisma = prisma;
 }
-
-// Graceful shutdown
-process.on("beforeExit", async () => {
-  await prisma.$disconnect();
-});
 
 export default prisma;

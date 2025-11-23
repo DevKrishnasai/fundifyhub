@@ -5,6 +5,7 @@ import authRoutes from './auth/routes';
 import userRoutes from './user/routes';
 import documentsRoutes from './documents/routes';
 import requestsRoutes from './requests/routes';
+import paymentsRoutes from './payments/routes';
 import { authMiddleware } from '../utils/jwt';
 
 const router: ExpressRouter = Router();
@@ -14,6 +15,7 @@ router.use('/admin', authMiddleware, adminRoutes);
 router.use('/user', authMiddleware, userRoutes);
 router.use('/documents', authMiddleware, documentsRoutes);
 router.use('/requests', authMiddleware, requestsRoutes);
+router.use('/payments', paymentsRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

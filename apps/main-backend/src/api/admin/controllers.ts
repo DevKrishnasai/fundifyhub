@@ -82,14 +82,7 @@ export async function getPendingRequestsController(req: Request, res: Response):
             phoneNumber: true
           }
         },
-        loan: {
-          select: {
-            id: true,
-            status: true,
-            approvedAmount: true,
-            disbursedDate: true
-          }
-        },
+        
         _count: {
           select: {
             comments: true,
@@ -97,6 +90,19 @@ export async function getPendingRequestsController(req: Request, res: Response):
             documents: true
           }
         }
+        ,
+        loan: {
+          select: {
+            id: true,
+            approvedAmount: true,
+            status: true,
+            disbursedDate: true,
+            totalPaidAmount: true,
+            remainingAmount: true,
+            emiAmount: true,
+            tenureMonths: true,
+          }
+        },
       },
       orderBy: {
         submittedDate: 'desc'
@@ -173,16 +179,31 @@ export async function getRequestsController(req: Request, res: Response): Promis
 
     const lim = Math.min(100, Number(limit) || 50);
     const off = Math.max(0, Number(offset) || 0);
+    logger.info(`getRequestsController: userId=${user.id}, isSuper=${isSuper}, status=${status}, district=${district}, limit=${lim}, offset=${off}, where=${JSON.stringify(where)}`);
 
     const requests = await prisma.request.findMany({
       where,
       select: {
+          assignedAgent: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } },
+          _count: { select: { comments: true, inspections: true, documents: true } },
+          inspectionScheduledAt: true,
+          penaltyPercentage: true,
+          lateFeePercentage: true,
+          bankDetailsSubmittedAt: true,
+          bankAccountNumber: true,
+          bankIfscCode: true,
+          bankAccountName: true,
         id: true,
         requestNumber: true,
         requestedAmount: true,
         district: true,
         currentStatus: true,
         assignedAgentId: true,
+        adminOfferedAmount: true,
+        adminInterestRate: true,
+        adminTenureMonths: true,
+        adminEmiSchedule: true,
+        offerMadeDate: true,
         submittedDate: true,
         assetBrand: true,
         assetModel: true,
@@ -195,6 +216,19 @@ export async function getRequestsController(req: Request, res: Response): Promis
             lastName: true,
             phoneNumber: true,
             district: true,
+          }
+        }
+        ,
+        loan: {
+          select: {
+            id: true,
+            status: true,
+            approvedAmount: true,
+            disbursedDate: true,
+            totalPaidAmount: true,
+            remainingAmount: true,
+            tenureMonths: true,
+            emiAmount: true,
           }
         }
       },
