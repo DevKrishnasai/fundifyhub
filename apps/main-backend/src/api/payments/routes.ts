@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
 import { createRazorpayOrderController, verifyRazorpayPaymentController, razorpayWebhookController } from './razorpay';
-import { getLoanTotalDueController } from './controllers';
+import { getLoanTotalDueController, payEmiController } from './controllers';
 import { authMiddleware } from '../../utils/jwt';
 
 const router: ExpressRouter = Router();
@@ -11,6 +11,12 @@ const router: ExpressRouter = Router();
  * Get total due amount for a loan
  */
 router.get('/loan/:loanId/total-due', authMiddleware, getLoanTotalDueController);
+
+/**
+ * POST /api/v1/payments/emi/pay
+ * Pay a specific EMI with sequential validation
+ */
+router.post('/emi/pay', authMiddleware, payEmiController);
 
 /**
  * POST /api/v1/payments/razorpay/create-order

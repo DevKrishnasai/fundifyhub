@@ -1,11 +1,26 @@
 import { Request, Response } from 'express';
 import { prisma } from '@fundifyhub/prisma';
-import logger from '../../utils/logger';
+import baseLogger from '../../utils/logger';
+
+const logger = baseLogger.child('[RequestsController]');
 import { APIResponseType } from '../../types';
 import { hasAnyRole, hasDistrictAccess } from '../../utils/rbac';
 import { calculateEmiSchedule, calculateEmiBreakdown, isEmiOverdue, type EMIBreakdown } from '@fundifyhub/utils';
-import { ROLES, EMI_STATUS, OVERDUE_GRACE_PERIOD_DAYS } from '@fundifyhub/types';
-import { REQUEST_STATUS, TEMPLATE_NAMES, SERVICE_NAMES } from '@fundifyhub/types';
+import { 
+  ROLES, 
+  EMI_STATUS, 
+  OVERDUE_GRACE_PERIOD_DAYS,
+  REQUEST_STATUS, 
+  TEMPLATE_NAMES, 
+  SERVICE_NAMES,
+  CUSTOMER_ALLOWED_STATUSES,
+  AGENT_ALLOWED_STATUSES,
+  LOAN_CREATION_ALLOWED_STATUSES,
+  ADMIN_AGENT_ROLES,
+  DEFAULT_PENALTY_PERCENTAGE,
+  DEFAULT_LATE_FEE_PERCENTAGE,
+  REQUEST_HISTORY_ACTION
+} from '@fundifyhub/types';
 import queueClient from '../../utils/queues';
 
 /**
@@ -33,6 +48,7 @@ export async function getRequestDetailController(req: Request, res: Response): P
         loan: {
           include: {
             emisSchedule: {
+              select: { id: true, emiNumber: true, dueDate: true, emiAmount: true, principalAmount: true, interestAmount: true, status: true, paidDate: true, paidAmount: true, lateFee: true },
               orderBy: { emiNumber: 'asc' }
             }
           }
@@ -45,32 +61,24 @@ export async function getRequestDetailController(req: Request, res: Response): P
       return;
     }
 
-    // Attach actor details to requestHistory entries for better UI display (avoid extra client roundtrips)
     try {
       const history = (request as any).requestHistory || [];
       const actorIds = Array.from(new Set(history.map((h: any) => h.actorId).filter(Boolean))) as string[];
       if (actorIds.length > 0) {
-        // include roles so frontend can categorize actor (ADMIN/AGENT/CUSTOMER)
         const actors = await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, firstName: true, lastName: true, email: true, roles: true } });
         const actorMap: Record<string, any> = {};
         for (const a of actors) actorMap[a.id] = a;
         (request as any).requestHistory = history.map((h: any) => ({ ...h, actor: h.actorId ? actorMap[h.actorId] || null : null }));
       }
     } catch (e) {
-      // non-fatal, continue returning request without actor enrichment
       logger.error('Failed to enrich requestHistory with actor details', e as Error);
     }
 
-    // Calculate penalty breakdown and lazy update DB for each EMI if loan exists
     if ((request as any).loan && (request as any).loan.emisSchedule) {
       const emis = (request as any).loan.emisSchedule;
       const loanId = (request as any).loan.id;
-      
-      // Get penalty rates from request (with defaults)
-      const penaltyRate = (request as any).penaltyPercentage || 4; // Default 4%
-      const lateFeeRate = (request as any).LateFeePercentage || 0.01; // Default 0.01%
-      
-      // Track EMIs that need DB updates
+      const penaltyRate = (request as any).penaltyPercentage || DEFAULT_PENALTY_PERCENTAGE;
+      const lateFeeRate = (request as any).lateFeePercentage || DEFAULT_LATE_FEE_PERCENTAGE;
       const emisToUpdate: Array<{ id: string; status: string; lateFee: number }> = [];
       
       // Add breakdown data to each EMI
@@ -128,13 +136,12 @@ export async function getRequestDetailController(req: Request, res: Response): P
         
         return {
           ...emi,
-          breakdown, // Add breakdown data
+          breakdown,
           isOverdue: shouldBeOverdue || emi.status === EMI_STATUS.OVERDUE,
           status: shouldBeOverdue ? EMI_STATUS.OVERDUE : emi.status
         };
       });
       
-      // Lazy DB update: Update EMIs that need status/lateFee changes (non-blocking)
       if (emisToUpdate.length > 0) {
         setImmediate(async () => {
           try {
@@ -155,40 +162,25 @@ export async function getRequestDetailController(req: Request, res: Response): P
     }
 
   const user = req.user as any;
-    const isSuper = Array.isArray(user?.roles) && user.roles.includes(ROLES.SUPER_ADMIN);
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
+      return;
+    }
 
-    // Customer can view their own request
-    if (user && request.customerId === user.id) {
-      // Customers should not see internal comments
-      if (Array.isArray((request as any).comments)) {
+    const isSuper = Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN);
+    const isCustomer = request.customerId === user.id;
+    const isAssignedAgent = request.assignedAgentId === user.id;
+    const hasDistrictPermission = hasDistrictAccess(user, request.district);
+
+    if (isSuper || isCustomer || isAssignedAgent || hasDistrictPermission) {
+      if (isCustomer && Array.isArray((request as any).comments)) {
         (request as any).comments = (request as any).comments.filter((c: any) => !c.isInternal);
       }
       res.status(200).json({ success: true, message: 'Request retrieved', data: { request } } as APIResponseType);
       return;
     }
 
-    // Agent can view if assigned
-    if (user && Array.isArray(user.roles) && user.roles.includes(ROLES.AGENT)) {
-      if (request.assignedAgentId && user.id === request.assignedAgentId) {
-        res.status(200).json({ success: true, message: 'Request retrieved', data: { request } } as APIResponseType);
-        return;
-      }
-    }
-
-    // District admin can view if they have district access
-    if (!isSuper && user && Array.isArray(user.roles) && user.roles.includes(ROLES.DISTRICT_ADMIN)) {
-      if (hasDistrictAccess(user, request.district)) {
-        res.status(200).json({ success: true, message: 'Request retrieved', data: { request } } as APIResponseType);
-        return;
-      }
-    }
-
-    if (isSuper) {
-      res.status(200).json({ success: true, message: 'Request retrieved', data: { request } } as APIResponseType);
-      return;
-    }
-    // For other roles (e.g., district admin, agent), allow internal comments; for non-admins they've been filtered above.
-    res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+    res.status(403).json({ success: false, message: 'Access denied to this request' } as APIResponseType);
   } catch (error) {
     logger.error('getRequestDetailController error', error as Error);
     res.status(500).json({ success: false, message: 'Failed to retrieve request' } as APIResponseType);
@@ -237,7 +229,6 @@ export async function assignAgentController(req: Request, res: Response): Promis
       return;
     }
 
-    // Verify agent exists and is active and has AGENT role and belongs to the request district
     const agent = await prisma.user.findUnique({ where: { id: agentId } });
     if (!agent || !Array.isArray(agent.roles) || !agent.roles.includes(ROLES.AGENT) || !agent.isActive) {
       res.status(400).json({ success: false, message: 'Invalid agent' } as APIResponseType);
@@ -248,9 +239,8 @@ export async function assignAgentController(req: Request, res: Response): Promis
       return;
     }
 
-    // Transaction: update request and create history
     const fromStatus = request.currentStatus;
-    const toStatus = 'INSPECTION_SCHEDULED';
+    const toStatus = REQUEST_STATUS.INSPECTION_SCHEDULED;
     
     // Use the actual DB id (not requestNumber) for updates
     const dbId = request.id;
@@ -260,7 +250,6 @@ export async function assignAgentController(req: Request, res: Response): Promis
       currentStatus: toStatus 
     };
     
-    // If inspection date/time provided, store it
     if (inspectionDateTime) {
       updateData.inspectionScheduledAt = new Date(inspectionDateTime);
     }
@@ -271,7 +260,7 @@ export async function assignAgentController(req: Request, res: Response): Promis
         data: { 
           requestId: dbId, 
           actorId: user.id, 
-          action: 'ASSIGNED_AGENT', 
+          action: REQUEST_HISTORY_ACTION.ASSIGNED_AGENT, 
           metadata: { 
             fromStatus, 
             toStatus, 
@@ -350,13 +339,14 @@ export async function updateRequestStatusController(req: Request, res: Response)
       return;
     }
 
-    const user = req.user as any;
+    const user = req.user;
     if (!user) {
       res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
       return;
     }
 
-    // Allow lookup by DB id or by human-friendly requestNumber (like REQ1010)
+    logger.info(`Status update: userId=${user.id}, requestId=${requestId}, status=${status}, roles=${JSON.stringify(user.roles)}`);
+
     const request = await prisma.request.findFirst({ 
       where: { OR: [{ id: requestId }, { requestNumber: requestId }] } 
     });
@@ -367,63 +357,45 @@ export async function updateRequestStatusController(req: Request, res: Response)
 
     const isSuper = Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN);
 
-    // Customers can accept/reject offers and cancel their own requests
-    if (Array.isArray(user.roles) && user.roles.includes(ROLES.CUSTOMER)) {
-      if (request.customerId !== user.id) {
-        res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+    if (isSuper) {
+      logger.info(`SUPER_ADMIN bypassing permission checks: userId=${user.id}`);
+    }
+    else if (Array.isArray(user.roles) && user.roles.includes(ROLES.CUSTOMER)) {
+      const isOwner = String(request.customerId) === String(user.id);
+      if (!isOwner) {
+        logger.warn(`Customer ownership check failed: userId=${user.id}, requestCustomerId=${request.customerId}`);
+        res.status(403).json({ success: false, message: 'You can only update your own requests' } as APIResponseType);
         return;
       }
-      // Only allow these customer transitions (accept, decline, withdraw/cancel, reschedule, signature, bank details)
-      const allowed = [
-        'OFFER_ACCEPTED', 
-        'OFFER_DECLINED', 
-        'CANCELLED',  // Withdraw request or refuse signature
-        'PENDING',    // Submit additional info when MORE_INFO_REQUIRED
-        'INSPECTION_SCHEDULED',  // Request reschedule (stays in same status)
-        'INSPECTION_RESCHEDULE_REQUESTED',  // Request reschedule (new status)
-        'PENDING_BANK_DETAILS',  // After uploading signature
-        'BANK_DETAILS_SUBMITTED',  // After submitting bank details
-      ];
-      if (!allowed.includes(status)) {
-        res.status(403).json({ success: false, message: 'Customers cannot perform this status change' } as APIResponseType);
+      if (!CUSTOMER_ALLOWED_STATUSES.includes(status as REQUEST_STATUS)) {
+        logger.warn(`Invalid status for customer: userId=${user.id}, status=${status}`);
+        res.status(403).json({ success: false, message: `Customers cannot change status to '${status}'` } as APIResponseType);
         return;
       }
     }
-
-    // Agents can update inspection-related statuses only for assigned requests
-    if (Array.isArray(user.roles) && user.roles.includes(ROLES.AGENT)) {
-      if (request.assignedAgentId !== user.id) {
-        res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+    else if (Array.isArray(user.roles) && user.roles.includes(ROLES.AGENT)) {
+      const isAssigned = request.assignedAgentId === user.id;
+      if (!isAssigned) {
+        logger.warn(`Agent not assigned to request: userId=${user.id}, requestId=${requestId}`);
+        res.status(403).json({ success: false, message: 'You can only update assigned requests' } as APIResponseType);
         return;
       }
-      // Agents can perform these status changes (all inspection-related)
-      const allowed = [
-        'INSPECTION_IN_PROGRESS',
-        'INSPECTION_COMPLETED',
-        'INSPECTION_SCHEDULED',  // Reschedule
-        'CUSTOMER_NOT_AVAILABLE',
-        'ASSET_MISMATCH',
-        'AGENT_NOT_AVAILABLE',
-        'APPROVED',
-        'REJECTED',
-      ];
-      if (!allowed.includes(status) && !isSuper) {
+      if (!AGENT_ALLOWED_STATUSES.includes(status as REQUEST_STATUS)) {
+        logger.warn(`Invalid status for agent: userId=${user.id}, status=${status}`);
         res.status(403).json({ success: false, message: 'Agents cannot perform this status change' } as APIResponseType);
         return;
       }
     }
-
-    // District admin can update most workflow statuses if they have district access
-    if (Array.isArray(user.roles) && user.roles.includes(ROLES.DISTRICT_ADMIN) && !isSuper) {
+    else if (Array.isArray(user.roles) && user.roles.includes(ROLES.DISTRICT_ADMIN)) {
       if (!hasDistrictAccess(user, request.district)) {
-        res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+        logger.warn(`District admin lacks district access: userId=${user.id}, requestDistrict=${request.district}`);
+        res.status(403).json({ success: false, message: 'Access denied to this district' } as APIResponseType);
         return;
       }
     }
-
-    // If none of the above and not super-admin, forbid
-    if (!isSuper && !(Array.isArray(user.roles) && (user.roles.includes(ROLES.CUSTOMER) || user.roles.includes(ROLES.AGENT) || user.roles.includes(ROLES.DISTRICT_ADMIN)))) {
-      res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+    else {
+      logger.warn(`User lacks required roles: userId=${user.id}, roles=${JSON.stringify(user.roles)}`);
+      res.status(403).json({ success: false, message: 'Insufficient permissions' } as APIResponseType);
       return;
     }
 
@@ -440,22 +412,19 @@ export async function updateRequestStatusController(req: Request, res: Response)
       prisma.requestHistory.create({ data: { requestId: dbId, actorId: user.id, action: String(toStatus), metadata: { fromStatus, toStatus, note } } })
     ]);
 
-    // Auto-transition: APPROVED → PENDING_SIGNATURE
-    // When agent approves, immediately move to signature collection phase
     let finalRequest = updatedRequest;
-    if (toStatus === 'APPROVED') {
+    if (toStatus === REQUEST_STATUS.APPROVED) {
       finalRequest = await prisma.request.update({ 
         where: { id: dbId }, 
-        data: { currentStatus: 'PENDING_SIGNATURE' } 
+        data: { currentStatus: REQUEST_STATUS.PENDING_SIGNATURE } 
       });
       
-      // Create history entry for auto-transition
       await prisma.requestHistory.create({ 
         data: { 
           requestId: dbId, 
           actorId: user.id, 
-          action: 'PENDING_SIGNATURE', 
-          metadata: { fromStatus: 'APPROVED', toStatus: 'PENDING_SIGNATURE', note: 'Auto-transitioned to signature collection' } 
+          action: REQUEST_STATUS.PENDING_SIGNATURE, 
+          metadata: { fromStatus: REQUEST_STATUS.APPROVED, toStatus: REQUEST_STATUS.PENDING_SIGNATURE, note: 'Auto-transitioned to signature collection' } 
         } 
       });
     }
@@ -523,12 +492,12 @@ export async function updateRequestStatusController(req: Request, res: Response)
 export async function createOfferController(req: Request, res: Response): Promise<void> {
   try {
     const requestId = req.params.id;
-    const { amount, tenureMonths, interestRate, penaltyPercentage, LateFeePercentage, notes } = req.body as { 
+    const { amount, tenureMonths, interestRate, penaltyPercentage, lateFeePercentage, notes } = req.body as { 
       amount?: number; 
       tenureMonths?: number; 
       interestRate?: number; 
       penaltyPercentage?: number;
-      LateFeePercentage?: number;
+      lateFeePercentage?: number;
       notes?: string;
     };
 
@@ -573,9 +542,8 @@ export async function createOfferController(req: Request, res: Response): Promis
     // compute EMI snapshot and persist as immutable JSON on the request for preview/audit
     const emiSnapshot = calculateEmiSchedule({ principal: amount, annualRate: interestRate, tenureMonths, firstPaymentDate: undefined });
 
-    // Set penalty rates - use provided values or defaults
-    const penaltyRate = typeof penaltyPercentage === 'number' ? penaltyPercentage : 4;
-    const lateFeeRate = typeof LateFeePercentage === 'number' ? LateFeePercentage : 0.01;
+    const penaltyRate = typeof penaltyPercentage === 'number' ? penaltyPercentage : DEFAULT_PENALTY_PERCENTAGE;
+    const lateFeeRate = typeof lateFeePercentage === 'number' ? lateFeePercentage : DEFAULT_LATE_FEE_PERCENTAGE;
 
     const [updatedRequest, historyEntry] = await prisma.$transaction([
       prisma.request.update({ 
@@ -585,7 +553,7 @@ export async function createOfferController(req: Request, res: Response): Promis
           adminTenureMonths: tenureMonths, 
           adminInterestRate: interestRate, 
           penaltyPercentage: penaltyRate,
-          LateFeePercentage: lateFeeRate,
+          lateFeePercentage: lateFeeRate,
           offerMadeDate: new Date(), 
           currentStatus: toStatus, 
           adminEmiSchedule: emiSnapshot 
@@ -595,7 +563,7 @@ export async function createOfferController(req: Request, res: Response): Promis
         data: { 
           requestId: dbId, 
           actorId: user.id, 
-          action: 'OFFER_CREATED', 
+          action: REQUEST_STATUS.OFFER_SENT, 
           metadata: { 
             fromStatus, 
             toStatus, 
@@ -603,7 +571,7 @@ export async function createOfferController(req: Request, res: Response): Promis
             tenureMonths, 
             interestRate, 
             penaltyPercentage: penaltyRate,
-            LateFeePercentage: lateFeeRate,
+            lateFeePercentage: lateFeeRate,
             notes 
           } 
         } 
@@ -663,6 +631,71 @@ export async function createOfferController(req: Request, res: Response): Promis
   } catch (error) {
     logger.error('createOfferController error', error as Error);
     res.status(500).json({ success: false, message: 'Failed to create offer' } as APIResponseType);
+  }
+}
+
+/**
+ * GET /requests/:id/current-offer
+ * Returns existing offer details for revision
+ */
+export async function getCurrentOfferController(req: Request, res: Response): Promise<void> {
+  try {
+    const requestId = req.params.id;
+    if (!requestId) {
+      res.status(400).json({ success: false, message: 'request id required' } as APIResponseType);
+      return;
+    }
+
+    const user = req.user as any;
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
+      return;
+    }
+
+    const request = await prisma.request.findFirst({ 
+      where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
+      select: {
+        id: true,
+        adminOfferedAmount: true,
+        adminTenureMonths: true,
+        adminInterestRate: true,
+        penaltyPercentage: true,
+        lateFeePercentage: true,
+        currentStatus: true,
+        district: true,
+      }
+    });
+
+    if (!request) {
+      res.status(404).json({ success: false, message: 'Request not found' } as APIResponseType);
+      return;
+    }
+
+    const isSuper = Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN);
+    if (!isSuper && !hasAnyRole(user, [ROLES.DISTRICT_ADMIN])) {
+      res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+      return;
+    }
+
+    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+      res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+      return;
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Current offer retrieved', 
+      data: {
+        amount: request.adminOfferedAmount || null,
+        tenureMonths: request.adminTenureMonths || null,
+        interestRate: request.adminInterestRate || null,
+        penaltyPercentage: request.penaltyPercentage || DEFAULT_PENALTY_PERCENTAGE,
+        lateFeePercentage: request.lateFeePercentage || DEFAULT_LATE_FEE_PERCENTAGE,
+      }
+    } as APIResponseType);
+  } catch (error) {
+    logger.error('getCurrentOfferController error', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve current offer' } as APIResponseType);
   }
 }
 
@@ -770,9 +803,7 @@ export async function confirmOfferController(req: Request, res: Response): Promi
       return;
     }
 
-    // Validate status: require offer accepted and inspection/signature flows completed.
-    // For flexibility allow confirmation when status is OFFER_ACCEPTED, INSPECTION_COMPLETED, or APPROVED
-    const allowedStatuses = [REQUEST_STATUS.OFFER_ACCEPTED, REQUEST_STATUS.INSPECTION_COMPLETED, REQUEST_STATUS.APPROVED];
+    const allowedStatuses = LOAN_CREATION_ALLOWED_STATUSES;
     if (!allowedStatuses.includes(request.currentStatus as REQUEST_STATUS)) {
       res.status(400).json({ success: false, message: `Cannot confirm loan in current status: ${request.currentStatus}` } as APIResponseType);
       return;
@@ -821,7 +852,7 @@ export async function confirmOfferController(req: Request, res: Response): Promi
           emiAmount: r.paymentAmount,
           principalAmount: r.principal,
           interestAmount: r.interest,
-          status: 'PENDING'
+          status: EMI_STATUS.PENDING
         } });
       }
 
@@ -829,7 +860,7 @@ export async function confirmOfferController(req: Request, res: Response): Promi
       // No automatic status change here
 
       // Create history entry
-      await tx.requestHistory.create({ data: { requestId: request.id, actorId: user.id, action: 'LOAN_CREATED', metadata: { loanId: createdLoan.id } } });
+      await tx.requestHistory.create({ data: { requestId: request.id, actorId: user.id, action: REQUEST_HISTORY_ACTION.LOAN_CREATED, metadata: { loanId: createdLoan.id } } });
     });
 
     res.status(200).json({ success: true, message: 'Loan created', data: { loan: createdLoan } } as APIResponseType);
@@ -892,8 +923,7 @@ export async function createLoanController(req: Request, res: Response): Promise
       return;
     }
 
-    // Validate request is in AMOUNT_DISBURSED status
-    if (request.currentStatus !== 'AMOUNT_DISBURSED') {
+    if (request.currentStatus !== REQUEST_STATUS.AMOUNT_DISBURSED) {
       res.status(400).json({ 
         success: false, 
         message: 'Loan can only be created from AMOUNT_DISBURSED status',
@@ -905,7 +935,7 @@ export async function createLoanController(req: Request, res: Response): Promise
     // Idempotency: if a loan already exists for this request, return it
     const existingLoan = await prisma.loan.findUnique({ 
       where: { requestId: request.id } as any,
-      include: { emisSchedule: { orderBy: { emiNumber: 'asc' } } }
+      include: { emisSchedule: { select: { id: true, emiNumber: true, dueDate: true, emiAmount: true, principalAmount: true, interestAmount: true, status: true, paidDate: true, paidAmount: true, lateFee: true }, orderBy: { emiNumber: 'asc' } } }
     });
     
     if (existingLoan) {
@@ -971,7 +1001,7 @@ export async function createLoanController(req: Request, res: Response): Promise
             emiAmount: r.paymentAmount,
             principalAmount: r.principal,
             interestAmount: r.interest,
-            status: 'PENDING'
+            status: EMI_STATUS.PENDING
           } 
         });
       }
@@ -981,7 +1011,7 @@ export async function createLoanController(req: Request, res: Response): Promise
         data: { 
           requestId: request.id, 
           actorId: user.id, 
-          action: 'LOAN_CREATED', 
+          action: REQUEST_HISTORY_ACTION.LOAN_CREATED, 
           metadata: { 
             loanId: createdLoan.id,
             emiCount: (emiCalc).emiSchedule.length,
@@ -996,6 +1026,7 @@ export async function createLoanController(req: Request, res: Response): Promise
       where: { id: createdLoan.id },
       include: { 
         emisSchedule: { 
+          select: { id: true, emiNumber: true, dueDate: true, emiAmount: true, principalAmount: true, interestAmount: true, status: true, paidDate: true, paidAmount: true, lateFee: true },
           orderBy: { emiNumber: 'asc' } 
         } 
       }
@@ -1336,7 +1367,7 @@ export async function updateBankDetailsController(req: Request, res: Response): 
         bankAccountName,
         upiId: upiId || null,
         bankDetailsSubmittedAt: new Date(),
-        currentStatus: 'BANK_DETAILS_SUBMITTED',
+        currentStatus: REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
       }
     });
 
@@ -1345,10 +1376,10 @@ export async function updateBankDetailsController(req: Request, res: Response): 
       data: {
         requestId: request.id,
         actorId: user.id,
-        action: 'BANK_DETAILS_SUBMITTED',
+        action: REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
         metadata: {
           fromStatus: request.currentStatus,
-          toStatus: 'BANK_DETAILS_SUBMITTED',
+          toStatus: REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
           bankAccountNumber: `***${bankAccountNumber.slice(-4)}`, // Store last 4 digits only for privacy
           bankIfscCode,
           hasUpi: !!upiId,
@@ -1373,5 +1404,79 @@ export async function updateBankDetailsController(req: Request, res: Response): 
       success: false, 
       error: 'Failed to update bank details' 
     });
+  }
+}
+
+/**
+ * GET /requests/assigned
+ * Returns requests assigned to the logged-in agent.
+ */
+export async function getAgentAssignedRequestsController(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'User not found in token' });
+      return;
+    }
+
+    // Check if user is an agent
+    const userRoles = req.user?.roles || [];
+    if (!userRoles.includes(ROLES.AGENT)) {
+       logger.warn(`getAgentAssignedRequestsController blocked: user roles do not include AGENT; userId=${userId}, roles=${JSON.stringify(userRoles)}`)
+       res.status(403).json({ success: false, message: 'Access denied. Agent role required.' });
+       return;
+    }
+
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const pageSize = Math.max(1, Math.min(100, Number(req.query.pageSize ?? 10)));
+
+    const where: any = { assignedAgentId: userId };
+
+    // Optional status filter
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    if (status) {
+        where.currentStatus = status;
+    }
+
+    // Optional simple search
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
+    if (search && search.length > 0) {
+      where.OR = [
+        { id: { contains: search } },
+        { requestNumber: { contains: search, mode: 'insensitive' } },
+        { assetBrand: { contains: search, mode: 'insensitive' } },
+        { assetModel: { contains: search, mode: 'insensitive' } },
+        // Also search by customer name if possible? 
+        // Prisma doesn't support deep relation search in OR easily without full text search or multiple queries.
+        // But I can search by customerId if I knew it.
+        // For now, let's stick to request fields.
+      ];
+    }
+
+    logger.info(`getAgentAssignedRequestsController: userId=${userId}, page=${page}, pageSize=${pageSize}, where=${JSON.stringify(where)}`);
+    const [items, total] = await Promise.all([
+      prisma.request.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, district: true } },
+          assignedAgent: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } },
+          loan: { select: { id: true, approvedAmount: true, status: true, disbursedDate: true, approvedDate: true } },
+          _count: { select: { documents: true, comments: true, inspections: true } },
+        },
+      }),
+      prisma.request.count({ where }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'Assigned requests fetched',
+      data: { items, total, page, pageSize },
+    });
+  } catch (error) {
+    logger.error('Get assigned requests error:', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to fetch assigned requests' });
   }
 }

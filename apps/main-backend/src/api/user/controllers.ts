@@ -842,7 +842,7 @@ export async function getUserRequestController(req: Request, res: Response): Pro
       },
       include: {
         assignedAgent: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } },
-        loan: { select: { id: true, loanNumber: true, approvedAmount: true, status: true, disbursedDate: true, approvedDate: true, tenureMonths: true, emiAmount: true, emisSchedule: true } },
+        loan: { select: { id: true, loanNumber: true, approvedAmount: true, status: true, disbursedDate: true, approvedDate: true, tenureMonths: true, emiAmount: true, emisSchedule: { select: { id: true, emiNumber: true, dueDate: true, emiAmount: true, principalAmount: true, interestAmount: true, status: true, paidDate: true, paidAmount: true, lateFee: true } } } },
         comments: { select: { id: true, content: true, createdAt: true, authorId: true, author: { select: { id: true, firstName: true, lastName: true, roles: true } } } },
         _count: { select: { documents: true, comments: true, inspections: true } },
         documents: { select: { id: true, fileKey: true, fileName: true, fileType: true } },
@@ -975,5 +975,160 @@ export async function getTotalBorrowStats(userId: string): Promise<{ totalBorrow
   } catch (error) {
     logger.error('Get total borrow stats error:', error as Error);
     throw error;
+  }
+}
+
+/**
+ * GET /user/dashboard-stats
+ * Returns dashboard statistics based on user role (protected)
+ */
+export async function getDashboardStatsController(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'User not found in token',
+        code: 'USER_NOT_FOUND',
+      });
+      return;
+    }
+
+    const userId = req.user.id;
+    const userRoles = req.user.roles || [];
+    const userDistricts = req.user.districts || [];
+
+    // Check if user is admin or super admin
+    const isSuperAdmin = userRoles.includes(ROLES.SUPER_ADMIN);
+    const isDistrictAdmin = userRoles.includes(ROLES.DISTRICT_ADMIN);
+    const isAgent = userRoles.includes(ROLES.AGENT);
+    const isCustomer = userRoles.includes(ROLES.CUSTOMER);
+
+    let stats: any = {
+      totalRequests: 0,
+      activeLoans: 0,
+      totalDisbursed: 0,
+      pendingCount: 0,
+    };
+
+    if (isSuperAdmin) {
+      // Super admin sees all stats
+      stats.totalRequests = await prisma.request.count();
+      stats.activeLoans = await prisma.loan.count({
+        where: { status: LOAN_STATUS.ACTIVE },
+      });
+      const disbursedResult = await prisma.loan.aggregate({
+        where: { status: { in: [LOAN_STATUS.ACTIVE, LOAN_STATUS.COMPLETED, LOAN_STATUS.DEFAULTED] } },
+        _sum: { approvedAmount: true },
+      });
+      stats.totalDisbursed = disbursedResult._sum.approvedAmount ?? 0;
+      stats.pendingCount = await prisma.request.count({
+        where: { currentStatus: { in: PENDING_REQUEST_STATUSES } },
+      });
+    } else if (isDistrictAdmin && userDistricts.length > 0) {
+      // District admin sees only their district stats
+      stats.totalRequests = await prisma.request.count({
+        where: { district: { in: userDistricts } },
+      });
+      stats.activeLoans = await prisma.loan.count({
+        where: {
+          status: LOAN_STATUS.ACTIVE,
+          request: { district: { in: userDistricts } },
+        },
+      });
+      const disbursedResult = await prisma.loan.aggregate({
+        where: {
+          status: { in: [LOAN_STATUS.ACTIVE, LOAN_STATUS.COMPLETED, LOAN_STATUS.DEFAULTED] },
+          request: { district: { in: userDistricts } },
+        },
+        _sum: { approvedAmount: true },
+      });
+      stats.totalDisbursed = disbursedResult._sum.approvedAmount ?? 0;
+      stats.pendingCount = await prisma.request.count({
+        where: {
+          district: { in: userDistricts },
+          currentStatus: { in: PENDING_REQUEST_STATUSES },
+        },
+      });
+    } else if (isAgent) {
+      // Agent sees stats for requests assigned to them
+      stats.totalRequests = await prisma.request.count({
+        where: { assignedAgentId: userId },
+      });
+      stats.activeLoans = await prisma.loan.count({
+        where: {
+          status: LOAN_STATUS.ACTIVE,
+          request: { assignedAgentId: userId },
+        },
+      });
+      const disbursedResult = await prisma.loan.aggregate({
+        where: {
+          status: { in: [LOAN_STATUS.ACTIVE, LOAN_STATUS.COMPLETED, LOAN_STATUS.DEFAULTED] },
+          request: { assignedAgentId: userId },
+        },
+        _sum: { approvedAmount: true },
+      });
+      stats.totalDisbursed = disbursedResult._sum.approvedAmount ?? 0;
+      stats.pendingCount = await prisma.request.count({
+        where: {
+          assignedAgentId: userId,
+          currentStatus: { in: PENDING_REQUEST_STATUSES },
+        },
+      });
+      
+      // Agent specific stats
+      stats.pendingInspections = await prisma.request.count({
+        where: {
+          assignedAgentId: userId,
+          currentStatus: { in: [REQUEST_STATUS.INSPECTION_SCHEDULED, REQUEST_STATUS.INSPECTION_IN_PROGRESS] },
+        },
+      });
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      stats.completedInspections = await prisma.request.count({
+        where: {
+          assignedAgentId: userId,
+          currentStatus: REQUEST_STATUS.INSPECTION_COMPLETED,
+          updatedAt: { gte: today },
+        },
+      });
+
+    } else if (isCustomer) {
+      // Customer sees only their own stats
+      stats.totalRequests = await prisma.request.count({
+        where: { customerId: userId },
+      });
+      stats.activeLoans = await prisma.loan.count({
+        where: {
+          status: LOAN_STATUS.ACTIVE,
+          request: { customerId: userId },
+        },
+      });
+      const disbursedResult = await prisma.loan.aggregate({
+        where: {
+          status: { in: [LOAN_STATUS.ACTIVE, LOAN_STATUS.COMPLETED, LOAN_STATUS.DEFAULTED] },
+          request: { customerId: userId },
+        },
+        _sum: { approvedAmount: true },
+      });
+      stats.totalDisbursed = disbursedResult._sum.approvedAmount ?? 0;
+      stats.pendingCount = await prisma.request.count({
+        where: {
+          customerId: userId,
+          currentStatus: { in: PENDING_REQUEST_STATUSES },
+        },
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    logger.error('Dashboard stats error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve dashboard statistics',
+    });
   }
 }

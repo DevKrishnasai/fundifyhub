@@ -104,6 +104,13 @@ const extractError = (err: unknown): ApiError => {
 export const getWithResult = async <T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResult<T>> => {
   try {
     const res = await api.get<T>(url, config)
+    // Some HTTP statuses (like 304 Not Modified) may be returned by intermediate caches or proxies
+    // and will not include a body. Treat non-200 statuses as errors so callers get structured errors
+    // instead of `undefined` payloads which can lead to empty lists/rendering bugs.
+    if (res.status !== 200) {
+      const err: ApiError = { message: `Unexpected response status: ${res.status} ${res.statusText}` };
+      return { ok: false, error: err, status: res.status };
+    }
     // Backend uses envelope: { success, message, data }
     // Unwrap automatically so callers receive the inner `data` when present.
     const payload = res.data as any
@@ -118,6 +125,10 @@ export const getWithResult = async <T = any>(url: string, config?: AxiosRequestC
 export const postWithResult = async <T = any, D = any>(url: string, data?: D, config?: AxiosRequestConfig): Promise<ApiResult<T>> => {
   try {
     const res = await api.post<T>(url, data, config)
+    if (res.status !== 200 && res.status !== 201) {
+      const err: ApiError = { message: `Unexpected response status: ${res.status} ${res.statusText}` };
+      return { ok: false, error: err, status: res.status };
+    }
     // Unwrap backend envelope when present so callers get the inner `data` directly.
     const payload = res.data as any
     const unwrapped = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload
@@ -143,4 +154,5 @@ export const patch = async <T = any, D = any>(url: string, data?: D, config?: Ax
   return res.data;
 };
 
+export const apiClient = api;
 export default api;

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/dialog';
 import { Button } from '@/components/ui/button';
+import EmiScheduleTable from '@/components/request/EmiScheduleTable';
 
 type Props = {
   request: any;
@@ -28,34 +29,14 @@ export default function EmiSchedulePanel({ request, triggerLabel = 'View EMI Sch
 
         <div className="mt-3">
           {hasLoanSchedule ? (
-            <div className="space-y-2">
-              {loan.emisSchedule.map((e: any) => (
-                <div key={e.id} className="p-2 border rounded flex justify-between">
-                  <div>
-                    <div className="text-sm font-medium">EMI #{e.emiNumber}</div>
-                    <div className="text-xs text-muted-foreground">Due: {new Date(e.dueDate).toLocaleDateString()}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold">₹{e.emiAmount.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground">Status: {e.status}</div>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <EmiScheduleTable rows={loan.emisSchedule} mode="loan" />
             </div>
           ) : hasSnapshot ? (
-            <div className="space-y-2">
-              {snapshot.emiSchedule.map((e: any, idx: number) => (
-                <div key={idx} className="p-2 border rounded flex justify-between">
-                  <div>
-                    <div className="text-sm font-medium">EMI #{e.installment}</div>
-                    <div className="text-xs text-muted-foreground">Principal: ₹{Number(e.principal).toLocaleString()} • Interest: ₹{Number(e.interest).toLocaleString()}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold">₹{Number(e.paymentAmount).toLocaleString()}</div>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <EmiScheduleTable rows={snapshot.emiSchedule} mode="preview" />
             </div>
+          ) : (
           ) : (
             <div className="text-sm text-muted-foreground">No EMI schedule available.</div>
           )}

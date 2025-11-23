@@ -81,7 +81,7 @@ model Request {
   offerMadeDate      DateTime?  // When admin made the offer
   offerResponseDate  DateTime?  // When customer responded
   penaltyPercentage   Float?     // Penalty percentage for late payment
-  LateFeePercentage    Float?     // Late fee percentage for overdue payments
+  lateFeePercentage    Float?     // Late fee percentage for overdue payments
   // Admin requested information (when status is MORE_INFO_REQUIRED)
   adminRequestedInfo String?    // What additionWal info/documents admin needs
   

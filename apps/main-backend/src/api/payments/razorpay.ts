@@ -84,7 +84,7 @@ export const createRazorpayOrderController = async (req: Request, res: Response)
       where: { id: loanId, request: { customerId: userId } },
       include: { 
         request: { include: { customer: true } },
-        emisSchedule: { orderBy: { emiNumber: 'asc' } }
+        emisSchedule: { select: { id: true, emiNumber: true, dueDate: true, emiAmount: true, principalAmount: true, interestAmount: true, status: true, paidDate: true, paidAmount: true, lateFee: true }, orderBy: { emiNumber: 'asc' } }
       }
     });
 
@@ -130,7 +130,7 @@ export const createRazorpayOrderController = async (req: Request, res: Response)
 
     // Get penalty rates from request (with defaults)
     const penaltyRate = loan.request.penaltyPercentage || 4; // Default 4%
-    const lateFeeRate = loan.request.LateFeePercentage || 0.01; // Default 0.01%
+    const lateFeeRate = loan.request.lateFeePercentage || 0.01; // Default 0.01%
 
     // Calculate penalty breakdown with daily penalty
     const breakdown = calculateEmiBreakdown(
@@ -307,7 +307,7 @@ export const verifyRazorpayPaymentController = async (req: Request, res: Respons
       // Get EMI details with all EMIs for penalty calculation
       const emi = await tx.eMISchedule.findUnique({
         where: { id: emiId },
-        include: { loan: { include: { emisSchedule: { orderBy: { emiNumber: 'asc' } } } } }
+        include: { loan: { include: { emisSchedule: { select: { id: true, emiNumber: true, dueDate: true, emiAmount: true, principalAmount: true, interestAmount: true, status: true, paidDate: true, paidAmount: true, lateFee: true }, orderBy: { emiNumber: 'asc' } } } } }
       });
 
       if (!emi) {
@@ -528,7 +528,7 @@ async function handlePaymentCaptured(payload: any) {
     await prisma.$transaction(async (tx) => {
       const emi = await tx.eMISchedule.findUnique({
         where: { id: emiId },
-        include: { loan: { include: { emisSchedule: { orderBy: { emiNumber: 'asc' } } } } }
+        include: { loan: { include: { emisSchedule: { select: { id: true, emiNumber: true, dueDate: true, emiAmount: true, principalAmount: true, interestAmount: true, status: true, paidDate: true, paidAmount: true, lateFee: true }, orderBy: { emiNumber: 'asc' } } } } }
       });
 
       if (!emi) {

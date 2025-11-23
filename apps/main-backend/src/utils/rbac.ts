@@ -33,8 +33,11 @@ export function hasDistrictAccess(user: AuthUser | undefined | null, district: s
   // SUPER_ADMIN has access to all districts
   if (Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN)) return true;
 
-  // User.districts is an array of districts. Grant access if any district matches.
-  if (Array.isArray(user.districts) && user.districts.includes(district)) return true;
+  // User.districts is an array of districts. Grant access if any district matches (case-insensitive).
+  if (Array.isArray(user.districts) && typeof district === 'string') {
+    const lower = String(district).toLowerCase();
+    if (user.districts.some((d) => String(d).toLowerCase() === lower)) return true;
+  }
 
   return false;
 }

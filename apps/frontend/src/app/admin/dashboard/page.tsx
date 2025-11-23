@@ -6,42 +6,38 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogDescription,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Search,
-  Download,
-  Phone,
   AlertTriangle,
   CheckCircle,
   DollarSign,
-  MapPin,
   Clock,
-  XCircle,
   Eye,
-  User,
   Smartphone,
   Laptop,
   Car,
   CreditCard,
+  ClipboardList,
+  FileText,
+  Activity,
+  MapPin,
+  Download,
 } from "lucide-react"
 import Link from "next/link"
-import { get } from "@/lib/api-client"
-import { ROLES, PENDING_REQUEST_STATUSES, ADMIN_AGENT_ROLES } from "@fundifyhub/types"
+import { getWithResult } from "@/lib/api-client"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import EmiScheduleTable from '@/components/request/EmiScheduleTable'
+import type { RequestType } from '@fundifyhub/types'
+import { ROLES, PENDING_REQUEST_STATUSES } from "@fundifyhub/types"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
 import logger from "@/lib/logger"
-import RequestActions from '@/components/request/RequestActions';
+import RequestActions from '@/components/request/RequestActions'
+import { StatsCard } from "@/components/dashboard/StatsCard"
+import { DashboardFilters } from "@/components/dashboard/DashboardFilters"
+import { DashboardPagination } from "@/components/dashboard/DashboardPagination"
+import { useDashboardStats } from "@/hooks/useDashboardStats"
 
 // Data will be loaded from admin API endpoints: /admin/get-active-loans and /admin/get-pending-requests
 
@@ -90,26 +86,28 @@ export default function AdminDashboard() {
   const router = useRouter()
   const { user, isLoading } = useAuth();
   
+  // Filter states
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [riskFilter, setRiskFilter] = useState("all")
   const [districtFilter, setDistrictFilter] = useState<string>('all')
-  const [selectedLoan, setSelectedLoan] = useState<any>(null)
-  const [collectionNote, setCollectionNote] = useState("")
-  const [actionType, setActionType] = useState("")
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [totalCount, setTotalCount] = useState(0)
   const [activeTab, setActiveTab] = useState("loans")
   const [requests, setRequests] = useState<any[]>([])
   const [loans, setLoans] = useState<any[]>([])
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false)
+  const [showEmiSchedule, setShowEmiSchedule] = useState(false)
+  const [emiScheduleFor, setEmiScheduleFor] = useState<any | null>(null)
+  const [emiScheduleMode, setEmiScheduleMode] = useState<'preview'|'loan'>('preview')
   const [dataError, setDataError] = useState<string | null>(null)
-  const [requestLimit, setRequestLimit] = useState<number>(20)
-  const [requestOffset, setRequestOffset] = useState<number>(0)
-  const [isCollectionDialogOpen, setIsCollectionDialogOpen] = useState(false)
-  const [selectedLoanForCollection, setSelectedLoanForCollection] = useState<any>(null)
-  const [collectionFormData, setCollectionFormData] = useState({
-    agent: "",
-    pickupDate: "",
-  })
+  // request pagination is driven by pageSize and currentPage
+
+  // Fetch dashboard stats
+  const { stats, loading: isLoadingStats } = useDashboardStats()
 
   // Check if user is admin
   useEffect(() => {
@@ -118,6 +116,11 @@ export default function AdminDashboard() {
     }
   }, [user, isLoading, router])
 
+  // Reset pagination when filters or tab changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [activeTab, searchTerm, statusFilter, districtFilter])
+
   // Fetch admin data (active loans and pending requests)
   useEffect(() => {
     let mounted = true
@@ -125,10 +128,11 @@ export default function AdminDashboard() {
       setIsLoadingData(true)
       setDataError(null)
       try {
-        // Build query for pending statuses and optional district filter
-        const statuses = PENDING_REQUEST_STATUSES.join(',');
+        // Build query for statuses (if user selected a specific status, pass it; if 'all', don't pass status param)
         const params: string[] = [];
-        params.push('status=' + encodeURIComponent(statuses));
+        if (statusFilter && statusFilter !== 'all') {
+          params.push('status=' + encodeURIComponent(statusFilter));
+        }
         // if a district is selected in the UI, add it. Otherwise leave blank to let the server
         // return all allowed districts (server will restrict district-admins to their districts).
         if (districtFilter && districtFilter !== 'all') {
@@ -136,17 +140,19 @@ export default function AdminDashboard() {
         }
 
         // append pagination params
-        params.push('limit=' + String(requestLimit))
-        params.push('offset=' + String(requestOffset))
+        const limit = pageSize
+        const offset = (currentPage - 1) * pageSize
+        params.push('limit=' + String(limit))
+        params.push('offset=' + String(offset))
 
         const [activeResp, pendingResp] = await Promise.all([
-          get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.GET_ACTIVE_LOANS),
-          get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.REQUESTS_LIST + (params.length ? '?' + params.join('&') : '')),
+          getWithResult(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.GET_ACTIVE_LOANS),
+          getWithResult(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.REQUESTS_LIST + (params.length ? '?' + params.join('&') : '')),
         ])
 
         if (!mounted) return
 
-        const fetchedLoans = (activeResp.data || []).map((loan: any) => {
+        const fetchedLoans = (activeResp.ok ? activeResp.data : []) .map((loan: any) => {
           const customer = loan.request?.customer
           const borrower = customer ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() : 'Unknown'
           const outstanding = loan.remainingAmount ?? (loan.totalAmount ? loan.totalAmount - (loan.totalPaidAmount || 0) : 0)
@@ -167,7 +173,7 @@ export default function AdminDashboard() {
           }
         })
 
-        const fetchedRequests = (pendingResp.data?.requests || pendingResp.data || []).map((r: any) => ({
+        const fetchedRequests = (pendingResp.ok ? pendingResp.data.requests : []) .map((r: any) => ({
           id: r.id,
           requestNumber: r.requestNumber || r.id,
           asset: r.assetBrand && r.assetModel ? `${r.assetBrand} ${r.assetModel}` : r.assetType || 'N/A',
@@ -180,6 +186,21 @@ export default function AdminDashboard() {
           district: r.district || r.customer?.district || '',
           currentStatus: r.currentStatus || 'PENDING',
           assignedAgentId: r.assignedAgentId || null,
+          assignedAgent: r.assignedAgent || null,
+          commentsCount: r._count?.comments || 0,
+          documentsCount: r._count?.documents || 0,
+          inspectionsCount: r._count?.inspections || 0,
+          offeredAmount: r.adminOfferedAmount || null,
+          offeredTenure: r.adminTenureMonths || null,
+          offeredInterest: r.adminInterestRate || null,
+          offerMadeDate: r.offerMadeDate || null,
+          adminEmiSchedule: r.adminEmiSchedule || null,
+          inspectionScheduledAt: r.inspectionScheduledAt || null,
+          loanApprovedAmount: r.loan?.approvedAmount || null,
+          loanDisbursedDate: r.loan?.disbursedDate || null,
+          loanTotalPaidAmount: r.loan?.totalPaidAmount || 0,
+          loanRemainingAmount: r.loan?.remainingAmount || 0,
+          loanStatus: r.loan?.status || null,
           userName: r.customer ? `${r.customer.firstName || ''} ${r.customer.lastName || ''}`.trim() : 'Unknown',
           userPhone: r.customer?.phoneNumber || r.customer?.phone || '',
         }))
@@ -205,7 +226,7 @@ export default function AdminDashboard() {
     }
 
     return () => { mounted = false; if (interval) clearInterval(interval); }
-  }, [isLoading, user, activeTab])
+  }, [isLoading, user, activeTab, currentPage, pageSize, statusFilter, districtFilter])
 
   // Show loading while checking auth
   if (isLoading || !user || !user.roles?.some((r: string) => Object.values(ROLES).includes(r.toUpperCase()))) {
@@ -240,32 +261,19 @@ export default function AdminDashboard() {
   const totalDisbursed = loans.reduce((s, l) => s + (l.loanAmount || 0), 0)
   const totalOutstanding = loans.reduce((s, l) => s + (l.outstandingAmount || 0), 0)
 
-  const handleCollectionAction = (loan: any, action: string) => {
-    setSelectedLoan(loan)
-    setActionType(action)
-    setCollectionNote("")
-  }
-
-  const submitCollectionAction = () => {
-    setSelectedLoan(null)
-    setActionType("")
-    setCollectionNote("")
-  }
-
-  const handleAssignCollection = (loan: any) => {
-    setSelectedLoanForCollection(loan)
-    setCollectionFormData({ agent: "", pickupDate: "" })
-    setIsCollectionDialogOpen(true)
-  }
-
-  const submitCollectionAssignment = () => {
-    setIsCollectionDialogOpen(false)
-    setSelectedLoanForCollection(null)
+  const handleRequestUpdate = (updatedRequest: any) => {
+    if (!updatedRequest || !updatedRequest.id) {
+      console.warn('handleRequestUpdate called with invalid updatedRequest', updatedRequest);
+      return;
+    }
+    setRequests((prev) => 
+      prev.map((p) => p.id === updatedRequest.id ? { ...p, ...updatedRequest } : p)
+    )
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -281,137 +289,43 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900">
-                  <DollarSign className="w-4 h-4 text-blue-600 dark:text-blue-200" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Loans</p>
-                  <p className="text-lg font-semibold">{loans.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-orange-100 rounded-lg dark:bg-orange-900">
-                  <Clock className="w-4 h-4 text-orange-600 dark:text-orange-200" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Pending Reviews</p>
-                  <p className="text-lg font-semibold">{requests.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-green-100 rounded-lg dark:bg-green-900">
-                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-200" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Active</p>
-                  <p className="text-lg font-semibold">{loans.filter(l => l.status === 'active').length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-red-100 rounded-lg dark:bg-red-900">
-                  <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-200" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Overdue</p>
-                  <p className="text-lg font-semibold">{loans.filter(l => l.status === 'overdue').length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Disbursed</p>
-                <p className="text-lg font-semibold">
-                  ₹{totalDisbursed.toLocaleString()}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Outstanding</p>
-                <p className="text-lg font-semibold">
-                  ₹{totalOutstanding.toLocaleString()}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatsCard
+            title="Total Requests"
+            value={stats?.totalRequests ?? 0}
+            icon={<FileText className="w-5 h-5" />}
+            loading={isLoadingStats}
+          />
+          <StatsCard
+            title="Active Loans"
+            value={stats?.activeLoans ?? 0}
+            icon={<Activity className="w-5 h-5" />}
+            loading={isLoadingStats}
+          />
+          <StatsCard
+            title="Total Disbursed"
+            value={`₹${(stats?.totalDisbursed ?? 0).toLocaleString()}`}
+            icon={<DollarSign className="w-5 h-5" />}
+            loading={isLoadingStats}
+          />
+          <StatsCard
+            title="Pending Reviews"
+            value={stats?.pendingCount ?? 0}
+            icon={<Clock className="w-5 h-5" />}
+            loading={isLoadingStats}
+          />
         </div>
 
-        {/* Filters (applies to both Loans and Requests) */}
-        <Card className="mb-4">
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    placeholder="Search by name, asset, request ID or loan ID..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full md:w-40">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="overdue">Overdue</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={riskFilter} onValueChange={setRiskFilter}>
-                <SelectTrigger className="w-full md:w-40">
-                  <SelectValue placeholder="Risk Level" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Risk</SelectItem>
-                  <SelectItem value="low">Low Risk</SelectItem>
-                  <SelectItem value="medium">Medium Risk</SelectItem>
-                  <SelectItem value="high">High Risk</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={districtFilter} onValueChange={setDistrictFilter}>
-                <SelectTrigger className="w-full md:w-48">
-                  <SelectValue placeholder="District" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Districts</SelectItem>
-                  {(user?.districts || []).map((d: string) => (
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Filters */}
+        <DashboardFilters
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          statusFilter={statusFilter}
+          onStatusChange={setStatusFilter}
+          districtFilter={districtFilter}
+          onDistrictChange={setDistrictFilter}
+          districts={user?.districts?.map(d => ({ label: d, value: d })) || []}
+        />
 
         {/* Tabs to separate loans and pending requests */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -423,7 +337,9 @@ export default function AdminDashboard() {
           <TabsContent value="loans" className="space-y-4">
             {/* Loans Table */}
             <div className="space-y-4">
-              {filteredLoans.map((loan) => (
+              {filteredLoans
+                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                .map((loan) => (
                 <Card key={loan.id} className="overflow-hidden">
                   <CardContent className="p-0">
                     <div className="p-4 md:p-6">
@@ -484,22 +400,6 @@ export default function AdminDashboard() {
                               View Details
                             </Link>
                           </Button>
-
-                          {loan.status === "active" && (
-                            <Button size="sm" onClick={() => handleAssignCollection(loan)}>
-                              <MapPin className="w-4 h-4 mr-1" />
-                              Assign Collection
-                            </Button>
-                          )}
-
-                          {loan.status === "overdue" && (
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" onClick={() => handleCollectionAction(loan, "call")}>
-                                <Phone className="w-4 h-4 mr-1" />
-                                Call
-                              </Button>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -519,24 +419,11 @@ export default function AdminDashboard() {
 
           <TabsContent value="requests" className="space-y-4">
             {/* Pending Requests Section */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <Input
-                      placeholder="Search by name, asset, or request ID..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
             <div className="space-y-4">
-              {filteredRequests.map((request: any) => (
+              {filteredRequests
+                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                .map((request: any) => (
+                  (!request || !request.id) ? null : (
                 <Card key={request.id}>
                   <CardContent className="p-4 sm:p-6">
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 gap-3">
@@ -551,15 +438,29 @@ export default function AdminDashboard() {
                       </div>
                       <Badge variant="secondary" className="w-fit">
                         <Clock className="w-3 h-3 mr-1" />
-                        Pending
+                        {request.currentStatus.replace(/_/g, ' ')}
                       </Badge>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4 mb-4">
                       <div>
                         <p className="text-xs sm:text-sm text-muted-foreground">User</p>
                         <p className="font-semibold text-sm sm:text-base">{request.userName}</p>
                         <p className="text-xs sm:text-sm text-muted-foreground truncate">{request.userPhone}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs sm:text-sm text-muted-foreground">Offered</p>
+                        <p className="font-semibold text-sm sm:text-base text-primary">{request.offeredAmount ? `₹${Number(request.offeredAmount).toLocaleString()}` : '—'}</p>
+                        {request.offerMadeDate && (
+                          <p className="text-xs text-muted-foreground mt-1">{new Date(request.offerMadeDate).toLocaleDateString()}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs sm:text-sm text-muted-foreground">Loan / Disbursed</p>
+                        <p className="font-semibold text-sm sm:text-base">{request.loanApprovedAmount ? `₹${Number(request.loanApprovedAmount).toLocaleString()}` : '—'}</p>
+                        {request.loanDisbursedDate && (
+                          <p className="text-xs text-muted-foreground mt-1">{new Date(request.loanDisbursedDate).toLocaleDateString()}</p>
+                        )}
                       </div>
                       <div>
                         <p className="text-xs sm:text-sm text-muted-foreground">Asset Details</p>
@@ -585,29 +486,63 @@ export default function AdminDashboard() {
                           <MapPin className="w-3 h-3 text-muted-foreground" />
                           <span className="text-xs sm:text-sm text-muted-foreground">{request.district}</span>
                         </div>
+                        {request.inspectionScheduledAt && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <Clock className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-xs sm:text-sm text-muted-foreground">Inspection: {new Date(request.inspectionScheduledAt).toLocaleDateString()}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex justify-end">
-                      <div className="flex gap-2 items-center">
-                        {/* Only show admin actions when user has admin/agent roles */}
-                        {user && user.roles && user.roles.some((r: string) => ADMIN_AGENT_ROLES.map(x => x.toUpperCase()).includes(String(r).toUpperCase())) && (
-                          <RequestActions requestId={request.id} requestStatus={request.currentStatus} district={request.district} onUpdated={(r) => {
-                            // update local UI after actions
-                            setRequests((prev) => prev.map((p) => p.id === r.id ? { ...p, ...r } : p));
-                          }} />
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="text-xs text-muted-foreground">Docs: {request.documentsCount}</div>
+                        <div className="text-xs text-muted-foreground">Comments: {request.commentsCount}</div>
+                        <div className="text-xs text-muted-foreground">Inspections: {request.inspectionsCount}</div>
+                        {request.loanApprovedAmount && (
+                          <div className="ml-3 text-xs text-muted-foreground">Loan Remaining: ₹{request.loanRemainingAmount?.toLocaleString() || 0}</div>
                         )}
-                        <Button variant="outline" size="sm" asChild>
-                          <Link href={`/asset-detail/${request.requestNumber ?? request.id}`}>
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Details
-                          </Link>
-                        </Button>
                       </div>
+                      <div className="flex flex-wrap justify-end gap-2">
+                      {request.assignedAgent && (
+                        <div className="text-xs text-muted-foreground mr-2">Assigned to: {request.assignedAgent.firstName} {request.assignedAgent.lastName}</div>
+                      )}
+                      { (request.adminEmiSchedule || request.loan) && (
+                        <Button variant="outline" size="sm" onClick={() => {
+                          if (request.adminEmiSchedule) {
+                            setEmiScheduleMode('preview')
+                            setEmiScheduleFor(request.adminEmiSchedule)
+                          } else if (request.loan?.emisSchedule) {
+                            setEmiScheduleMode('loan')
+                            setEmiScheduleFor(request.loan.emisSchedule)
+                          }
+                          setShowEmiSchedule(true)
+                        }}>
+                          <FileText className="w-4 h-4 mr-2" />
+                          View EMI
+                        </Button>
+                      )}
+                      <RequestActions 
+                        requestId={request.id} 
+                        requestStatus={request.currentStatus} 
+                        district={request.district}
+                        customerId={request.customer?.id}
+                        assignedAgentId={request.assignedAgentId ?? request.assignedAgent?.id}
+                        dashboardContext="admin"
+                        onUpdated={handleRequestUpdate}
+                      />
+                      <Button variant="outline" size="sm" asChild className="shrink-0">
+                        <Link href={`/asset-detail/${request.requestNumber ?? request.id}`}>
+                          <Eye className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">View Details</span>
+                        </Link>
+                      </Button>
+                    </div>
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              )))}
 
               {filteredRequests.length === 0 && (
                 <Card>
@@ -621,144 +556,42 @@ export default function AdminDashboard() {
             </div>
             {/* Pagination controls for requests list */}
             <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-muted-foreground">Showing {requests.length} requests</div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={requestOffset === 0} onClick={() => setRequestOffset(Math.max(0, requestOffset - requestLimit))}>
-                  Previous
-                </Button>
-                <Button size="sm" onClick={() => setRequestOffset(requestOffset + requestLimit)}>
-                  Next
-                </Button>
-              </div>
+              <div className="text-sm text-muted-foreground">Showing {filteredRequests.length} requests</div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={currentPage <= 1} onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}>
+                    Previous
+                  </Button>
+                  <Button size="sm" onClick={() => setCurrentPage(currentPage + 1)}>
+                    Next
+                  </Button>
+                </div>
             </div>
           </TabsContent>
         </Tabs>
 
-        {/* Collection Action Dialog */}
-        <Dialog open={!!selectedLoan} onOpenChange={() => setSelectedLoan(null)}>
+        {/* EMI Schedule Dialog */}
+        <Dialog open={showEmiSchedule} onOpenChange={(v) => setShowEmiSchedule(v)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{actionType === "call" ? "Record Collection Call" : "Mark Loan as Default"}</DialogTitle>
+              <DialogTitle>EMI Schedule</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Borrower</Label>
-                <p className="font-medium">{selectedLoan?.borrower}</p>
+            {emiScheduleFor && (
+              <div className="mt-4">
+                <EmiScheduleTable mode={emiScheduleMode} rows={emiScheduleFor} />
               </div>
-              <div>
-                <Label>Loan ID</Label>
-                <p className="font-medium">{selectedLoan?.id}</p>
-              </div>
-              <div>
-                <Label>Overdue Amount</Label>
-                <p className="font-medium text-red-600">₹{selectedLoan?.overdueAmount?.toLocaleString()}</p>
-              </div>
-              <div>
-                <Label htmlFor="collection-note">{actionType === "call" ? "Call Notes" : "Default Reason"}</Label>
-                <Textarea
-                  id="collection-note"
-                  placeholder={
-                    actionType === "call"
-                      ? "Enter call details and borrower response..."
-                      : "Enter reason for marking as default..."
-                  }
-                  value={collectionNote}
-                  onChange={(e) => setCollectionNote(e.target.value)}
-                />
-              </div>
-              <div className="flex gap-2 pt-4">
-                <Button onClick={submitCollectionAction} className="flex-1">
-                  {actionType === "call" ? "Save Call Record" : "Mark as Default"}
-                </Button>
-                <Button variant="outline" onClick={() => setSelectedLoan(null)} className="flex-1">
-                  Cancel
-                </Button>
-              </div>
-            </div>
+            )}
           </DialogContent>
         </Dialog>
 
-        {/* Inline Collection Assignment Dialog */}
-        <Dialog open={isCollectionDialogOpen} onOpenChange={setIsCollectionDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Assign Asset Collection</DialogTitle>
-              <DialogDescription>
-                Assign an agent or yourself to collect the asset for loan {selectedLoanForCollection?.id}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Borrower Details</Label>
-                <Card className="bg-muted/50">
-                  <CardContent className="p-3 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Name:</span>
-                      <span className="font-medium">{selectedLoanForCollection?.borrower}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Asset:</span>
-                      <span className="font-medium">{selectedLoanForCollection?.asset}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Loan Amount:</span>
-                      <span className="font-medium">₹{selectedLoanForCollection?.loanAmount?.toLocaleString()}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div>
-                <Label htmlFor="agent-select" className="text-sm font-medium mb-2 block">
-                  Select Agent or Assign to Yourself
-                </Label>
-                <Select
-                  value={collectionFormData.agent}
-                  onValueChange={(value) => setCollectionFormData((prev) => ({ ...prev, agent: value }))}
-                >
-                  <SelectTrigger id="agent-select">
-                    <SelectValue placeholder="Choose an agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="myself">Myself (Admin)</SelectItem>
-                    <SelectItem value="vikram">Vikram Desai - Senior Agent</SelectItem>
-                    <SelectItem value="priya">Priya Sharma - Senior Agent</SelectItem>
-                    <SelectItem value="amit">Amit Singh - Agent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="pickup-date" className="text-sm font-medium mb-2 block">
-                  Scheduled Pickup Date
-                </Label>
-                <Input
-                  id="pickup-date"
-                  type="date"
-                  value={collectionFormData.pickupDate}
-                  onChange={(e) => setCollectionFormData((prev) => ({ ...prev, pickupDate: e.target.value }))}
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <Button
-                  variant="outline"
-                  className="flex-1 bg-transparent"
-                  onClick={() => setIsCollectionDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={submitCollectionAssignment}
-                  disabled={!collectionFormData.agent || !collectionFormData.pickupDate}
-                >
-                  Assign Collection
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Pagination */}
+        <DashboardPagination
+          currentPage={currentPage}
+          totalPages={Math.ceil((activeTab === "loans" ? filteredLoans.length : filteredRequests.length) / pageSize)}
+          totalItems={activeTab === "loans" ? filteredLoans.length : filteredRequests.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
     </div>
   )

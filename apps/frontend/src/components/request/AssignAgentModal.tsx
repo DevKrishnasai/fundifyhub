@@ -1,104 +1,190 @@
 "use client";
 
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../dialog';
-import { Button } from '../button';
-import { Input } from '../input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
-import { api } from '@/lib/api-client';
+import { api, getWithResult } from '@/lib/api-client';
 
-export default function AssignAgentModal({ open, onOpenChange, onSubmit, district }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (agentId: string) => void; district?: string; }) {
+export default function AssignAgentModal({ open, onOpenChange, onSubmit, district }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (agentId: string, inspectionDate: string, inspectionTime: string) => Promise<boolean> | boolean; district?: string; }) {
   const [agentId, setAgentId] = React.useState('');
+  const [inspectionDate, setInspectionDate] = React.useState('');
+  const [inspectionTime, setInspectionTime] = React.useState('');
   const [agents, setAgents] = React.useState<Array<{ id: string; firstName?: string; lastName?: string; email?: string }>>([]);
-  const [query, setQuery] = React.useState('');
+  const [manualMode, setManualMode] = React.useState(false);
+  // removed query/search; we now show a simple dropdown of available agents
   const [loadingAgents, setLoadingAgents] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const loadAgents = React.useCallback(async () => {
+    if (!open) return;
+    if (!district) return; // if no district provided, we won't fetch
+    setLoadingAgents(true);
+    setError(null);
+    try {
+      const resp = await getWithResult<{ agents: Array<{ id: string; firstName?: string; lastName?: string; email?: string }> }>(
+        BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_AGENTS_BY_DISTRICT(district.trim())
+      );
+      if (!resp.ok) {
+        setError(resp.error?.message || `Failed to fetch agents (status ${resp.status || 'unknown'})`);
+        setAgents([]);
+      } else {
+        const list = Array.isArray(resp.data?.agents) ? resp.data.agents : [];
+        setAgents(list);
+        // If no agent has been selected yet, auto-select the first agent to improve UX
+        if (!agentId && list.length > 0) setAgentId(list[0].id);
+      }
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('AssignAgentModal: district=', district, 'resp=', resp)
+      }
+    } catch (err: any) {
+      setError(err?.message || String(err));
+      setAgents([]);
+    } finally {
+      setLoadingAgents(false);
+    }
+  }, [open, district]);
 
   React.useEffect(() => {
-    let mounted = true;
-    async function loadAgents() {
-      if (!open) return;
-      if (!district) return; // if no district provided, we won't fetch
-      setLoadingAgents(true);
-      setError(null);
-      try {
-        const body = await api.get(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_AGENTS_BY_DISTRICT(district));
-        if (mounted) setAgents(body?.data?.agents || []);
-      } catch (err: any) {
-        // fallback: clear agents and let user enter id manually
-        if (mounted) setError(err?.message || String(err));
-      } finally {
-        if (mounted) setLoadingAgents(false);
-      }
-    }
     loadAgents();
-    return () => { mounted = false; };
-  }, [open, district]);
+  }, [loadAgents]);
 
   function handleClose() {
     setAgentId('');
+    setInspectionDate('');
+    setInspectionTime('');
     setAgents([]);
     setError(null);
     onOpenChange(false);
   }
 
+  const filteredAgents = agents; // simple mapping; all agents are listed in the dropdown
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Assign Agent</DialogTitle>
+          <DialogTitle>Assign Agent to Request</DialogTitle>
+          {district && <p className="text-sm text-muted-foreground mt-1">District: <span className="font-medium">{district}</span></p>}
         </DialogHeader>
 
-        <div className="grid gap-3">
+        <div className="space-y-4">
           {district ? (
-            <div>
-              <label className="block text-sm font-medium">Select Agent (district: {district})</label>
-              {loadingAgents ? (
-                <div>Loading agents...</div>
-              ) : error ? (
-                <div className="text-sm text-red-600">Could not load agents: {error}</div>
+            <>
+                  {loadingAgents ? (
+                <div className="p-8 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                  <p className="text-sm text-muted-foreground">Loading agents...</p>
+                </div>
+                  ) : error ? (
+                <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
+                  <p className="text-sm text-destructive">Could not load agents: {error}</p>
+                  <p className="text-xs text-muted-foreground mt-1">You can still enter an Agent ID manually below.</p>
+                </div>
               ) : agents.length > 0 ? (
-                <div>
-                  <label className="block text-sm font-medium">Search agents</label>
-                  <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name or email" />
-                  <div className="mt-2 text-sm text-muted-foreground">{agents.length} agents found</div>
-                  <div className="mt-2 max-h-48 overflow-auto border rounded">
-                    {agents.filter(a => {
-                      const hay = `${a.firstName || ''} ${a.lastName || ''} ${a.email || ''} ${a.id}`.toLowerCase();
-                      return hay.includes(query.toLowerCase());
-                    }).map((a) => (
-                      <div key={a.id} className={`p-2 flex items-center justify-between hover:bg-gray-50 ${agentId === a.id ? 'bg-gray-100' : ''}`}>
-                        <div>
-                          <div className="font-medium">{(a.firstName || '') + ' ' + (a.lastName || '')}</div>
-                          <div className="text-sm text-muted-foreground">{a.email || a.id}</div>
-                        </div>
-                        <div>
-                          <Button variant={agentId === a.id ? 'secondary' : 'default'} onClick={() => setAgentId(a.id)}>{agentId === a.id ? 'Selected' : 'Select'}</Button>
-                        </div>
-                      </div>
-                    ))}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium mb-1.5">Select Agent</label>
+                    <div className="flex items-center gap-3">
+                      <Button size="sm" variant="ghost" onClick={() => setManualMode(!manualMode)}>{manualMode ? 'Use dropdown' : 'Enter ID manually'}</Button>
+                    </div>
+                  </div>
+                  {manualMode ? (
+                    <div>
+                      <Input value={agentId} onChange={(e) => setAgentId(e.target.value)} placeholder="Enter agent ID" />
+                    </div>
+                  ) : (
+                    <div>
+                      <Select value={agentId} onValueChange={(v: string) => setAgentId(v)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Choose an agent" />
+                        </SelectTrigger>
+                        <SelectContent className="w-full">
+                          {filteredAgents.map((a) => (
+                            <SelectItem key={a.id} value={a.id}>{`${a.firstName || ''} ${a.lastName || ''}`.trim() || a.email || a.id}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-muted-foreground mt-1">{filteredAgents.length} agents available</p>
+                    <Button size="sm" variant="ghost" onClick={() => loadAgents()} className="ml-2">Refresh</Button>
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-muted-foreground">No agents found for this district. You may enter an Agent ID manually below.</div>
+                <div className="p-4 bg-muted/50 rounded-lg text-center text-sm text-muted-foreground">
+                  No agents found for this district.
+                </div>
               )}
-              <div className="mt-2">
-                <label className="block text-sm font-medium">Or enter Agent Id</label>
-                <Input value={agentId} onChange={(e) => setAgentId(e.target.value)} />
-              </div>
-            </div>
+              
+              {/* If there are no agents, the UI shows a message above — manual entry is not supported per product UX */}
+            </>
           ) : (
             <div>
-              <label className="block text-sm font-medium">Agent Id</label>
-              <Input value={agentId} onChange={(e) => setAgentId(e.target.value)} />
+              <label className="block text-sm font-medium mb-1.5">Agent ID</label>
+              <Input 
+                value={agentId} 
+                onChange={(e) => setAgentId(e.target.value)} 
+                placeholder="Enter agent ID"
+              />
+              <p className="text-xs text-muted-foreground mt-1">No district specified</p>
             </div>
           )}
 
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={handleClose}>Cancel</Button>
-            <Button type="button" variant="default" onClick={() => { onSubmit(agentId); handleClose(); }} disabled={!agentId}>Assign</Button>
-          </DialogFooter>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Inspection Date</label>
+              <Input 
+                type="date" 
+                value={inspectionDate} 
+                onChange={(e) => setInspectionDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Inspection Time</label>
+              <Input 
+                type="time" 
+                value={inspectionTime} 
+                onChange={(e) => setInspectionTime(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
+
+        <DialogFooter className="mt-6">
+          <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
+          <Button 
+            type="button" 
+            variant="default" 
+            onClick={async () => { 
+              if (agentId.trim() && inspectionDate && inspectionTime) {
+                console.debug('AssignAgentModal: submitting agent=', agentId, 'date', inspectionDate, 'time', inspectionTime);
+                try {
+                  setSubmitting(true);
+                  const ok = await onSubmit(agentId.trim(), inspectionDate, inspectionTime);
+                  if (ok) {
+                    // only close modal on success
+                    handleClose();
+                  } else {
+                    // keep modal open; show a friendly inline error
+                    setError('Failed to assign agent. Please try again.');
+                  }
+                } catch (err: any) {
+                  setError(err?.message || String(err) || 'Failed to assign agent');
+                }
+                finally { setSubmitting(false); }
+              }
+            }} 
+            disabled={agents.length === 0 || !agentId || !inspectionDate || !inspectionTime || submitting}
+          >
+            Assign Agent & Schedule
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -16,7 +16,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getActionsForUser, canViewRequestDetail, type WorkflowAction, type UserRole, type UserContext, type RequestContext, EMI_STATUS } from '@fundifyhub/types';
+import { REQUEST_STATUS, ROLES, DOCUMENT_MESSAGES, ACTION_MESSAGES, getActionsForUser, canViewRequestDetail, type WorkflowAction, type UserRole, type UserContext, type RequestContext, EMI_STATUS, type AdminEMISchedulePreview } from '@fundifyhub/types';
 import { useRouter } from 'next/navigation';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
 import { executeRequestAction } from '@/lib/request-actions';
@@ -34,6 +34,10 @@ import { SignaturePad } from '@/components/SignaturePad';
 import PaymentModal from '@/components/payments/RazorpayPaymentModal';
 import { ActiveLoanSummary } from '@/components/request/ActiveLoanSummary';
 import { DocumentGallery } from '@/components/request/DocumentGallery';
+import { EMIPaymentCard } from '@/components/request/EMIPaymentCard';
+import CreateOfferModal from '@/components/request/CreateOfferModal';
+import AssignAgentModal from '@/components/request/AssignAgentModal';
+import EmiScheduleTable from '@/components/request/EmiScheduleTable';
 import { 
   Calendar, 
   MapPin, 
@@ -75,7 +79,9 @@ interface RequestDetail {
   adminTenureMonths?: number | null;
   adminInterestRate?: number | null;
   offerMadeDate?: string | null;
-  adminEmiSchedule?: any;
+  adminEmiSchedule?: AdminEMISchedulePreview | null;
+  penaltyPercentage?: number | null;
+  lateFeePercentage?: number | null;
   
   // Assignment
   assignedAgentId?: string | null;
@@ -102,7 +108,7 @@ interface RequestDetail {
     createdAt: string;
     action: string;
     actorId?: string | null;
-    metadata?: any;
+    metadata?: Record<string, unknown> | null;
     actor?: {
       id: string;
       firstName?: string;
@@ -198,6 +204,8 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [offerAmount, setOfferAmount] = useState('');
   const [offerTenure, setOfferTenure] = useState('');
   const [offerRate, setOfferRate] = useState('');
+  const [penaltyPercentage, setPenaltyPercentage] = useState('');
+  const [lateFeePercentage, setLateFeePercentage] = useState('');
   const [creatingOffer, setCreatingOffer] = useState(false);
   
   // Bank details
@@ -226,15 +234,39 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [selectedEmiId, setSelectedEmiId] = useState<string | null>(null);
   const [selectedEmiAmount, setSelectedEmiAmount] = useState<number>(0);
   const [selectedEmiNumber, setSelectedEmiNumber] = useState<number>(0);
+  const [selectedEmiBreakdown, setSelectedEmiBreakdown] = useState<any>(null);
   
   // Disbursement form
   const [transactionRef, setTransactionRef] = useState('');
   const [disbursementProof, setDisbursementProof] = useState<string[]>([]);
   const [submittingDisbursement, setSubmittingDisbursement] = useState(false);
 
-  const isCustomer = auth.isCustomer();
-  const isAdmin = auth.hasRole([ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN]);
-  const isAgent = auth.isAgent();
+  /**
+   * Permission Model:
+   * - Customer: Can only act on their OWN requests (customerId === userId)
+   * - Agent: Can only act on requests ASSIGNED to them (assignedAgentId === userId)
+   * - District Admin: Can only act on requests in THEIR districts
+   * - Super Admin: Can act on ALL requests
+   * 
+   * Users with multiple roles are determined by actual ownership/assignment for this specific request.
+   */
+  const isSuperAdmin = auth.hasRole([ROLES.SUPER_ADMIN]);
+  const isDistrictAdmin = auth.hasRole([ROLES.DISTRICT_ADMIN]);
+  const hasAgentRole = auth.isAgent();
+  const hasCustomerRole = auth.isCustomer();
+  
+  // Check actual ownership/assignment for THIS request
+  const isRequestOwner = request && auth.user && request.customerId === auth.user.id;
+  const isAssignedAgent = request && auth.user && request.assignedAgentId === auth.user.id;
+  const hasDistrictAccess = request && auth.user && (
+    isSuperAdmin || 
+    (isDistrictAdmin && auth.user.districts.includes(request.district))
+  );
+
+  // Determine effective role for THIS request (based on actual permissions)
+  const isCustomer = isRequestOwner && hasCustomerRole;
+  const isAgent = isAssignedAgent && hasAgentRole;
+  const isAdmin = hasDistrictAccess && (isSuperAdmin || isDistrictAdmin);
 
   // Build user context with all roles
   const getUserRoles = (): UserRole[] => {
@@ -377,6 +409,8 @@ export default function RequestDetailComplete({ id }: { id: string }) {
     const amount = parseFloat(offerAmount);
     const tenure = parseInt(offerTenure);
     const rate = parseFloat(offerRate);
+    const penalty = parseFloat(penaltyPercentage) || 4;
+    const lateFee = parseFloat(lateFeePercentage) || 0.01;
     
     if (!amount || !tenure || !rate) {
       alert('Please fill all offer details');
@@ -392,7 +426,9 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         body: JSON.stringify({ 
           amount, 
           tenureMonths: tenure, 
-          interestRate: rate 
+          interestRate: rate,
+          penaltyPercentage: penalty,
+          lateFeePercentage: lateFee
         })
       });
       const data = await res.json();
@@ -681,8 +717,20 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
   // Handle workflow actions
   const handleWorkflowAction = async (action: WorkflowAction) => {
-    // Executing workflow action    // Special handlers for actions requiring input/modals
-    if (action.id === 'make-offer' || action.id === 'revise-offer') {
+    if (action.id === 'make-offer' || action.id === 'revise-offer' || action.id === 'make-new-offer') {
+      if ((action.id === 'revise-offer' || action.id === 'make-new-offer') && request) {
+        setOfferAmount(request.adminOfferedAmount?.toString() || '');
+        setOfferTenure(request.adminTenureMonths?.toString() || '');
+        setOfferRate(request.adminInterestRate?.toString() || '');
+        setPenaltyPercentage(request.penaltyPercentage?.toString() || '4');
+        setLateFeePercentage(request.lateFeePercentage?.toString() || '0.01');
+      } else {
+        setOfferAmount('');
+        setOfferTenure('');
+        setOfferRate('');
+        setPenaltyPercentage('4');
+        setLateFeePercentage('0.01');
+      }
       setShowOffer(true);
       return;
     }
@@ -820,14 +868,15 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   ].includes(request.currentStatus as REQUEST_STATUS);
 
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-7xl">
-      {/* Header */}
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold">Request #{request.requestNumber || request.id.slice(0, 8)}</h1>
           <p className="text-muted-foreground mt-1">Track your loan request status</p>
         </div>
-        <StatusBadge status={request.currentStatus} />
+        <StatusBadge status={request.currentStatus} />  
       </div>
 
       {/* Action Buttons - Using Centralized Workflow Engine */}
@@ -878,8 +927,8 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               })}
               
               {/* Customer Pay EMI Button */}
-              {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && (() => {
-                const nextPending = request.loan.emisSchedule.find((e: any) => e.status === EMI_STATUS.PENDING);
+              {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && request.currentStatus === REQUEST_STATUS.ACTIVE && (() => {
+                const nextPending = request.loan.emisSchedule.find((e) => e.status === EMI_STATUS.PENDING);
                 if (!nextPending) return null;
                 
                 return (
@@ -904,62 +953,17 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         </Card>
       )}
 
-      {/* Customer Payment Card - Standalone for better visibility */}
-      {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && (() => {
-        const pendingEmis = request.loan!.emisSchedule!.filter((e: any) => e.status === EMI_STATUS.PENDING || e.status === EMI_STATUS.OVERDUE);
-        if (pendingEmis.length === 0) return null;
-        
-        const nextEmi = pendingEmis[0];
-        const dueDate = new Date(nextEmi.dueDate);
-        const isOverdue = nextEmi.status === EMI_STATUS.OVERDUE;
-        
-        return (
-          <Card className={`mb-6 ${isOverdue ? 'border-red-500 bg-red-50 dark:bg-red-950' : 'border-primary bg-primary/5'}`}>
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-4">
-                <div className={`p-3 ${isOverdue ? 'bg-red-600' : 'bg-primary'} rounded-lg shrink-0`}>
-                  <CreditCard className="h-6 w-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className={`font-semibold mb-2 text-lg ${isOverdue ? 'text-red-900 dark:text-red-100' : 'text-primary'}`}>
-                    {isOverdue ? '⚠️ EMI Payment Overdue' : '💳 EMI Payment Due'}
-                  </h3>
-                  <div className="space-y-2 mb-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">EMI #{nextEmi.emiNumber}</span>
-                      <span className="text-2xl font-bold">₹{nextEmi.emiAmount.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-muted-foreground">Due Date</span>
-                      <span className={isOverdue ? 'text-red-600 font-semibold' : 'font-medium'}>
-                        {dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </span>
-                    </div>
-                    {pendingEmis.length > 1 && (
-                      <div className="text-xs text-muted-foreground">
-                        + {pendingEmis.length - 1} more pending EMI{pendingEmis.length > 2 ? 's' : ''}
-                      </div>
-                    )}
-                  </div>
-                  <Button
-                    size="lg"
-                    className="w-full"
-                    onClick={() => {
-                      setSelectedEmiId(nextEmi.id);
-                      setSelectedEmiAmount(nextEmi.emiAmount);
-                      setSelectedEmiNumber(nextEmi.emiNumber);
-                      setShowPaymentModal(true);
-                    }}
-                  >
-                    <CreditCard className="h-5 w-5 mr-2" />
-                    Pay Now via PhonePe
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })()}
+      {/* EMI Payment Card */}
+      {isCustomer && request.loan && request.currentStatus === REQUEST_STATUS.ACTIVE && (
+        <EMIPaymentCard
+          loan={request.loan}
+          onPayEMI={(emiId, breakdown) => {
+            setSelectedEmiId(emiId);
+            setSelectedEmiBreakdown(breakdown);
+            setShowPaymentModal(true);
+          }}
+        />
+      )}
 
       {/* Agent Inspection Alert - Points to upload section below */}
       {isAgent && request.currentStatus === REQUEST_STATUS.INSPECTION_IN_PROGRESS && (
@@ -986,7 +990,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         </Card>
       )}
 
-      {/* Signature Upload Alert - For Customer in PENDING_SIGNATURE status */}
+      {/* Signature Upload Alert - For Customer Only in PENDING_SIGNATURE status */}
       {isCustomer && request.currentStatus === REQUEST_STATUS.PENDING_SIGNATURE && (
         <Card className="mb-6 border-green-500 bg-green-50 dark:bg-green-950">
           <CardContent className="pt-6">
@@ -1233,95 +1237,68 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       </Dialog>
 
       {/* Offer Creation Modal */}
-      <Dialog open={showOffer} onOpenChange={setShowOffer}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Loan Offer</DialogTitle>
-            <DialogDescription>Set terms for this loan request</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Offered Amount (₹) *</Label>
-              <Input type="number" value={offerAmount} onChange={(e) => setOfferAmount(e.target.value)} placeholder="50000" />
-            </div>
-            <div>
-              <Label>Tenure (Months) *</Label>
-              <Input type="number" value={offerTenure} onChange={(e) => setOfferTenure(e.target.value)} placeholder="12" />
-            </div>
-            <div>
-              <Label>Interest Rate (% per annum) *</Label>
-              <Input type="number" step="0.1" value={offerRate} onChange={(e) => setOfferRate(e.target.value)} placeholder="10.5" />
-            </div>
-            <Button onClick={handleCreateOffer} disabled={creatingOffer} className="w-full">
-              {creatingOffer ? 'Creating...' : 'Send Offer'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CreateOfferModal 
+        open={showOffer}
+        onOpenChange={setShowOffer}
+        requestId={request.id}
+        onSubmit={async (payload) => {
+          setCreatingOffer(true);
+          try {
+            const res = await fetch(`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.CREATE_OFFER(id)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ 
+                amount: payload.amount, 
+                tenureMonths: payload.tenureMonths, 
+                interestRate: payload.interestRate,
+                penaltyPercentage: payload.penaltyPercentage,
+                lateFeePercentage: payload.lateFeePercentage
+              })
+            });
+            const data = await res.json();
+            if (res.ok) {
+              setRequest(data.data.request);
+              setShowOffer(false);
+            } else {
+              throw new Error(data.message || 'Failed to create offer');
+            }
+          } catch (err: any) {
+            throw err;
+          } finally {
+            setCreatingOffer(false);
+          }
+        }}
+      />
 
       {/* Agent Assignment Modal */}
-      <Dialog open={showAssignAgent} onOpenChange={(open) => {
-        setShowAssignAgent(open);
-        if (open) loadAgents();
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {request.assignedAgentId ? 'Reassign Agent' : 'Assign Agent for Inspection'}
-            </DialogTitle>
-            <DialogDescription>
-              {request.assignedAgentId 
-                ? `Currently assigned: ${request.assignedAgent?.firstName} ${request.assignedAgent?.lastName}. Select a different agent in ${request.district}`
-                : `Select an agent in ${request.district}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Select Agent *</Label>
-              <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  {agents.map(agent => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.firstName} {agent.lastName} {agent.phoneNumber && `(${agent.phoneNumber})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {agents.length === 0 && <p className="text-sm text-muted-foreground mt-1">No available agents in this district</p>}
-            </div>
-            
-            <div>
-              <Label>Inspection Date *</Label>
-              <Input 
-                type="date" 
-                value={inspectionDate} 
-                onChange={(e) => setInspectionDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-              />
-            </div>
-            
-            <div>
-              <Label>Inspection Time *</Label>
-              <Input 
-                type="time" 
-                value={inspectionTime} 
-                onChange={(e) => setInspectionTime(e.target.value)}
-              />
-            </div>
-            
-            <Button 
-              onClick={handleAssignAgent} 
-              disabled={assigningAgent || !selectedAgent || !inspectionDate || !inspectionTime} 
-              className="w-full"
-            >
-              {assigningAgent ? 'Assigning...' : 'Assign Agent & Schedule Inspection'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AssignAgentModal 
+        open={showAssignAgent}
+        onOpenChange={setShowAssignAgent}
+        district={request.district}
+        onSubmit={async (agentId: string, inspectionDate: string, inspectionTime: string) => {
+          setAssigningAgent(true);
+          try {
+            const inspectionDateTime = inspectionDate && inspectionTime ? new Date(`${inspectionDate}T${inspectionTime}`).toISOString() : undefined;
+            const ok = await executeRequestAction('assign-agent', {
+              requestId: id,
+              onSuccess: (data) => {
+                setRequest(data);
+                setShowAssignAgent(false);
+              },
+              onError: (error) => {
+                alert(error || 'Failed to assign agent');
+              }
+            }, { agentId, inspectionDateTime });
+            return Boolean(ok);
+          } catch (err: any) {
+            alert('Failed to assign agent');
+            return false;
+          } finally {
+            setAssigningAgent(false);
+          }
+        }}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -1386,66 +1363,6 @@ export default function RequestDetailComplete({ id }: { id: string }) {
             </CardContent>
           </Card>
 
-          {/* Offer Details - Customer Only */}
-          {showOfferToCustomer && (
-            <Card className="border-primary">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  Loan Offer Details
-                </CardTitle>
-                <CardDescription>Review the offer from our team</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-primary/5 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Amount</p>
-                    <p className="text-2xl font-bold text-primary">₹{request.adminOfferedAmount?.toLocaleString()}</p>
-                  </div>
-                  <div className="text-center p-4 bg-primary/5 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Tenure</p>
-                    <p className="text-2xl font-bold">{request.adminTenureMonths} months</p>
-                  </div>
-                  <div className="text-center p-4 bg-primary/5 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Interest</p>
-                    <p className="text-2xl font-bold">{request.adminInterestRate}%</p>
-                  </div>
-                </div>
-
-                {request.adminEmiSchedule && (
-                  <div className="pt-4 border-t">
-                    <h4 className="font-semibold mb-4">EMI Schedule</h4>
-                    <div className="rounded-lg border overflow-hidden">
-                      <div className="overflow-x-auto max-h-96">
-                        <table className="w-full text-sm">
-                          <thead className="bg-muted sticky top-0">
-                            <tr>
-                              <th className="text-left p-3 font-medium">EMI #</th>
-                              <th className="text-left p-3 font-medium">Due Date</th>
-                              <th className="text-right p-3 font-medium">Amount</th>
-                              <th className="text-right p-3 font-medium">Principal</th>
-                              <th className="text-right p-3 font-medium">Interest</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {request.adminEmiSchedule.emiSchedule?.map((emi: any, idx: number) => (
-                              <tr key={idx} className="border-t hover:bg-muted/50">
-                                <td className="p-3">{emi.installment}</td>
-                                <td className="p-3">{new Date(emi.paymentDate).toLocaleDateString('en-IN')}</td>
-                                <td className="p-3 text-right font-medium">₹{Number(emi.paymentAmount).toLocaleString()}</td>
-                                <td className="p-3 text-right">₹{Number(emi.principal).toLocaleString()}</td>
-                                <td className="p-3 text-right">₹{Number(emi.interest).toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
 
           {/* Documents */}
           <Card>
@@ -1739,67 +1656,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
 
                     {/* Actual EMI Schedule Table */}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2 font-semibold">#</th>
-                            <th className="text-left p-2 font-semibold">Due Date</th>
-                            <th className="text-right p-2 font-semibold">EMI Amount</th>
-                            <th className="text-right p-2 font-semibold">Principal</th>
-                            <th className="text-right p-2 font-semibold">Interest</th>
-                            <th className="text-center p-2 font-semibold">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {request.loan.emisSchedule.map((emi: any) => {
-                            const isPending = emi.status === 'PENDING';
-                            const isPaid = emi.status === 'PAID';
-                            const isOverdue = emi.status === 'OVERDUE';
-                            const dueDate = new Date(emi.dueDate);
-                            const isUpcoming = dueDate > new Date();
-                            
-                            return (
-                              <tr key={emi.id} className={`border-b hover:bg-muted/50 ${isPaid ? 'bg-green-50 dark:bg-green-950/20' : isOverdue ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
-                                <td className="p-2 font-medium">#{emi.emiNumber}</td>
-                                <td className="p-2">
-                                  <div className="flex flex-col">
-                                    <span>{dueDate.toLocaleDateString()}</span>
-                                    {isUpcoming && isPending && (
-                                      <span className="text-xs text-muted-foreground">
-                                        ({Math.ceil((dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days left)
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="p-2 text-right font-semibold">₹{emi.emiAmount.toLocaleString()}</td>
-                                <td className="p-2 text-right text-muted-foreground">₹{emi.principalAmount.toLocaleString()}</td>
-                                <td className="p-2 text-right text-muted-foreground">₹{emi.interestAmount.toLocaleString()}</td>
-                                <td className="p-2 text-center">
-                                  {isPaid && (
-                                    <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400 border-green-300">
-                                      <CheckCircle className="h-3 w-3 mr-1" />
-                                      Paid
-                                    </Badge>
-                                  )}
-                                  {isOverdue && (
-                                    <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-400 border-red-300">
-                                      <AlertCircle className="h-3 w-3 mr-1" />
-                                      Overdue
-                                    </Badge>
-                                  )}
-                                  {isPending && !isOverdue && (
-                                    <Badge variant="outline" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-400 border-yellow-300">
-                                      <Clock className="h-3 w-3 mr-1" />
-                                      Pending
-                                    </Badge>
-                                  )}
-                                </td>
-
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                      <EmiScheduleTable rows={request.loan.emisSchedule} mode="loan" />
                     </div>
 
                     {/* Loan Summary */}
@@ -1828,57 +1685,16 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                     <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                       <p className="text-sm text-blue-800 dark:text-blue-400 flex items-center gap-2">
                         <AlertCircle className="h-4 w-4" />
-                        <span className="font-medium">Preview:</span> This is the proposed EMI schedule. Actual payment dates will start after amount disbursement.
+                        <span className="font-medium">Preview:</span> This is the proposed EMI schedule. Actual payment dates will start after loan approval.
                       </p>
                     </div>
 
-                    {/* Preview Summary */}
-                    <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Loan Amount</p>
-                        <p className="text-lg font-bold">₹{request.adminOfferedAmount?.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Monthly EMI</p>
-                        <p className="text-lg font-bold">₹{request.adminEmiSchedule.monthlyPayment?.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Interest Rate</p>
-                        <p className="text-lg font-bold">{request.adminInterestRate}% p.a.</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Tenure</p>
-                        <p className="text-lg font-bold">{request.adminTenureMonths} months</p>
-                      </div>
-                    </div>
-
-                    {/* Preview EMI Table - Without dates */}
+                    {/* Simplified Preview - Only Principal, Interest, Amount */}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2 font-semibold">Installment</th>
-                            <th className="text-right p-2 font-semibold">EMI Amount</th>
-                            <th className="text-right p-2 font-semibold">Principal</th>
-                            <th className="text-right p-2 font-semibold">Interest</th>
-                            <th className="text-right p-2 font-semibold">Balance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {request.adminEmiSchedule.emiSchedule?.map((emi: any, idx: number) => (
-                            <tr key={idx} className="border-b hover:bg-muted/50">
-                              <td className="p-2 font-medium">#{emi.installment}</td>
-                              <td className="p-2 text-right font-semibold">₹{emi.paymentAmount?.toLocaleString()}</td>
-                              <td className="p-2 text-right text-muted-foreground">₹{emi.principal?.toLocaleString()}</td>
-                              <td className="p-2 text-right text-muted-foreground">₹{emi.interest?.toLocaleString()}</td>
-                              <td className="p-2 text-right text-muted-foreground">₹{emi.remainingBalance?.toLocaleString()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <EmiScheduleTable rows={request.adminEmiSchedule.emiSchedule} mode="preview" />
                     </div>
 
-                    {/* Preview Summary */}
+                    {/* Summary */}
                     <div className="mt-6 p-4 bg-muted rounded-lg grid grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
                         <p className="text-xs text-muted-foreground mb-1">Total Interest</p>
@@ -2113,6 +1929,28 @@ export default function RequestDetailComplete({ id }: { id: string }) {
           </Card>
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && selectedEmiId && request?.loan && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setSelectedEmiId(null);
+            setSelectedEmiBreakdown(null);
+          }}
+          loanId={request.loan.id}
+          emiId={selectedEmiId}
+          emiNumber={selectedEmiNumber}
+          amount={selectedEmiBreakdown?.totalDue || selectedEmiAmount}
+          breakdown={selectedEmiBreakdown}
+          onSuccess={() => {
+            // Reload the page to show updated EMI status
+            window.location.reload();
+          }}
+        />
+      )}
+      </div>
     </div>
   );
 }
@@ -2132,7 +1970,7 @@ function StatusBadge({ status }: { status: string }) {
   };
 
   return (
-    <Badge variant={getVariant() as any} className="px-4 py-2 text-sm flex items-center gap-2 w-fit">
+    <Badge variant={getVariant()} className="px-4 py-2 text-sm flex items-center gap-2 w-fit">
       {getIcon()}
       {status.replace(/_/g, ' ')}
     </Badge>
@@ -2151,7 +1989,22 @@ function InfoItem({ label, value, icon }: { label: string; value: string; icon?:
   );
 }
 
-function TimelineEvent({ event, isLast }: { event: any; isLast: boolean }) {
+interface TimelineEvent {
+  id: string;
+  date: string;
+  type: string;
+  title: string;
+  action: string;
+  actor?: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+  } | null;
+  roleLabel?: string;
+  description?: string | Array<{ key: string; value: string }>;
+}
+
+function TimelineEvent({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
   const getIcon = () => {
     const action = event.action?.toUpperCase() || '';
     if (action.includes('REJECT') || action.includes('CANCEL') || action.includes('DECLINE')) {
@@ -2193,7 +2046,7 @@ function TimelineEvent({ event, isLast }: { event: any; isLast: boolean }) {
               <p>{event.description}</p>
             ) : Array.isArray(event.description) ? (
               <ul className="list-disc list-inside space-y-1">
-                {event.description.map((item: any, idx: number) => (
+                {event.description.map((item, idx) => (
                   <li key={idx}>
                     <strong>{item.key}:</strong> {item.value}
                   </li>
@@ -2208,8 +2061,8 @@ function TimelineEvent({ event, isLast }: { event: any; isLast: boolean }) {
 }
 
 // Helper Functions
-function buildTimeline(request: RequestDetail) {
-  const events: any[] = [];
+function buildTimeline(request: RequestDetail): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
 
   // Add initial submission event using request createdAt
   // Fallback to earliest history entry if createdAt not available
@@ -2224,10 +2077,10 @@ function buildTimeline(request: RequestDetail) {
     type: 'history',
     title: 'Request Submitted',
     action: 'REQUEST_SUBMITTED',
-    actor: request.customer,
+    actor: request.customer || null,
     roleLabel: 'Customer',
     description: [
-      { key: 'Asset Type', value: request.assetType },
+      { key: 'Asset Type', value: request.assetType || 'N/A' },
       { key: 'Requested Amount', value: `₹${request.requestedAmount.toLocaleString()}` },
       { key: 'District', value: request.district },
     ],

@@ -13,7 +13,8 @@ import {
   Calendar,
   User,
   FileCheck,
-  Clock
+  Clock,
+  Trash2
 } from 'lucide-react';
 import { DOCUMENT_CATEGORY, DOCUMENT_TYPE } from '@fundifyhub/types';
 import { ImageViewerModal } from './ImageViewerModal';
@@ -34,11 +35,43 @@ interface DocumentGalleryProps {
   documents: Document[];
   title?: string;
   showUploader?: boolean;
+  canDelete?: boolean;
+  currentUserId?: string;
+  onDelete?: (documentId: string) => Promise<void>;
 }
 
-export function DocumentGallery({ documents, title = 'Documents', showUploader = true }: DocumentGalleryProps) {
+export function DocumentGallery({ 
+  documents, 
+  title = 'Documents', 
+  showUploader = true,
+  canDelete = false,
+  currentUserId,
+  onDelete
+}: DocumentGalleryProps) {
   const [selectedImage, setSelectedImage] = useState<{ url: string; fileName: string; type: string } | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (documentId: string) => {
+    if (!onDelete) return;
+    
+    if (confirm('Are you sure you want to delete this document?')) {
+      setDeletingId(documentId);
+      try {
+        await onDelete(documentId);
+      } catch (error) {
+        console.error('Failed to delete document:', error);
+      } finally {
+        setDeletingId(null);
+      }
+    }
+  };
+
+  const canUserDelete = (doc: Document) => {
+    if (!canDelete || !onDelete) return false;
+    if (!currentUserId) return false;
+    return doc.uploadedBy === currentUserId;
+  };
 
   // Categorize documents
   const categorizedDocs = {
@@ -205,19 +238,34 @@ export function DocumentGallery({ documents, title = 'Documents', showUploader =
                   </div>
                 )}
 
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="w-full"
-                  disabled={!doc.url}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (doc.url) window.open(doc.url, '_blank');
-                  }}
-                >
-                  <Download className="h-3 w-3 mr-2" />
-                  Download
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex-1"
+                    disabled={!doc.url}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (doc.url) window.open(doc.url, '_blank');
+                    }}
+                  >
+                    <Download className="h-3 w-3 mr-2" />
+                    Download
+                  </Button>
+                  {canUserDelete(doc) && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={deletingId === doc.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(doc.id);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
