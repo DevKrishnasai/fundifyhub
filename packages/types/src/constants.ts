@@ -285,17 +285,7 @@ export const ALLOWED_DOCUMENT_TYPES = [...ALLOWED_IMAGE_TYPES, 'application/pdf'
 export const POLL_INTERVAL_MS = 8000; // 8 seconds
 export const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
 
-// Single status template (use the placeholders {{status}} and {{link}} when rendering)
-// - STATUS_TEMPLATE_TEXT: a single formatted template string
-// - STATUS_TEMPLATE_DEFAULTS: default header/description/footer that can be used
-export const STATUS_TEMPLATE_TEXT = `{{header}}\n\n{{description}}\n\nStatus : {{status}}\nLink : {{link}}\n\n{{footer}}`;
-
-export const STATUS_TEMPLATE_DEFAULTS = {
-  header: 'FundifyHub - Request Update',
-  description:
-    'There has been an update to your request. Please review the status below for more details.',
-  footer: 'If you need help, contact your district admin or reply to this message.',
-};
+// (Status template defaults were intentionally inlined in the template files)
 
 // Document display messages
 export const DOCUMENT_MESSAGES = {

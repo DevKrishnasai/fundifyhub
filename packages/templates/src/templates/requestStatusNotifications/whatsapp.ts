@@ -1,4 +1,4 @@
-﻿import { StatusPayloadType, STATUS_TEMPLATE_DEFAULTS } from '@fundifyhub/types';
+﻿import { StatusPayloadType } from '@fundifyhub/types';
 
 function renderTransitions(transitions?: StatusPayloadType['transitions']) {
   if (!transitions || transitions.length === 0) return '';
@@ -8,11 +8,11 @@ function renderTransitions(transitions?: StatusPayloadType['transitions']) {
 }
 
 export const renderStatusWhatsApp = (vars: StatusPayloadType) => {
-  const header = vars.header ?? STATUS_TEMPLATE_DEFAULTS.header;
-  const description = vars.description ?? STATUS_TEMPLATE_DEFAULTS.description;
-  const footer = vars.footer ?? STATUS_TEMPLATE_DEFAULTS.footer;
+  const header = vars.header ?? 'FundifyHub - Request Update';
+  const description = vars.description ?? 'There has been an update to your request. Please review the status below for more details.';
+  const footer = vars.footer ?? 'If you need help, contact your district admin or reply to this message.';
 
-  const status = vars.status ?? 'Updated';
+  const currentStatus = vars.currentStatus ?? 'Updated';
   const previousStatus = vars.previousStatus ?? '—';
   const updatedBy = vars.updatedBy ?? 'System';
   const link = vars.link ?? '';
@@ -25,7 +25,7 @@ export const renderStatusWhatsApp = (vars: StatusPayloadType) => {
     ` ${description}\n\n` +
     ` *Status Change*\n` +
     ` *Previous:* ${previousStatus}\n` +
-    ` *Current:* ${status}\n` +
+    ` *Current:* ${currentStatus}\n` +
     ` *Updated By:* ${updatedBy}\n` +
     ` *When:* ${time}\n\n` +
     (transitionsBlock ? ` *Transition History*\n${transitionsBlock}\n\n` : '') +

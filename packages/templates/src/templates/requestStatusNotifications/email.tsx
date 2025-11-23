@@ -14,7 +14,7 @@ import {
 
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { StatusPayloadType, STATUS_TEMPLATE_DEFAULTS } from '@fundifyhub/types';
+import { StatusPayloadType } from '@fundifyhub/types';
 
 interface ExtendedStatusPayload extends StatusPayloadType {
   previousStatus?: string;
@@ -27,7 +27,7 @@ interface ExtendedStatusPayload extends StatusPayloadType {
 const StatusEmail = ({
   header,
   description,
-  status,
+  currentStatus,
   previousStatus,
   updatedBy,
   time,
@@ -38,9 +38,9 @@ const StatusEmail = ({
   companyUrl,
   transitions,
 }: ExtendedStatusPayload) => {
-  const hdr = header ?? STATUS_TEMPLATE_DEFAULTS.header;
-  const desc = description ?? STATUS_TEMPLATE_DEFAULTS.description;
-  const ftr = footer ?? STATUS_TEMPLATE_DEFAULTS.footer;
+  const hdr = 'FundifyHub - Request Update';
+  const desc = 'There has been an update to your request. Please review the status below for more details.';
+  const ftr =  'If you need help, contact your district admin or reply to this message.';
 
   return (
     <Html lang="en">
@@ -48,7 +48,7 @@ const StatusEmail = ({
 
       {/* Email preview text */}
       <Preview>
-        {hdr} – Status updated to {status}
+        {hdr} – Status updated to {currentStatus}
       </Preview>
 
       <Body style={main}>
@@ -80,7 +80,7 @@ const StatusEmail = ({
             <Section style={statusCard}>
               <div style={statusHeaderRow}>
                 <Text style={label}>New Status</Text>
-                <span style={statusPill}>{status}</span>
+                <span style={statusPill}>{currentStatus}</span>
               </div>
 
               <div style={infoGrid}>

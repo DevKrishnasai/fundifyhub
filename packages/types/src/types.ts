@@ -71,7 +71,7 @@ export interface StatusPayloadType {
   phoneNumber?: string;
   customerName?: string;
   // Core dynamic fields
-  status: string;
+  currentStatus: string;
   link: string;
   // Optional overrides for header/description/footer
   header?: string;
