@@ -14,15 +14,7 @@ import {
 
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { StatusPayloadType } from '@fundifyhub/types';
-
-interface ExtendedStatusPayload extends StatusPayloadType {
-  previousStatus?: string;
-  updatedBy?: string;
-  time?: string;
-  logoUrl?: string;
-  companyUrl?: string;
-}
+import { RequestStatusNotificationsPayloadType } from '@fundifyhub/types';
 
 const StatusEmail = ({
   header,
@@ -37,10 +29,10 @@ const StatusEmail = ({
   logoUrl,
   companyUrl,
   transitions,
-}: ExtendedStatusPayload) => {
+}: RequestStatusNotificationsPayloadType) => {
   const hdr = 'FundifyHub - Request Update';
   const desc = 'There has been an update to your request. Please review the status below for more details.';
-  const ftr =  'If you need help, contact your district admin or reply to this message.';
+  const ftr = 'If you need help, contact your district admin or reply to this message.';
 
   return (
     <Html lang="en">
@@ -129,9 +121,7 @@ const StatusEmail = ({
   );
 };
 
-export const renderEmail = (
-  vars: ExtendedStatusPayload
-) => {
+export const renderEmail = (vars: RequestStatusNotificationsPayloadType) => {
   return render(<StatusEmail {...vars} />);
 };
 

@@ -66,25 +66,25 @@ export interface LoginAlertPayloadType {
   companyName: string;
 }
 
-export interface StatusPayloadType {
-  email?: string;
-  phoneNumber?: string;
-  customerName?: string;
+export interface RequestStatusNotificationsPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
   // Core dynamic fields
   currentStatus: string;
   link: string;
   // Optional overrides for header/description/footer
-  header?: string;
-  description?: string;
-  footer?: string;
+  header: string;
+  description: string;
+  footer: string;
   // Context
-  companyName?: string;
+  companyName: string;
   supportUrl?: string;
-  requestId?: string;
+  requestId: string;
   // Optional richer fields
-  previousStatus?: string;
-  updatedBy?: string;
-  time?: string; // ISO or friendly string
+  previousStatus: string;
+  updatedBy: string;
+  time: string; // ISO or friendly string
   // list of transitions (from -> to) to render a timeline
   transitions?: Array<{
     from: string;
@@ -98,7 +98,7 @@ export interface StatusPayloadType {
 }
 
 export interface AssetPledgePayloadType {
-  customerName?: string;
+  customerName: string;
   assetName: string;
   amount: number;
   district: string;
@@ -107,24 +107,24 @@ export interface AssetPledgePayloadType {
   timestamp: string;
   additionalDescription?: string;
   recipient?: string;
-  email?: string;
-  phoneNumber?: string;
-  adminDashboardUrl?: string;
+  email: string;
+  phoneNumber: string;
+  adminDashboardUrl: string;
   supportUrl?: string;
 }
 
 export interface RequestSubmittedPayloadType {
-  email?: string;
-  phoneNumber?: string;
-  customerName?: string;
+  email: string;
+  phoneNumber: string;
+  customerName: string;
   requestId: string;
-  assetName?: string;
-  amount?: number;
-  district?: string;
-  submittedAt?: string; // ISO timestamp
-  companyName?: string;
+  assetName: string;
+  amount: number;
+  district: string;
+  submittedAt: string; // ISO timestamp
+  companyName: string;
   supportUrl?: string;
-  dashboardUrl?: string; // link to view the request
+  dashboardUrl: string; // link to view the request
 }
 
 export type TemplatePayloadMapType = {
@@ -132,7 +132,7 @@ export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.WELCOME]: WelcomePayloadType;
   [TEMPLATE_NAMES.LOGIN_ALERT]: LoginAlertPayloadType;
   [TEMPLATE_NAMES.ASSET_PLEDGE]: AssetPledgePayloadType;
-  [TEMPLATE_NAMES.REQUEST_STATUS_NOTIFICATIONS]: StatusPayloadType;
+  [TEMPLATE_NAMES.REQUEST_STATUS_NOTIFICATIONS]: RequestStatusNotificationsPayloadType;
   [TEMPLATE_NAMES.REQUEST_SUBMITTED]: RequestSubmittedPayloadType;
 };
 
