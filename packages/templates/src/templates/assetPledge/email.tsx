@@ -79,21 +79,7 @@ const AssetPledgeEmail = ({
 );
 
 export const renderEmail = (vars: AssetPledgePayloadType) => {
-  const props: AssetPledgePayloadType = {
-    email: vars.email,
-    phoneNumber: vars.phoneNumber,
-    customerName: vars.customerName,
-    assetName: vars.assetName,
-    amount: vars.amount,
-    district: vars.district,
-    requestId: vars.requestId,
-    companyName: vars.companyName,
-    timestamp: vars.timestamp,
-    adminDashboardUrl: vars.adminDashboardUrl,
-    supportUrl: vars.supportUrl,
-  };
-
-  return render(<AssetPledgeEmail {...props} />);
+  return render(<AssetPledgeEmail {...vars} />);
 };
 
 export default renderEmail;

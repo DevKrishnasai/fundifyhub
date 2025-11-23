@@ -98,8 +98,39 @@ export interface LoginAlertPayloadType {
   companyName: string;
 }
 
+export interface RequestStatusNotificationsPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
+  // Core dynamic fields
+  currentStatus: string;
+  link: string;
+  // Optional overrides for header/description/footer
+  header: string;
+  description: string;
+  footer: string;
+  // Context
+  companyName: string;
+  supportUrl?: string;
+  requestId: string;
+  // Optional richer fields
+  previousStatus: string;
+  updatedBy: string;
+  time: string; // ISO or friendly string
+  // list of transitions (from -> to) to render a timeline
+  transitions?: Array<{
+    from: string;
+    to: string;
+    by?: string;
+    time?: string;
+  }>;
+  // branding
+  logoUrl?: string;
+  companyUrl?: string;
+}
+
 export interface AssetPledgePayloadType {
-  customerName?: string;
+  customerName: string;
   assetName: string;
   amount: number;
   district: string;
@@ -108,12 +139,11 @@ export interface AssetPledgePayloadType {
   timestamp: string;
   additionalDescription?: string;
   recipient?: string;
-  email?: string;
-  phoneNumber?: string;
-  adminDashboardUrl?: string;
+  email: string;
+  phoneNumber: string;
+  adminDashboardUrl: string;
   supportUrl?: string;
 }
-
 export type EMIReminderPayloadType = {
   customerName: string;
   email: string;
@@ -143,6 +173,57 @@ export type EMIOverduePayloadType = {
   paymentUrl?: string;
   companyName?: string;
 };
+// Request related payloads
+export interface RequestSubmittedPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
+  requestId: string;
+  assetName: string;
+  amount: number;
+  district: string;
+  submittedAt: string; // ISO timestamp
+  companyName: string;
+  supportUrl?: string;
+  dashboardUrl: string; // link to view the request
+}
+
+export interface RequestStatusNotificationsPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
+  // Core dynamic fields
+  currentStatus: string;
+  link: string;
+  // Optional overrides for header/description/footer
+  header: string;
+  description: string;
+  footer: string;
+  // Context
+  companyName: string;
+  supportUrl?: string;
+  requestId: string;
+  // Optional richer fields
+  previousStatus: string;
+  updatedBy: string;
+  time: string; // ISO or friendly string
+  transitions?: Array<{ from: string; to: string; by?: string; time?: string; }>;
+  logoUrl?: string;
+  companyUrl?: string;
+}
+export interface RequestSubmittedPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
+  requestId: string;
+  assetName: string;
+  amount: number;
+  district: string;
+  submittedAt: string; // ISO timestamp
+  companyName: string;
+  supportUrl?: string;
+  dashboardUrl: string; // link to view the request
+}
 
 export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.OTP_VERIFICATION]: OTPVerificationPayloadType;
@@ -151,6 +232,8 @@ export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.ASSET_PLEDGE]: AssetPledgePayloadType;
   [TEMPLATE_NAMES.EMI_REMINDER]: EMIReminderPayloadType;
   [TEMPLATE_NAMES.EMI_OVERDUE]: EMIOverduePayloadType;
+  [TEMPLATE_NAMES.REQUEST_STATUS_NOTIFICATIONS]: RequestStatusNotificationsPayloadType;
+  [TEMPLATE_NAMES.REQUEST_SUBMITTED]: RequestSubmittedPayloadType;
 };
 
 // -----------TEMPLATE RELATED END-----------

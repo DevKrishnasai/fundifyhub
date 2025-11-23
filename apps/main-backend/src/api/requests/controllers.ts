@@ -459,8 +459,8 @@ export async function updateRequestStatusController(req: Request, res: Response)
       const customer = await prisma.user.findUnique({ where: { id: updatedRequest.customerId } });
       if (customer) {
         await queueClient.addAJob(TEMPLATE_NAMES.LOGIN_ALERT, {
-          email: customer.email || '',
-          phoneNumber: customer.phoneNumber || '',
+          email: customer.email,
+          phoneNumber: customer.phoneNumber,
           customerName: `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Customer',
           device: `Request status updated to ${toStatus}`,
           location: updatedRequest.district,
@@ -617,8 +617,8 @@ export async function createOfferController(req: Request, res: Response): Promis
           requestId: updatedRequest.id,
           companyName: 'FundifyHub',
           timestamp: new Date().toISOString(),
-          email: customer.email || undefined,
-          phoneNumber: customer.phoneNumber || undefined,
+          email: customer.email,
+          phoneNumber: customer.phoneNumber,
           adminDashboardUrl: 'https://admin.fundifyhub.example/requests/' + updatedRequest.id,
           supportUrl: 'https://fundifyhub.example/support'
         }, { services: [SERVICE_NAMES.EMAIL] });
