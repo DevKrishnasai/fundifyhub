@@ -66,6 +66,37 @@ export interface LoginAlertPayloadType {
   companyName: string;
 }
 
+export interface StatusPayloadType {
+  email?: string;
+  phoneNumber?: string;
+  customerName?: string;
+  // Core dynamic fields
+  status: string;
+  link: string;
+  // Optional overrides for header/description/footer
+  header?: string;
+  description?: string;
+  footer?: string;
+  // Context
+  companyName?: string;
+  supportUrl?: string;
+  requestId?: string;
+  // Optional richer fields
+  previousStatus?: string;
+  updatedBy?: string;
+  time?: string; // ISO or friendly string
+  // list of transitions (from -> to) to render a timeline
+  transitions?: Array<{
+    from: string;
+    to: string;
+    by?: string;
+    time?: string;
+  }>;
+  // branding
+  logoUrl?: string;
+  companyUrl?: string;
+}
+
 export interface AssetPledgePayloadType {
   customerName?: string;
   assetName: string;
@@ -82,11 +113,27 @@ export interface AssetPledgePayloadType {
   supportUrl?: string;
 }
 
+export interface RequestSubmittedPayloadType {
+  email?: string;
+  phoneNumber?: string;
+  customerName?: string;
+  requestId: string;
+  assetName?: string;
+  amount?: number;
+  district?: string;
+  submittedAt?: string; // ISO timestamp
+  companyName?: string;
+  supportUrl?: string;
+  dashboardUrl?: string; // link to view the request
+}
+
 export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.OTP_VERIFICATION]: OTPVerificationPayloadType;
   [TEMPLATE_NAMES.WELCOME]: WelcomePayloadType;
   [TEMPLATE_NAMES.LOGIN_ALERT]: LoginAlertPayloadType;
   [TEMPLATE_NAMES.ASSET_PLEDGE]: AssetPledgePayloadType;
+  [TEMPLATE_NAMES.STATUS]: StatusPayloadType;
+  [TEMPLATE_NAMES.REQUEST_SUBMITTED]: RequestSubmittedPayloadType;
 };
 
 // -----------TEMPLATE RELATED END-----------
