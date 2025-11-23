@@ -132,7 +132,7 @@ export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.WELCOME]: WelcomePayloadType;
   [TEMPLATE_NAMES.LOGIN_ALERT]: LoginAlertPayloadType;
   [TEMPLATE_NAMES.ASSET_PLEDGE]: AssetPledgePayloadType;
-  [TEMPLATE_NAMES.STATUS]: StatusPayloadType;
+  [TEMPLATE_NAMES.REQUEST_STATUS_NOTIFICATIONS]: StatusPayloadType;
   [TEMPLATE_NAMES.REQUEST_SUBMITTED]: RequestSubmittedPayloadType;
 };
 

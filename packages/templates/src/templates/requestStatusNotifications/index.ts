@@ -2,7 +2,7 @@ import { SERVICE_NAMES, TEMPLATE_NAMES, TemplateDefinitionType } from '@fundifyh
 import renderEmail from './email';
 import renderWhatsApp from './whatsapp';
 
-const tpl: TemplateDefinitionType<TEMPLATE_NAMES.STATUS> = {
+const tpl: TemplateDefinitionType<TEMPLATE_NAMES.REQUEST_STATUS_NOTIFICATIONS> = {
   supportedServices: [SERVICE_NAMES.WHATSAPP, SERVICE_NAMES.EMAIL],
   defaults: { priority: 2, attempts: 2, delay: 0 },
   renderEmail,
