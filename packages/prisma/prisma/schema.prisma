@@ -17,8 +17,8 @@ model User {
   email           String   @unique
   firstName       String
   lastName        String
-  phoneNumber     String?  @unique
-  password        String?  // Hashed password for email/password login
+  phoneNumber     String  @unique
+  password        String  // Hashed password for email/password login
   roles           String[] @default(["CUSTOMER"]) // Array of roles: CUSTOMER, AGENT, ADMIN
   // Support multiple districts per user. This replaces the legacy single-string
   // district column and stores an array of strings. Default to empty array.

@@ -20,13 +20,18 @@
     "build": "tsc -b --force",
     "dev": "tsc --watch",
     "lint": "eslint .",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "test:templates": "ts-node src/__tests__/send-templates.ts"
   },
   "dependencies": {
     "@fundifyhub/templates": "workspace:*",
     "@fundifyhub/types": "workspace:*",
     "bullmq": "^5.63.0",
+    "dotenv": "^16.4.5",
     "zod": "^3.25.67"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
 }

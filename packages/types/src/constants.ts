@@ -16,6 +16,8 @@ export enum TEMPLATE_NAMES {
   OTP_VERIFICATION = 'OTP_VERIFICATION',
   LOGIN_ALERT = 'LOGIN_ALERT',
   ASSET_PLEDGE = 'ASSET_PLEDGE',
+  REQUEST_STATUS_NOTIFICATIONS = 'REQUEST_STATUS_NOTIFICATIONS',
+  REQUEST_SUBMITTED = 'REQUEST_SUBMITTED',
 };
 
 export enum QUEUE_NAMES {
@@ -282,6 +284,8 @@ export const ALLOWED_DOCUMENT_TYPES = [...ALLOWED_IMAGE_TYPES, 'application/pdf'
 
 export const POLL_INTERVAL_MS = 8000; // 8 seconds
 export const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
+
+// (Status template defaults were intentionally inlined in the template files)
 
 // Document display messages
 export const DOCUMENT_MESSAGES = {
