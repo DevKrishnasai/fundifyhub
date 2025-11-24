@@ -10,14 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 import toast from "react-hot-toast"
-import { Camera, CheckCircle, X, FileImage, FileText } from "lucide-react"
+import { Camera, CheckCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
 import { post } from '@/lib/api-client'
 import { AssetUpload } from "@/lib/uploadthing"
 import type { UploadedFile } from "@fundifyhub/types"
 import { ASSET_TYPE_OPTIONS, ASSET_CONDITION_OPTIONS } from "@fundifyhub/types"
-import Image from "next/image"
 
 const STORAGE_KEY = 'upload_asset_form_state';
 
@@ -90,27 +89,6 @@ export default function UploadAssetPage() {
 
   const handleAssetUploadError = (error: Error) => {
     toast.error(`Upload failed: ${error.message}`);
-  };
-
-  const handleDeletePhoto = (index: number) => {
-    setAssetPhotos(prev => prev.filter((_, i) => i !== index));
-    toast.success('Photo removed');
-  };
-
-  const isImageFile = (fileType: string) => {
-    return fileType.startsWith('image/');
-  };
-
-  const isPdfFile = (fileType: string) => {
-    return fileType === 'application/pdf';
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -266,54 +244,7 @@ export default function UploadAssetPage() {
                   onUploadComplete={handleAssetUploadComplete}
                   onUploadError={handleAssetUploadError}
                   maxFiles={5}
-                  showPreviews={false}
                 />
-
-                {/* Uploaded Photos List with Previews */}
-                {assetPhotos.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="font-medium text-sm">Uploaded Photos ({assetPhotos.length})</h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {assetPhotos.map((photo, index) => (
-                        <div key={index} className="relative group">
-                          <div className="relative aspect-square rounded-lg overflow-hidden border bg-muted">
-                            {isImageFile(photo.fileType) ? (
-                              <Image
-                                src={`${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.SIGNED_URL(photo.fileKey)}?expiresIn=900`}
-                                alt={photo.fileName}
-                                fill
-                                className="object-cover"
-                              />
-                            ) : isPdfFile(photo.fileType) ? (
-                              <div className="flex flex-col items-center justify-center h-full p-2">
-                                <FileText className="w-8 h-8 text-muted-foreground mb-2" />
-                                <p className="text-xs text-center truncate w-full">{photo.fileName}</p>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center justify-center h-full p-2">
-                                <FileImage className="w-8 h-8 text-muted-foreground mb-2" />
-                                <p className="text-xs text-center truncate w-full">{photo.fileName}</p>
-                              </div>
-                            )}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="icon"
-                            className="absolute -top-2 -right-2 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => handleDeletePhoto(index)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                          <div className="mt-1 text-xs text-muted-foreground truncate">
-                            {formatFileSize(photo.fileSize)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
               </CardContent>
             </Card>
 

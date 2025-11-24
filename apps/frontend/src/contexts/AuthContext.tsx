@@ -88,14 +88,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [hasRole]);
 
   const redirectToDashboard = useCallback(() => {
-    if (isSuperAdmin() || isDistrictAdmin()) {
+    if (isDistrictAdmin()) {
       router.replace('/admin/dashboard');
     } else if (isAgent()) {
       router.replace('/agent/dashboard');
     } else {
       router.replace('/dashboard');
     }
-  }, [router, isDistrictAdmin, isAgent, isSuperAdmin]);
+  }, [router, isDistrictAdmin, isAgent]);
 
   /** 
    * Server-side authentication validation
@@ -137,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(userData);
     setLastTokenCheck(Date.now());
     redirectToDashboard();
-  }, [redirectToDashboard]);
+  }, [router]);
 
   // Handle logout
   const handleLogout = useCallback(async () => {
@@ -179,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     }
-  }, [user, isLoading, pathname, router, redirectToDashboard]);
+  }, [user, isLoading, pathname, router]);
 
   // Set up periodic server validation (since we can't check token client-side with httpOnly cookies)
   useEffect(() => {
