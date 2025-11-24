@@ -74,37 +74,42 @@ function UploadedFilePreview({ file, onRemove, getSignedUrl }: UploadedFilePrevi
   }, [file.fileKey, getSignedUrl, imageUrl, error]);
 
   return (
-    <div className="relative group">
-      {loading ? (
-        <div className="w-full h-24 sm:h-32 bg-muted rounded-lg flex items-center justify-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-        </div>
-      ) : error ? (
-        <div className="w-full h-24 sm:h-32 bg-muted rounded-lg flex items-center justify-center">
-          <div className="text-muted-foreground text-sm">Failed to load image</div>
-        </div>
-      ) : imageUrl ? (
-        <Image
-          src={imageUrl}
-          alt={file.name}
-          width={200}
-          height={200}
-          className="w-full h-24 sm:h-32 object-cover rounded-lg border"
-          onError={() => setError(true)}
-        />
-      ) : (
-        <div className="w-full h-24 sm:h-32 bg-muted rounded-lg flex items-center justify-center">
-          <div className="text-muted-foreground text-sm">Loading...</div>
-        </div>
-      )}
-      <Button
-        variant="destructive"
-        size="icon"
-        className="absolute top-1 right-1 w-5 h-5 sm:w-6 sm:h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-        onClick={onRemove}
-      >
-        <X className="w-3 h-3" />
-      </Button>
+    <div className="space-y-2">
+      <div className="relative group">
+        {loading ? (
+          <div className="w-full h-24 sm:h-32 bg-muted rounded-lg flex items-center justify-center">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          </div>
+        ) : error ? (
+          <div className="w-full h-24 sm:h-32 bg-muted rounded-lg flex items-center justify-center">
+            <div className="text-muted-foreground text-sm">Failed to load image</div>
+          </div>
+        ) : imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt={file.name}
+            width={200}
+            height={200}
+            className="w-full h-24 sm:h-32 object-cover rounded-lg border"
+            onError={() => setError(true)}
+          />
+        ) : (
+          <div className="w-full h-24 sm:h-32 bg-muted rounded-lg flex items-center justify-center">
+            <div className="text-muted-foreground text-sm">Loading...</div>
+          </div>
+        )}
+        <Button
+          variant="destructive"
+          size="icon"
+          className="absolute top-1 right-1 w-5 h-5 sm:w-6 sm:h-6 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={onRemove}
+        >
+          <X className="w-3 h-3" />
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground truncate" title={file.name}>
+        {file.name}
+      </p>
     </div>
   );
 }
@@ -286,7 +291,7 @@ export function AssetUpload({
         ))}
 
         {uploadedFiles.length < maxFiles && (
-          <div className={`border-2 border-dashed rounded-lg p-3 sm:p-4 h-24 sm:h-32 flex flex-col items-center justify-center cursor-pointer transition-colors ${
+          <div className={`border-2 border-dashed rounded-lg h-24 sm:h-32 flex flex-col items-center justify-center transition-colors ${
             isUploading
               ? 'border-muted bg-muted/50 cursor-not-allowed'
               : 'border-border hover:border-primary'
@@ -301,14 +306,14 @@ export function AssetUpload({
                 <input
                   type="file"
                   multiple
-                  accept="image/png,image/jpeg"
+                  accept="image/png,image/jpeg,image/jpg"
                   onChange={(e) => {
                     const files = Array.from(e.target.files || []);
                     if (files.length === 0) return;
 
                     // Filter to only PNG and JPEG
                     const allowedFiles = files.filter(file =>
-                      file.type === 'image/png' || file.type === 'image/jpeg'
+                      file.type === 'image/png' || file.type === 'image/jpeg' || file.type === 'image/jpg'
                     );
 
                     if (allowedFiles.length !== files.length) {
@@ -333,7 +338,7 @@ export function AssetUpload({
                   id="file-upload"
                   disabled={isUploading}
                 />
-                <label htmlFor="file-upload" className={`cursor-pointer text-center ${isUploading ? 'pointer-events-none' : ''}`}>
+                <label htmlFor="file-upload" className={`w-full h-full flex flex-col items-center justify-center cursor-pointer p-3 sm:p-4 ${isUploading ? 'pointer-events-none' : ''}`}>
                   <div className="text-muted-foreground text-sm">
                     Click to select multiple images
                   </div>

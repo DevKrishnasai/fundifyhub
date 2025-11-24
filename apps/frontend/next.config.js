@@ -18,6 +18,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: '*.ufs.sh',
       },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+      }
     ],
   },
 }
