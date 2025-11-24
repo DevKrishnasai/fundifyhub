@@ -9,6 +9,8 @@ const nextConfig = {
   // Enable src directory
   pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'md', 'mdx'],
   images: {
+    // Allow loading images from the backend API (signed urls) and other external hosts.
+    // 'localhost:3001' is used in development when the backend runs on 3001.
     remotePatterns: [
       {
         protocol: 'https',
@@ -18,6 +20,12 @@ const nextConfig = {
         protocol: 'https',
         hostname: '*.ufs.sh',
       },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '3001',
+        pathname: '/api/v1/documents/**',
+      }
     ],
   },
 }

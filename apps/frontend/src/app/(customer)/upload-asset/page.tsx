@@ -266,6 +266,7 @@ export default function UploadAssetPage() {
                   onUploadComplete={handleAssetUploadComplete}
                   onUploadError={handleAssetUploadError}
                   maxFiles={5}
+                  showPreviews={false}
                 />
 
                 {/* Uploaded Photos List with Previews */}

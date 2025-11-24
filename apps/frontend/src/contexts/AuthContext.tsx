@@ -88,14 +88,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [hasRole]);
 
   const redirectToDashboard = useCallback(() => {
-    if (isDistrictAdmin()) {
+    if (isSuperAdmin() || isDistrictAdmin()) {
       router.replace('/admin/dashboard');
     } else if (isAgent()) {
       router.replace('/agent/dashboard');
     } else {
       router.replace('/dashboard');
     }
-  }, [router, isDistrictAdmin, isAgent]);
+  }, [router, isDistrictAdmin, isAgent, isSuperAdmin]);
 
   /** 
    * Server-side authentication validation
@@ -137,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(userData);
     setLastTokenCheck(Date.now());
     redirectToDashboard();
-  }, [router]);
+  }, [redirectToDashboard]);
 
   // Handle logout
   const handleLogout = useCallback(async () => {

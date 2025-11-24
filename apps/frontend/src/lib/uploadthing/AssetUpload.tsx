@@ -121,6 +121,8 @@ interface AssetUploadProps {
   maxFiles?: number;
   /** Additional CSS classes for styling */
   className?: string;
+  /** Show image previews as thumbnails, default true */
+  showPreviews?: boolean;
 }
 
 /**
@@ -151,6 +153,7 @@ export function AssetUpload({
   onUploadError,
   maxFiles = 5,
   className = "",
+  showPreviews = true,
 }: AssetUploadProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFilePreview[]>([]);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
@@ -275,77 +278,135 @@ export function AssetUpload({
     <div className={`space-y-4 ${className}`}>
       {/* Top instructional section is handled by parent or page, not here */}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {uploadedFiles.map((file, index) => (
-          <UploadedFilePreview
-            key={index}
-            file={file}
-            onRemove={() => removeFile(index)}
-            getSignedUrl={getSignedUrl}
-          />
-        ))}
+      {showPreviews ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {uploadedFiles.map((file, index) => (
+            <UploadedFilePreview
+              key={index}
+              file={file}
+              onRemove={() => removeFile(index)}
+              getSignedUrl={getSignedUrl}
+            />
+          ))}
 
-        {uploadedFiles.length < maxFiles && (
-          <div className={`border-2 border-dashed rounded-lg p-3 sm:p-4 h-24 sm:h-32 flex flex-col items-center justify-center cursor-pointer transition-colors ${
-            isUploading
-              ? 'border-muted bg-muted/50 cursor-not-allowed'
-              : 'border-border hover:border-primary'
-          }`}>
-            {isUploading ? (
-              <div className="flex flex-col items-center gap-2">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                <div className="text-sm text-muted-foreground">Uploading...</div>
+          {uploadedFiles.length < maxFiles && (
+            <div className={`border-2 border-dashed rounded-lg p-3 sm:p-4 h-24 sm:h-32 flex flex-col items-center justify-center cursor-pointer transition-colors ${
+              isUploading
+                ? 'border-muted bg-muted/50 cursor-not-allowed'
+                : 'border-border hover:border-primary'
+            }`}>
+              {isUploading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                  <div className="text-sm text-muted-foreground">Uploading...</div>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/png,image/jpeg"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+
+                      // Filter to only PNG and JPEG
+                      const allowedFiles = files.filter(file =>
+                        file.type === 'image/png' || file.type === 'image/jpeg'
+                      );
+
+                      if (allowedFiles.length !== files.length) {
+                        setErrorMsg("Only PNG and JPEG images are allowed.");
+                        e.target.value = '';
+                        return;
+                      }
+
+                      // Check total file count before upload
+                      const totalFiles = uploadedFiles.length + allowedFiles.length;
+                      if (totalFiles > maxFiles) {
+                        setErrorMsg(`You can upload a maximum of ${maxFiles} images.`);
+                        e.target.value = '';
+                        return;
+                      }
+
+                      setErrorMsg("");
+                      startUpload(allowedFiles);
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                    id="file-upload"
+                    disabled={isUploading}
+                  />
+                  <label htmlFor="file-upload" className={`cursor-pointer text-center ${isUploading ? 'pointer-events-none' : ''}`}>
+                    <div className="text-muted-foreground text-sm">Click to select multiple images</div>
+                    <div className="text-xs text-muted-foreground mt-1">PNG, JPEG only (max {maxFiles})</div>
+                  </label>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        // If previews disabled, show a simple list view
+        <div className="grid grid-cols-1 gap-2">
+          {uploadedFiles.map((file, index) => (
+            <div key={index} className="flex items-center justify-between p-3 border rounded-md">
+              <div className="flex flex-col">
+                <span className="font-medium truncate">{file.name}</span>
+                <span className="text-xs text-muted-foreground">{file.fileSize ? `${(file.fileSize / 1024).toFixed(1)} KB` : '—'}</span>
               </div>
-            ) : (
-              <>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/png,image/jpeg"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []);
-                    if (files.length === 0) return;
+              <div className="flex gap-2 items-center">
+                <button className="btn btn-link text-destructive" onClick={() => removeFile(index)}>Remove</button>
+              </div>
+            </div>
+          ))}
 
-                    // Filter to only PNG and JPEG
-                    const allowedFiles = files.filter(file =>
-                      file.type === 'image/png' || file.type === 'image/jpeg'
-                    );
-
-                    if (allowedFiles.length !== files.length) {
-                      setErrorMsg("Only PNG and JPEG images are allowed.");
+          {uploadedFiles.length < maxFiles && (
+            <div className={`border-2 border-dashed rounded-lg p-3 sm:p-4 h-12 flex items-center justify-center cursor-pointer transition-colors ${
+              isUploading
+                ? 'border-muted bg-muted/50 cursor-not-allowed'
+                : 'border-border hover:border-primary'
+            }`}>
+              {isUploading ? (
+                <div className="flex items-center gap-2"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div><div className="text-sm">Uploading...</div></div>
+              ) : (
+                <>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/png,image/jpeg"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+                      const allowedFiles = files.filter(file => file.type === 'image/png' || file.type === 'image/jpeg');
+                      if (allowedFiles.length !== files.length) {
+                        setErrorMsg("Only PNG and JPEG images are allowed.");
+                        e.target.value = '';
+                        return;
+                      }
+                      const totalFiles = uploadedFiles.length + allowedFiles.length;
+                      if (totalFiles > maxFiles) {
+                        setErrorMsg(`You can upload a maximum of ${maxFiles} images.`);
+                        e.target.value = '';
+                        return;
+                      }
+                      setErrorMsg("");
+                      startUpload(allowedFiles);
                       e.target.value = '';
-                      return;
-                    }
-
-                    // Check total file count before upload
-                    const totalFiles = uploadedFiles.length + allowedFiles.length;
-                    if (totalFiles > maxFiles) {
-                      setErrorMsg(`You can upload a maximum of ${maxFiles} images.`);
-                      e.target.value = '';
-                      return;
-                    }
-
-                    setErrorMsg("");
-                    startUpload(allowedFiles);
-                    e.target.value = '';
-                  }}
-                  className="hidden"
-                  id="file-upload"
-                  disabled={isUploading}
-                />
-                <label htmlFor="file-upload" className={`cursor-pointer text-center ${isUploading ? 'pointer-events-none' : ''}`}>
-                  <div className="text-muted-foreground text-sm">
-                    Click to select multiple images
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    PNG, JPEG only (max {maxFiles})
-                  </div>
-                </label>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+                    }}
+                    className="hidden"
+                    id="file-upload-list"
+                    disabled={isUploading}
+                  />
+                  <label htmlFor="file-upload-list" className={`cursor-pointer text-center ${isUploading ? 'pointer-events-none' : ''}`}>
+                    <div className="text-muted-foreground text-sm">Click to select multiple images</div>
+                  </label>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {errorMsg && (
         <Alert variant="destructive" className="mt-2">
