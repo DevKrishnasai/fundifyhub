@@ -179,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     }
-  }, [user, isLoading, pathname, router]);
+  }, [user, isLoading, pathname, router, redirectToDashboard]);
 
   // Set up periodic server validation (since we can't check token client-side with httpOnly cookies)
   useEffect(() => {
