@@ -35,6 +35,8 @@ export interface AdminEMISchedulePreview {
     interest: number;
     balance: number;
   }>;
+  // Optional processing fee applied at disbursement (not part of EMI calculation)
+  processingFee?: number | null;
 }
 
 export interface RequestHistoryItem {
@@ -42,10 +44,63 @@ export interface RequestHistoryItem {
   requestId: string;
   actorId: string | null;
   action: string;
-  metadata: Record<string, unknown> | null;
+  // Structured metadata for known events. Keep a fallback of free-form object
+  // for legacy or untyped events.
+  metadata:
+    | StatusUpdateMetadata
+    | AdminRequestedInfoMetadata
+    | DocumentUploadedMetadata
+    | RescheduleRequestMetadata
+    | DisbursementMetadata
+    | Record<string, unknown>
+    | null;
   createdAt: Date;
   request?: RequestType;
   actor?: UserType | null;
+}
+
+// ----- RequestHistory metadata shapes -----
+export interface StatusUpdateMetadata {
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  note?: string | null;
+}
+
+export interface AdminRequestedInfoMetadata {
+  requestedBy?: string | null; // admin id
+  requestedByName?: string | null; // optional human-friendly name
+  // Free-form note/message the admin provided (preferred field: note)
+  note?: string | null;
+  message?: string | null; // legacy field kept for compatibility
+  // Keep metadata minimal: who requested and a note/message. Avoid role/fields/dueBy in shared metadata.
+}
+
+export interface DocumentUploadedMetadata {
+  documentId?: string | null;
+  fileKey?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  fileType?: string | null;
+  documentType?: string | null;
+  uploaderId?: string | null;
+  uploaderRole?: string | null;
+  // snapshot of request status at time of upload
+  fromStatus?: string | null;
+  toStatus?: string | null;
+}
+
+export interface RescheduleRequestMetadata {
+  // Dates are date-only strings in YYYY-MM-DD format (no time component)
+  previousInspectionAt?: string | null; // date-only (YYYY-MM-DD)
+  requestedInspectionAt?: string | null; // date-only (YYYY-MM-DD)
+  reason?: string | null;
+}
+
+export interface DisbursementMetadata {
+  loanId?: string | null;
+  amount?: number | null;
+  transactionRef?: string | null;
+  proofDocumentId?: string | null;
 }
 
 export interface HistoryEventDescription {
@@ -303,6 +358,9 @@ export interface RequestType {
   adminEmiSchedule: AdminEMISchedulePreview | null;
   offerMadeDate: Date | null;
   offerResponseDate: Date | null;
+  // Processing fee that will be deducted from disbursed amount when loan is disbursed.
+  // This does NOT change EMI calculation (EMIs are calculated on adminOfferedAmount).
+  adminProcessingFee?: number | null;
   penaltyPercentage: number | null;
   lateFeePercentage: number | null;
   adminRequestedInfo: string | null;
@@ -330,6 +388,10 @@ export interface RequestType {
   emisSchedule?: EMIScheduleType[];
   payments?: PaymentType[];
   comments?: CommentType[];
+  // Whether customers are allowed to post comments on this request. Admins can
+  // toggle this at any time; frontend/backend business logic may decide when
+  // this is applicable (for example after rejection).
+  commentsEnabled?: boolean | null;
   inspections?: InspectionType[];
 }
 
@@ -434,6 +496,7 @@ export interface DocumentType {
   documentCategory: string;
   requestId: string | null;
   uploadedBy: string;
+  uploaderRole?: string | null; // DOCUMENT_UPLOADER_ROLE enum
   isPublic: boolean;
   isVerified: boolean;
   verifiedBy: string | null;
@@ -444,6 +507,10 @@ export interface DocumentType {
   metadata: any | null; // JSON
   createdAt: Date;
   updatedAt: Date;
+  // Optional signed URL (runtime) for direct access to the file. Not stored in DB.
+  url?: string | null;
+  // When `url` is present this indicates the signed URL expiry timestamp (ISO string)
+  urlExpiresAt?: string | null;
   
   // Relations
   request?: RequestType | null;

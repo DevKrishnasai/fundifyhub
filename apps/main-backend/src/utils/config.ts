@@ -49,6 +49,9 @@ const config = {
 		token: env.UPLOADTHING_TOKEN,
 	},
 
+	// Optional system signature asset (UploadThing file key)
+	systemSignatureFileKey: env.SYSTEM_SIGNATURE_FILE_KEY || null,
+
 	// Database
 	database: {
 		url: env.DATABASE_URL,

@@ -9,6 +9,7 @@ import {
   listDocumentsController,
   getBulkSignedUrlsController,
   deleteDocumentController,
+  deleteFilesByFileKeysController,
   verifyDocumentController,
 } from "./controllers";
 
@@ -63,6 +64,13 @@ router.post("/signed-urls", getBulkSignedUrlsController);
  * Delete document (soft delete by default)
  */
 router.delete("/:id", deleteDocumentController);
+
+/**
+ * POST /api/v1/documents/delete-by-filekeys
+ * Body: { fileKeys: string[] }
+ * Deletes files from UploadThing storage by their fileKeys (no DB record required)
+ */
+router.post("/delete-by-filekeys", deleteFilesByFileKeysController);
 
 /**
  * PATCH /api/v1/documents/:id/verify

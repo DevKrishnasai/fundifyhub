@@ -533,7 +533,7 @@ export default function AdminDashboard() {
                         onUpdated={handleRequestUpdate}
                       />
                       <Button variant="outline" size="sm" asChild className="shrink-0">
-                        <Link href={`/asset-detail/${request.requestNumber ?? request.id}`}>
+                        <Link href={`/request/${request.requestNumber ?? request.id}`}>
                           <Eye className="h-4 w-4 sm:mr-2" />
                           <span className="hidden sm:inline">View Details</span>
                         </Link>

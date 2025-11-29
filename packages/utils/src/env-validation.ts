@@ -51,6 +51,8 @@ export const mainBackendEnvSchema = z.object({
 
   // UploadThing configuration
   UPLOADTHING_TOKEN: z.string().min(1, 'UPLOADTHING_TOKEN is required'),
+  // Optional system signature image file key stored in UploadThing (used to apply system stamp)
+  SYSTEM_SIGNATURE_FILE_KEY: z.string().optional(),
   
   // Razorpay payment gateway configuration
   RAZORPAY_KEY_ID: z.string().min(1, 'RAZORPAY_KEY_ID is required'),

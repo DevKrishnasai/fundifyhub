@@ -3,6 +3,7 @@ import { Prisma, prisma } from '@fundifyhub/prisma';
 import { ROLES } from '@fundifyhub/types';
 import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, AssetPledgePayloadType, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
 import logger from '../../utils/logger';
+import { CLIENT_CONSTANTS } from '@fundifyhub/types';
 import { generateSignedUrl } from '../../utils/uploadthing';
 import { normalizeDistricts } from '../../utils/district';
 
@@ -20,6 +21,7 @@ async function updateAssetPhotos(tx: Prisma.TransactionClient, requestId: string
         documentType: 'asset_photo',
         documentCategory: DOCUMENT_CATEGORY.ASSET,
         uploadedBy: customerId,
+        uploaderRole: 'USER_SUBMITTED', // Customer is uploading asset photos
       },
     })
   ));
@@ -230,6 +232,7 @@ async function handleDocuments(tx: Prisma.TransactionClient, requestId: string, 
           documentType: 'asset_photo',
           documentCategory: DOCUMENT_CATEGORY.ASSET,
           uploadedBy: customerId,
+          uploaderRole: 'USER_SUBMITTED', // Customer is uploading asset photos
         },
       })
     )
@@ -365,6 +368,7 @@ export async function addAssetController(req: Request, res: Response): Promise<v
         documentType: 'asset_photo',
         documentCategory: DOCUMENT_CATEGORY.ASSET,
         uploadedBy: customerId as string,
+        uploaderRole: 'USER_SUBMITTED', // Customer is uploading asset photos
         displayOrder: idx + 1,
       }));
       await tx.document.createMany({ data: documentData });
@@ -858,9 +862,9 @@ export async function getUserRequestController(req: Request, res: Response): Pro
       const docsWithUrls = await Promise.all(
         (request.documents || []).map(async (d) => {
           try {
-            const { url, expiresAt } = await generateSignedUrl(d.fileKey, 900);
-            return { ...d, signedUrl: url, signedUrlExpiresAt: expiresAt };
-          } catch (e) {
+                const { url, expiresAt } = await generateSignedUrl(d.fileKey, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
+                return { ...d, signedUrl: url, signedUrlExpiresAt: expiresAt };
+              } catch (e) {
             // If signed URL generation fails for a document, return the document without signedUrl
             logger.warn(`Failed to generate signed URL for fileKey=${d.fileKey}: ${String(e)}`);
             return d;
@@ -901,10 +905,10 @@ export async function postCommentController(req: Request, res: Response): Promis
       return;
     }
 
-    // Find request by requestNumber or id
+    // Find request by requestNumber or id. Include commentsEnabled flag so we can enforce comment permissions.
     const found = await prisma.request.findFirst({
       where: { OR: [{ requestNumber: identifier }, { id: identifier }] },
-      select: { id: true, customerId: true },
+      select: { id: true, customerId: true, commentsEnabled: true },
     });
     if (!found) {
       res.status(404).json({ success: false, message: 'Request not found' });
@@ -917,18 +921,37 @@ export async function postCommentController(req: Request, res: Response): Promis
       return;
     }
 
-    const isAdminOrAgent = userRoles.some((r) => ADMIN_AGENT_ROLES.includes(r));
-    // Customers cannot post internal comments
+    // Enforce maximum comment length using shared client constant
+    if (content.trim().length > CLIENT_CONSTANTS.COMMENT_MAX_LENGTH) {
+      res.status(400).json({ success: false, message: `Comment must be at most ${CLIENT_CONSTANTS.COMMENT_MAX_LENGTH} characters` });
+      return;
+    }
+
+    const isAdmin = userRoles.some((r) => r === ROLES.SUPER_ADMIN || r === ROLES.DISTRICT_ADMIN);
+    const isAgent = userRoles.some((r) => r === ROLES.AGENT);
+
+    const isAdminOrAgent = isAdmin || isAgent;
+    // Customers/Agents cannot post internal comments unless admin/agent
     const internalFlag = Boolean(isInternal && isAdminOrAgent);
     if (isInternal && !isAdminOrAgent) {
       res.status(403).json({ success: false, message: 'Not authorized to post internal comments' });
       return;
     }
 
-    // Only request owner or admin/agent can comment
+    // Only request owner or admin/agent can comment (agents are allowed here)
     if (found.customerId !== userId && !isAdminOrAgent) {
       res.status(403).json({ success: false, message: 'Not authorized to comment on this request' });
       return;
+    }
+
+    // Enforce commentsEnabled flag: if comments are disabled for this request,
+    // disallow comments from customers and agents. Only admin roles (district/super) can still comment.
+    if (found.commentsEnabled === false && (isAgent || !isAdmin)) {
+      // If user is agent or a plain customer (not admin), block
+      if (!isAdmin) {
+        res.status(403).json({ success: false, message: 'Comments are disabled for this request' });
+        return;
+      }
     }
 
     const created = await prisma.comment.create({
@@ -1003,7 +1026,7 @@ export async function getDashboardStatsController(req: Request, res: Response): 
     const isAgent = userRoles.includes(ROLES.AGENT);
     const isCustomer = userRoles.includes(ROLES.CUSTOMER);
 
-    let stats: any = {
+    const stats: any = {
       totalRequests: 0,
       activeLoans: 0,
       totalDisbursed: 0,

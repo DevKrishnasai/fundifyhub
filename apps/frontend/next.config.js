@@ -18,6 +18,12 @@ const nextConfig = {
         protocol: 'https',
         hostname: '*.ufs.sh',
       },
+      // Allow backend signed URLs served from local dev backend
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '3001',
+      },
     ],
   },
 }

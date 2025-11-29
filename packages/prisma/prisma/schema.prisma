@@ -26,6 +26,9 @@ model User {
   isActive        Boolean  @default(true)
   emailVerified   Boolean  @default(false)
   phoneVerified   Boolean  @default(false)
+  // Address stored as a simple string. Keep city/state/pincode fields for
+  // compatibility if you want to store separate pieces, but primary address
+  // should be a human-friendly string (e.g., "123 ABC St, Area, City, State - 560001").
   address         String?
   city            String?
   state           String?
@@ -78,10 +81,13 @@ model Request {
   adminTenureMonths  Int?       // Tenure offered by admin
   adminInterestRate  Float?     // Interest rate offered by admin
   adminEmiSchedule   Json?      // JSON snapshot of EMI schedule/admin offer (immutable snapshot)
+  // Processing fee (amount in currency units) that will be deducted at disbursement.
+  // This does not affect EMI calculations; EMIs are calculated on adminOfferedAmount.
+  adminProcessingFee Float? 
   offerMadeDate      DateTime?  // When admin made the offer
   offerResponseDate  DateTime?  // When customer responded
-  penaltyPercentage   Float?     // Penalty percentage for late payment
-  lateFeePercentage    Float?     // Late fee percentage for overdue payments
+  penaltyPercentage   Float     @default(4)     // Penalty percentage for late payment (default 4%)
+  lateFeePercentage    Float     @default(0.01)  // Late fee percentage for overdue payments (default 0.01%)
   // Admin requested information (when status is MORE_INFO_REQUIRED)
   adminRequestedInfo String?    // What additionWal info/documents admin needs
   
@@ -95,6 +101,12 @@ model Request {
   // Assignment Details
   assignedAgentId    String?    // Agent assigned for inspection
   inspectionScheduledAt DateTime? // When inspection is scheduled to take place
+  // Generic comments enable/disable flag. Admins can toggle this at any time.
+  // Use a single `commentsEnabled` flag for all comment-related toggles to
+  // avoid duplication. Previously there was a separate
+  // `commentsEnabledAfterRejection` field; that behavior should be controlled
+  // by business logic using this single flag instead of a separate column.
+  commentsEnabled Boolean @default(true)
   
   submittedDate   DateTime      @default(now())
   createdAt       DateTime      @default(now())
@@ -249,6 +261,7 @@ model Document {
   
   // Access Control
   uploadedBy        String    // User ID who uploaded
+  uploaderRole      String?   // "USER_SUBMITTED", "AGENT_SUBMITTED", "ADMIN_SUBMITTED" - categorizes who uploaded
   isPublic          Boolean   @default(false) // If true, no auth needed to access
   
   // Verification & Status

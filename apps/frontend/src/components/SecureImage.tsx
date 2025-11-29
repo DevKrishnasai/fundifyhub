@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { getDocumentSignedUrl } from "@/lib/document-api";
+import { CLIENT_CONSTANTS } from '@fundifyhub/types';
 import { Loader2, ImageOff } from "lucide-react";
 
 interface SecureImageProps {
@@ -42,7 +43,7 @@ export function SecureImage({
   height,
   fill = false,
   priority = false,
-  expiresIn = 3600,
+  expiresIn = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES,
   objectFit = "cover",
   onLoad,
   onError,

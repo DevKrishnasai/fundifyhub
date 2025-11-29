@@ -8,12 +8,11 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { BACKEND_API_CONFIG } from '@/lib/urls';
 import { api, getWithResult } from '@/lib/api-client';
 
-export default function AssignAgentModal({ open, onOpenChange, onSubmit, district }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (agentId: string, inspectionDate: string, inspectionTime: string) => Promise<boolean> | boolean; district?: string; }) {
+export default function AssignAgentModal({ open, onOpenChange, onSubmit, district }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (agentId: string, inspectionDate: string) => Promise<boolean> | boolean; district?: string; }) {
   const [agentId, setAgentId] = React.useState('');
   const [inspectionDate, setInspectionDate] = React.useState('');
-  const [inspectionTime, setInspectionTime] = React.useState('');
   const [agents, setAgents] = React.useState<Array<{ id: string; firstName?: string; lastName?: string; email?: string }>>([]);
-  const [manualMode, setManualMode] = React.useState(false);
+  // manualMode removed: only dropdown selection is supported
   // removed query/search; we now show a simple dropdown of available agents
   const [loadingAgents, setLoadingAgents] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -55,7 +54,6 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
   function handleClose() {
     setAgentId('');
     setInspectionDate('');
-    setInspectionTime('');
     setAgents([]);
     setError(null);
     onOpenChange(false);
@@ -68,7 +66,6 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
       <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Assign Agent to Request</DialogTitle>
-          {district && <p className="text-sm text-muted-foreground mt-1">District: <span className="font-medium">{district}</span></p>}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -82,37 +79,22 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
                   ) : error ? (
                 <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
                   <p className="text-sm text-destructive">Could not load agents: {error}</p>
-                  <p className="text-xs text-muted-foreground mt-1">You can still enter an Agent ID manually below.</p>
+                  <p className="text-xs text-muted-foreground mt-1">No agents are available for this district.</p>
                 </div>
               ) : agents.length > 0 ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium mb-1.5">Select Agent</label>
-                    <div className="flex items-center gap-3">
-                      <Button size="sm" variant="ghost" onClick={() => setManualMode(!manualMode)}>{manualMode ? 'Use dropdown' : 'Enter ID manually'}</Button>
-                    </div>
-                  </div>
-                  {manualMode ? (
-                    <div>
-                      <Input value={agentId} onChange={(e) => setAgentId(e.target.value)} placeholder="Enter agent ID" />
-                    </div>
-                  ) : (
-                    <div>
-                      <Select value={agentId} onValueChange={(v: string) => setAgentId(v)}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Choose an agent" />
-                        </SelectTrigger>
-                        <SelectContent className="w-full">
-                          {filteredAgents.map((a) => (
-                            <SelectItem key={a.id} value={a.id}>{`${a.firstName || ''} ${a.lastName || ''}`.trim() || a.email || a.id}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs text-muted-foreground mt-1">{filteredAgents.length} agents available</p>
-                    <Button size="sm" variant="ghost" onClick={() => loadAgents()} className="ml-2">Refresh</Button>
+                  <label className="block text-sm font-medium mb-1.5">Select Agent</label>
+                  <div>
+                    <Select value={agentId} onValueChange={(v: string) => setAgentId(v)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choose an agent" />
+                      </SelectTrigger>
+                      <SelectContent className="w-full">
+                        {filteredAgents.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>{`${a.firstName || ''} ${a.lastName || ''}`.trim() || a.email || a.id}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               ) : (
@@ -125,17 +107,11 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
             </>
           ) : (
             <div>
-              <label className="block text-sm font-medium mb-1.5">Agent ID</label>
-              <Input 
-                value={agentId} 
-                onChange={(e) => setAgentId(e.target.value)} 
-                placeholder="Enter agent ID"
-              />
-              <p className="text-xs text-muted-foreground mt-1">No district specified</p>
+              <p className="text-sm text-muted-foreground">No district specified for this request. Cannot load agents.</p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1.5">Inspection Date</label>
               <Input 
@@ -143,14 +119,6 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
                 value={inspectionDate} 
                 onChange={(e) => setInspectionDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Inspection Time</label>
-              <Input 
-                type="time" 
-                value={inspectionTime} 
-                onChange={(e) => setInspectionTime(e.target.value)}
               />
             </div>
           </div>
@@ -162,11 +130,11 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
             type="button" 
             variant="default" 
             onClick={async () => { 
-              if (agentId.trim() && inspectionDate && inspectionTime) {
-                console.debug('AssignAgentModal: submitting agent=', agentId, 'date', inspectionDate, 'time', inspectionTime);
+              if (agentId.trim() && inspectionDate) {
+                console.debug('AssignAgentModal: submitting agent=', agentId, 'date', inspectionDate);
                 try {
                   setSubmitting(true);
-                  const ok = await onSubmit(agentId.trim(), inspectionDate, inspectionTime);
+                  const ok = await onSubmit(agentId.trim(), inspectionDate);
                   if (ok) {
                     // only close modal on success
                     handleClose();
@@ -180,7 +148,7 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
                 finally { setSubmitting(false); }
               }
             }} 
-            disabled={agents.length === 0 || !agentId || !inspectionDate || !inspectionTime || submitting}
+            disabled={agents.length === 0 || !agentId || !inspectionDate || submitting}
           >
             Assign Agent & Schedule
           </Button>

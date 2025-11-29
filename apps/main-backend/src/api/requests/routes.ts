@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
-import { getRequestDetailController, assignAgentController, updateRequestStatusController, createOfferController, getCurrentOfferController, offerPreviewController, confirmOfferController, getAvailableAgentsController, generateAgreementController, uploadSignedAgreementController, updateBankDetailsController, createLoanController, getAgentAssignedRequestsController } from './controllers';
+import { getRequestDetailController, assignAgentController, updateRequestStatusController, createOfferController, getCurrentOfferController, offerPreviewController, confirmOfferController, getAvailableAgentsController, generateAgreementController, signAgreementController, uploadSignedAgreementController, updateBankDetailsController, createLoanController, getAgentAssignedRequestsController, updateCommentsEnabledController, completeInspectionController } from './controllers';
 
 const router: ExpressRouter = Router();
 
@@ -15,6 +15,9 @@ router.get('/:id', getRequestDetailController);
 
 // GET /requests/:id/generate-agreement - Generate loan agreement PDF
 router.get('/:id/generate-agreement', generateAgreementController);
+
+// POST /requests/:id/sign-agreement - Digitally sign agreement with customer signature
+router.post('/:id/sign-agreement', signAgreementController);
 
 // POST /requests/:id/upload-signed-agreement - Upload signed agreement PDF
 router.post('/:id/upload-signed-agreement', uploadSignedAgreementController);
@@ -31,6 +34,9 @@ router.post('/:id/assign', assignAgentController);
 // POST /requests/:id/status
 router.post('/:id/status', updateRequestStatusController);
 
+// POST /requests/:id/comments-enabled - toggle whether customers can comment after rejection (admin only)
+router.post('/:id/comments-enabled', updateCommentsEnabledController);
+
 // POST /requests/:id/offer
 router.post('/:id/offer', createOfferController);
 
@@ -42,5 +48,8 @@ router.get('/:id/offer-preview', offerPreviewController);
 
 // POST /requests/:id/offers/:offerId/confirm
 router.post('/:id/offers/:offerId/confirm', confirmOfferController);
+
+// POST /requests/:id/inspections/complete - finalize inspection and persist history
+router.post('/:id/inspections/complete', completeInspectionController);
 
 export default router;

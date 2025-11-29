@@ -37,7 +37,27 @@ if (typeof window === 'undefined' && !isNextBuild) {
 const config = {
   env,
   public: {
-    apiUrl: env.NEXT_PUBLIC_API_URL,
+    // At build-time this is the NEXT_PUBLIC_API_URL. In the browser (dev),
+    // when developers use `http://localhost:3001` for the API, that value
+    // won't resolve from a mobile device. To make local mobile testing easy
+    // we rewrite localhost/127.0.0.1 to the current `window.location.hostname`
+    // at runtime (only in the browser). This preserves the configured port.
+    apiUrl: ((): string | undefined => {
+      const raw = env.NEXT_PUBLIC_API_URL as string | undefined;
+      if (typeof window === 'undefined') return raw;
+      if (!raw) return raw;
+      try {
+        const u = new URL(raw);
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+          // preserve protocol and port, replace host with the host serving the frontend
+          return `${u.protocol}//${window.location.hostname}${u.port ? `:${u.port}` : ''}`;
+        }
+        return raw;
+      } catch (e) {
+        // If it's not a valid URL, just return raw
+        return raw;
+      }
+    })(),
     wsUrl: env.NEXT_PUBLIC_WS_URL,
     uploadthingToken: env.UPLOADTHING_TOKEN,
   },

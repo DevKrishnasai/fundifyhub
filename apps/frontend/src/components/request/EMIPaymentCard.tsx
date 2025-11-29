@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CreditCard, IndianRupee, Clock } from 'lucide-react';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
+import { calculateEMIBreakdown } from '@/lib/payments-api';
 import { EMI_STATUS } from '@fundifyhub/types';
 
 interface EMIPaymentCardProps {
@@ -69,22 +70,11 @@ export function EMIPaymentCard({ loan, onPayEMI }: EMIPaymentCardProps) {
     setError(null);
 
     try {
-      const response = await fetch(
-        `${BACKEND_API_CONFIG.BASE_URL}${BACKEND_API_CONFIG.ENDPOINTS.PAYMENTS.EMI_PAY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ emiId: nextEmi.id })
-        }
-      );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setBreakdown(data.data.breakdown);
+      const result = await calculateEMIBreakdown(nextEmi.id);
+      if (result.ok) {
+        setBreakdown(result.data.breakdown);
       } else {
-        setError(data.message || 'Failed to calculate payment breakdown');
+        setError(result.error?.message || 'Failed to calculate payment breakdown');
       }
     } catch (err) {
       setError('Network error occurred');

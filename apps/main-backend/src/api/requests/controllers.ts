@@ -3,14 +3,18 @@ import { prisma } from '@fundifyhub/prisma';
 import baseLogger from '../../utils/logger';
 
 const logger = baseLogger.child('[RequestsController]');
+import { createRequestHistory } from '../../utils/history';
 import { APIResponseType } from '../../types';
 import { hasAnyRole, hasDistrictAccess } from '../../utils/rbac';
 import { calculateEmiSchedule, calculateEmiBreakdown, isEmiOverdue, type EMIBreakdown } from '@fundifyhub/utils';
 import { 
   ROLES, 
+  DOCUMENT_UPLOADER_ROLE,
+  DOCUMENT_TYPE,
   EMI_STATUS, 
   OVERDUE_GRACE_PERIOD_DAYS,
   REQUEST_STATUS, 
+  AGENT_ACCESS_DENY_STATUSES,
   TEMPLATE_NAMES, 
   SERVICE_NAMES,
   CUSTOMER_ALLOWED_STATUSES,
@@ -21,7 +25,10 @@ import {
   DEFAULT_LATE_FEE_PERCENTAGE,
   REQUEST_HISTORY_ACTION
 } from '@fundifyhub/types';
-import queueClient from '../../utils/queues';
+import config from '../../utils/config';
+import { generateSignedUrl } from '../../utils/uploadthing';
+import { CLIENT_CONSTANTS } from '@fundifyhub/types';
+// Notifications are handled by a separate plan; queueClient usage removed here. TODO: integrate notifications
 
 /**
  * GET /requests/:id
@@ -42,7 +49,7 @@ export async function getRequestDetailController(req: Request, res: Response): P
       include: {
         documents: true,
         requestHistory: { orderBy: { createdAt: 'asc' } },
-        customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } },
+  customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } },
         assignedAgent: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } },
         comments: { select: { id: true, content: true, createdAt: true, authorId: true, isInternal: true, author: { select: { id: true, firstName: true, lastName: true, roles: true } } } },
         loan: {
@@ -169,10 +176,12 @@ export async function getRequestDetailController(req: Request, res: Response): P
 
     const isSuper = Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN);
     const isCustomer = request.customerId === user.id;
-    const isAssignedAgent = request.assignedAgentId === user.id;
+      const isAssignedAgent = request.assignedAgentId === user.id;
+      // Agents should not retain UI access after bank details are submitted or later lifecycle statuses
+      const isAssignedAgentAllowed = isAssignedAgent && !AGENT_ACCESS_DENY_STATUSES.includes(request.currentStatus as REQUEST_STATUS);
     const hasDistrictPermission = hasDistrictAccess(user, request.district);
 
-    if (isSuper || isCustomer || isAssignedAgent || hasDistrictPermission) {
+    if (isSuper || isCustomer || isAssignedAgentAllowed || hasDistrictPermission) {
       if (isCustomer && Array.isArray((request as any).comments)) {
         (request as any).comments = (request as any).comments.filter((c: any) => !c.isInternal);
       }
@@ -195,7 +204,8 @@ export async function getRequestDetailController(req: Request, res: Response): P
 export async function assignAgentController(req: Request, res: Response): Promise<void> {
   try {
     const requestId = req.params.id;
-    const { agentId, inspectionDateTime } = req.body as { agentId?: string; inspectionDateTime?: string };
+  // Accept date-only string for inspection date: { inspectionDate: 'YYYY-MM-DD' }
+  const { agentId, inspectionDate } = req.body as { agentId?: string; inspectionDate?: string };
 
     if (!requestId || !agentId) {
       res.status(400).json({ success: false, message: 'request id and agentId required' } as APIResponseType);
@@ -250,27 +260,35 @@ export async function assignAgentController(req: Request, res: Response): Promis
       currentStatus: toStatus 
     };
     
-    if (inspectionDateTime) {
-      updateData.inspectionScheduledAt = new Date(inspectionDateTime);
+    // If date-only is passed, store as midnight UTC for that date.
+    if (inspectionDate) {
+      try {
+        // Normalize to a full ISO instant at UTC midnight for the provided date
+        updateData.inspectionScheduledAt = new Date(`${inspectionDate}T00:00:00.000Z`);
+      } catch (e) {
+        // Fallback: try plain Date parse
+        updateData.inspectionScheduledAt = new Date(inspectionDate as string);
+      }
     }
 
-    const [updatedRequest, historyEntry] = await prisma.$transaction([
-      prisma.request.update({ where: { id: dbId }, data: updateData }),
-      prisma.requestHistory.create({ 
-        data: { 
-          requestId: dbId, 
-          actorId: user.id, 
-          action: REQUEST_HISTORY_ACTION.ASSIGNED_AGENT, 
-          metadata: { 
-            fromStatus, 
-            toStatus, 
-            agentId, 
-            agentName: `${agent.firstName} ${agent.lastName}`,
-            inspectionScheduledAt: inspectionDateTime || null
-          } 
-        } 
-      })
-    ]);
+    // perform update and history creation atomically
+    const [updatedRequest, historyEntry] = await prisma.$transaction(async (tx) => {
+      const u = await tx.request.update({ where: { id: dbId }, data: updateData });
+      const h = await createRequestHistory({
+        client: tx,
+        requestId: dbId,
+        actorId: user.id,
+        action: REQUEST_HISTORY_ACTION.ASSIGNED_AGENT,
+        metadata: {
+          fromStatus,
+          toStatus,
+          agentId,
+          agentName: `${agent.firstName} ${agent.lastName}`,
+          inspectionScheduledAt: inspectionDate || null,
+        },
+      });
+      return [u, h];
+    });
 
     // Fetch full request with relations so clients receive the complete audit trail
     const fullRequest = await prisma.request.findUnique({
@@ -278,7 +296,7 @@ export async function assignAgentController(req: Request, res: Response): Promis
       include: {
         documents: true,
         requestHistory: { orderBy: { createdAt: 'asc' } },
-        customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } },
+  customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } },
         comments: { select: { id: true, content: true, createdAt: true, authorId: true, isInternal: true, author: { select: { id: true, firstName: true, lastName: true, roles: true } } } },
       }
     });
@@ -299,22 +317,8 @@ export async function assignAgentController(req: Request, res: Response): Promis
       logger.error('Failed to enrich requestHistory after assignAgentController', e as Error);
     }
 
-    // Notify the agent via available channels
-    try {
-      await queueClient.addAJob(TEMPLATE_NAMES.LOGIN_ALERT, {
-        email: agent.email || '',
-        phoneNumber: agent.phoneNumber || '',
-        customerName: `${agent.firstName || ''} ${agent.lastName || ''}`.trim() || 'Agent',
-        device: 'Assignment',
-        location: request.district,
-        time: new Date().toISOString(),
-        supportUrl: 'https://fundifyhub.example/support',
-        resetPasswordUrl: 'https://fundifyhub.example/support',
-        companyName: 'FundifyHub'
-      }, { services: [SERVICE_NAMES.WHATSAPP, SERVICE_NAMES.EMAIL] });
-    } catch (e) {
-      logger.error('Failed to enqueue assignment notification', e as Error);
-    }
+    // TODO: enqueue assignment notification (kept as TODO per new plan)
+    logger.info('TODO: enqueue assignment notification for agent assignment');
 
   res.status(200).json({ success: true, message: 'Agent assigned', data: { request: fullRequest, history: historyEntry } } as APIResponseType);
   } catch (error) {
@@ -332,7 +336,7 @@ export async function assignAgentController(req: Request, res: Response): Promis
 export async function updateRequestStatusController(req: Request, res: Response): Promise<void> {
   try {
     const requestId = req.params.id;
-    const { status, note } = req.body as { status?: string; note?: string };
+  const { status, note, requestedInspectionAt } = req.body as { status?: string; note?: string; requestedInspectionAt?: string };
 
     if (!requestId || !status) {
       res.status(400).json({ success: false, message: 'request id and status required' } as APIResponseType);
@@ -355,62 +359,145 @@ export async function updateRequestStatusController(req: Request, res: Response)
       return;
     }
 
-    const isSuper = Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN);
+    // Role checks: allow if ANY of the user's roles permits the requested status update.
+    // For multi-role users, check higher privilege roles first before applying agent restrictions
+    const roles = Array.isArray(user.roles) ? user.roles : [];
 
+    const isSuper = roles.includes(ROLES.SUPER_ADMIN);
     if (isSuper) {
       logger.info(`SUPER_ADMIN bypassing permission checks: userId=${user.id}`);
-    }
-    else if (Array.isArray(user.roles) && user.roles.includes(ROLES.CUSTOMER)) {
-      const isOwner = String(request.customerId) === String(user.id);
-      if (!isOwner) {
-        logger.warn(`Customer ownership check failed: userId=${user.id}, requestCustomerId=${request.customerId}`);
-        res.status(403).json({ success: false, message: 'You can only update your own requests' } as APIResponseType);
+    } else {
+      let permittedByAnyRole = false;
+
+      // District admin: allowed if they have district access (broad admin permissions)
+      if (roles.includes(ROLES.DISTRICT_ADMIN)) {
+        if (hasDistrictAccess(user, request.district)) {
+          permittedByAnyRole = true;
+        }
+      }
+
+      // Customer: must be owner and status must be in CUSTOMER_ALLOWED_STATUSES
+      if (!permittedByAnyRole && roles.includes(ROLES.CUSTOMER)) {
+        const isOwner = String(request.customerId) === String(user.id);
+        if (isOwner && CUSTOMER_ALLOWED_STATUSES.includes(status as REQUEST_STATUS)) {
+          permittedByAnyRole = true;
+        }
+      }
+
+      // Agent: must be assigned and the status must be allowed for agents
+      // Only apply agent restrictions if user doesn't have higher privilege roles
+      if (!permittedByAnyRole && roles.includes(ROLES.AGENT)) {
+        const isAssigned = request.assignedAgentId === user.id;
+        if (isAssigned && AGENT_ALLOWED_STATUSES.includes(status as REQUEST_STATUS)) {
+          permittedByAnyRole = true;
+        }
+      }
+
+      if (!permittedByAnyRole) {
+        // Provide helpful messages for common failure modes
+        if (roles.includes(ROLES.CUSTOMER) && String(request.customerId) !== String(user.id)) {
+          res.status(403).json({ success: false, message: 'You can only update your own requests' } as APIResponseType);
+          return;
+        }
+        if (roles.includes(ROLES.AGENT) && request.assignedAgentId !== user.id) {
+          res.status(403).json({ success: false, message: 'You can only update assigned requests' } as APIResponseType);
+          return;
+        }
+        if (roles.includes(ROLES.DISTRICT_ADMIN) && !hasDistrictAccess(user, request.district)) {
+          res.status(403).json({ success: false, message: 'Access denied to this district' } as APIResponseType);
+          return;
+        }
+
+        logger.warn(`User lacks required roles or permissions: userId=${user.id}, roles=${JSON.stringify(user.roles)}`);
+        res.status(403).json({ success: false, message: 'Insufficient permissions' } as APIResponseType);
         return;
       }
-      if (!CUSTOMER_ALLOWED_STATUSES.includes(status as REQUEST_STATUS)) {
-        logger.warn(`Invalid status for customer: userId=${user.id}, status=${status}`);
-        res.status(403).json({ success: false, message: `Customers cannot change status to '${status}'` } as APIResponseType);
-        return;
-      }
-    }
-    else if (Array.isArray(user.roles) && user.roles.includes(ROLES.AGENT)) {
-      const isAssigned = request.assignedAgentId === user.id;
-      if (!isAssigned) {
-        logger.warn(`Agent not assigned to request: userId=${user.id}, requestId=${requestId}`);
-        res.status(403).json({ success: false, message: 'You can only update assigned requests' } as APIResponseType);
-        return;
-      }
-      if (!AGENT_ALLOWED_STATUSES.includes(status as REQUEST_STATUS)) {
-        logger.warn(`Invalid status for agent: userId=${user.id}, status=${status}`);
-        res.status(403).json({ success: false, message: 'Agents cannot perform this status change' } as APIResponseType);
-        return;
-      }
-    }
-    else if (Array.isArray(user.roles) && user.roles.includes(ROLES.DISTRICT_ADMIN)) {
-      if (!hasDistrictAccess(user, request.district)) {
-        logger.warn(`District admin lacks district access: userId=${user.id}, requestDistrict=${request.district}`);
-        res.status(403).json({ success: false, message: 'Access denied to this district' } as APIResponseType);
-        return;
-      }
-    }
-    else {
-      logger.warn(`User lacks required roles: userId=${user.id}, roles=${JSON.stringify(user.roles)}`);
-      res.status(403).json({ success: false, message: 'Insufficient permissions' } as APIResponseType);
-      return;
     }
 
     const fromStatus = request.currentStatus;
     const toStatus = status;
+
+    // Enforce mandatory notes for certain transitions
+    const MANDATORY_NOTE_STATUSES = new Set([
+      REQUEST_STATUS.MORE_INFO_REQUIRED,
+      REQUEST_STATUS.REJECTED,
+      REQUEST_STATUS.AMOUNT_DISBURSED,
+      REQUEST_STATUS.PENDING_BANK_DETAILS,
+      REQUEST_STATUS.PENDING_SIGNATURE,
+      REQUEST_STATUS.OFFER_SENT,
+    ]);
+
+    if (MANDATORY_NOTE_STATUSES.has(toStatus as REQUEST_STATUS)) {
+      const noteText = typeof note === 'string' ? note.trim() : '';
+      if (!noteText) {
+        res.status(400).json({ success: false, message: 'Note is required for this status change' } as APIResponseType);
+        return;
+      }
+      if (noteText.length > 500) {
+        res.status(400).json({ success: false, message: 'Note must be at most 500 characters' } as APIResponseType);
+        return;
+      }
+    }
 
     // Use the actual DB id (not requestNumber) for updates
     const dbId = request.id;
 
     // Persist the status change and create a history entry using the target status as the action
     // This makes history entries explicit (e.g., 'OFFER_REJECTED', 'OFFER_ACCEPTED') instead of a generic 'STATUS_UPDATED'.
-    const [updatedRequest, historyEntry] = await prisma.$transaction([
-      prisma.request.update({ where: { id: dbId }, data: { currentStatus: toStatus } }),
-      prisma.requestHistory.create({ data: { requestId: dbId, actorId: user.id, action: String(toStatus), metadata: { fromStatus, toStatus, note } } })
-    ]);
+    // perform status update and history write atomically
+    const [updatedRequest, historyEntry] = await prisma.$transaction(async (tx) => {
+      // Prepare update payload. We only clear assignment when a reschedule is requested.
+      // Historically we cleared assignedAgentId on CANCELLED/REJECTED; that removed the persisted association.
+      // New behaviour: preserve assignedAgentId on CANCELLED/REJECTED (so assignment is auditable), but clear it when
+      // a reschedule is requested (agent should be unassigned while customer picks a new date).
+      const updatePayload: any = { currentStatus: toStatus };
+      if (toStatus === REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED) {
+        // Revoke assignment and clear scheduled date for reschedule requests
+        updatePayload.assignedAgentId = null;
+        updatePayload.inspectionScheduledAt = null;
+      }
+
+      // Persist update
+      const u = await tx.request.update({ where: { id: dbId }, data: updatePayload });
+
+      // Normalize metadata for MORE_INFO_REQUIRED to a structured AdminRequestedInfoMetadata
+      let metadata: any = { fromStatus, toStatus };
+  if (toStatus === REQUEST_STATUS.MORE_INFO_REQUIRED) {
+        // Keep metadata minimal: who requested it and the note. Avoid storing role/fields/dueBy in shared metadata.
+        metadata = {
+          fromStatus,
+          toStatus,
+          requestedBy: user.id,
+          requestedByName: `${(user.firstName || '')} ${(user.lastName || '')}`.trim() || null,
+          note: typeof note === 'string' && note.trim() ? note.trim() : null,
+          message: typeof note === 'string' && note.trim() ? note.trim() : null,
+        };
+      } else if (toStatus === REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED) {
+        // Include the requested inspection date (date-only string) in metadata
+        metadata = { fromStatus, toStatus, note, requestedInspectionAt: requestedInspectionAt || null };
+      } else {
+        metadata = { fromStatus, toStatus, note };
+      }
+
+      // Attach previous assigned agent for auditing when we clear it (reschedule flow)
+      try {
+        const prevAssigned = request.assignedAgentId || null;
+        if (prevAssigned && toStatus === REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED) {
+          metadata.previousAssignedAgentId = prevAssigned;
+        }
+      } catch (e) {
+        // ignore metadata enrichment failures
+      }
+
+      const h = await createRequestHistory({
+        client: tx,
+        requestId: dbId,
+        actorId: user.id,
+        action: String(toStatus),
+        metadata,
+      });
+      return [u, h];
+    });
 
     let finalRequest = updatedRequest;
     if (toStatus === REQUEST_STATUS.APPROVED) {
@@ -419,13 +506,12 @@ export async function updateRequestStatusController(req: Request, res: Response)
         data: { currentStatus: REQUEST_STATUS.PENDING_SIGNATURE } 
       });
       
-      await prisma.requestHistory.create({ 
-        data: { 
-          requestId: dbId, 
-          actorId: user.id, 
-          action: REQUEST_STATUS.PENDING_SIGNATURE, 
-          metadata: { fromStatus: REQUEST_STATUS.APPROVED, toStatus: REQUEST_STATUS.PENDING_SIGNATURE, note: 'Auto-transitioned to signature collection' } 
-        } 
+      // Use transaction helper to write follow-up history (best-effort outside primary tx)
+      await createRequestHistory({
+        requestId: dbId,
+        actorId: user.id,
+        action: REQUEST_STATUS.PENDING_SIGNATURE,
+        metadata: { fromStatus: REQUEST_STATUS.APPROVED, toStatus: REQUEST_STATUS.PENDING_SIGNATURE, note: 'Auto-transitioned to signature collection' },
       });
     }
 
@@ -435,7 +521,7 @@ export async function updateRequestStatusController(req: Request, res: Response)
       include: {
         documents: true,
         requestHistory: { orderBy: { createdAt: 'asc' } },
-        customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } },
+  customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } },
         comments: { select: { id: true, content: true, createdAt: true, authorId: true, isInternal: true, author: { select: { id: true, firstName: true, lastName: true, roles: true } } } },
       }
     });
@@ -454,25 +540,8 @@ export async function updateRequestStatusController(req: Request, res: Response)
     } catch (e) {
       logger.error('Failed to enrich requestHistory after updateRequestStatusController', e as Error);
     }
-    // Notify customer about status change (best-effort)
-    try {
-      const customer = await prisma.user.findUnique({ where: { id: updatedRequest.customerId } });
-      if (customer) {
-        await queueClient.addAJob(TEMPLATE_NAMES.LOGIN_ALERT, {
-          email: customer.email,
-          phoneNumber: customer.phoneNumber,
-          customerName: `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Customer',
-          device: `Request status updated to ${toStatus}`,
-          location: updatedRequest.district,
-          time: new Date().toISOString(),
-          supportUrl: 'https://fundifyhub.example/support',
-          resetPasswordUrl: 'https://fundifyhub.example/support',
-          companyName: 'FundifyHub'
-        }, { services: [SERVICE_NAMES.EMAIL, SERVICE_NAMES.WHATSAPP] });
-      }
-    } catch (e) {
-      logger.error('Failed to enqueue status notification', e as Error);
-    }
+    // TODO: enqueue status change notification to customer (left as TODO per new plan)
+    logger.info('TODO: enqueue status change notification for request status update');
 
     // Note: Loan + EMISchedule creation is deferred to the dedicated confirm endpoint
     // (POST /requests/:id/offers/:offerId/confirm) after inspection and e-sign are completed.
@@ -492,13 +561,14 @@ export async function updateRequestStatusController(req: Request, res: Response)
 export async function createOfferController(req: Request, res: Response): Promise<void> {
   try {
     const requestId = req.params.id;
-    const { amount, tenureMonths, interestRate, penaltyPercentage, lateFeePercentage, notes } = req.body as { 
+    const { amount, tenureMonths, interestRate, penaltyPercentage, lateFeePercentage, notes, processingFee } = req.body as { 
       amount?: number; 
       tenureMonths?: number; 
       interestRate?: number; 
       penaltyPercentage?: number;
       lateFeePercentage?: number;
       notes?: string;
+      processingFee?: number;
     };
 
     if (!requestId || typeof amount !== 'number' || typeof tenureMonths !== 'number' || typeof interestRate !== 'number') {
@@ -545,38 +615,41 @@ export async function createOfferController(req: Request, res: Response): Promis
     const penaltyRate = typeof penaltyPercentage === 'number' ? penaltyPercentage : DEFAULT_PENALTY_PERCENTAGE;
     const lateFeeRate = typeof lateFeePercentage === 'number' ? lateFeePercentage : DEFAULT_LATE_FEE_PERCENTAGE;
 
-    const [updatedRequest, historyEntry] = await prisma.$transaction([
-      prisma.request.update({ 
-        where: { id: dbId }, 
-        data: { 
-          adminOfferedAmount: amount, 
-          adminTenureMonths: tenureMonths, 
-          adminInterestRate: interestRate, 
+    // Create offer and history entry transactionally
+    const [updatedRequest, historyEntry] = await prisma.$transaction(async (tx) => {
+      const u = await (tx as any).request.update({
+        where: { id: dbId },
+        data: {
+          adminOfferedAmount: amount,
+          adminTenureMonths: tenureMonths,
+          adminInterestRate: interestRate,
           penaltyPercentage: penaltyRate,
           lateFeePercentage: lateFeeRate,
-          offerMadeDate: new Date(), 
-          currentStatus: toStatus, 
-          adminEmiSchedule: emiSnapshot 
-        } 
-      }),
-      prisma.requestHistory.create({ 
-        data: { 
-          requestId: dbId, 
-          actorId: user.id, 
-          action: REQUEST_STATUS.OFFER_SENT, 
-          metadata: { 
-            fromStatus, 
-            toStatus, 
-            amount, 
-            tenureMonths, 
-            interestRate, 
-            penaltyPercentage: penaltyRate,
-            lateFeePercentage: lateFeeRate,
-            notes 
-          } 
-        } 
-      })
-    ]);
+          adminProcessingFee: typeof processingFee === 'number' ? processingFee : null,
+          offerMadeDate: new Date(),
+          currentStatus: toStatus,
+          adminEmiSchedule: emiSnapshot,
+        },
+      });
+      const h = await createRequestHistory({
+        client: tx,
+        requestId: dbId,
+        actorId: user.id,
+        action: REQUEST_STATUS.OFFER_SENT,
+        metadata: {
+          fromStatus,
+          toStatus,
+          amount,
+          tenureMonths,
+          interestRate,
+          penaltyPercentage: penaltyRate,
+          lateFeePercentage: lateFeeRate,
+          notes,
+          processingFee: typeof processingFee === 'number' ? processingFee : null,
+        },
+      });
+      return [u, h];
+    });
 
     // Return full request with relations so client sees the complete audit trail immediately
     const fullRequest = await prisma.request.findUnique({
@@ -584,7 +657,7 @@ export async function createOfferController(req: Request, res: Response): Promis
       include: {
         documents: true,
         requestHistory: { orderBy: { createdAt: 'asc' } },
-        customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } },
+  customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } },
         comments: { select: { id: true, content: true, createdAt: true, authorId: true, isInternal: true, author: { select: { id: true, firstName: true, lastName: true, roles: true } } } },
       }
     });
@@ -604,28 +677,8 @@ export async function createOfferController(req: Request, res: Response): Promis
       logger.error('Failed to enrich requestHistory after createOfferController', e as Error);
     }
 
-    // Notify customer about the offer (best-effort)
-    try {
-      const customer = await prisma.user.findUnique({ where: { id: updatedRequest.customerId } });
-      if (customer) {
-        const assetName = `${updatedRequest.assetBrand || ''} ${updatedRequest.assetModel || ''}`.trim() || updatedRequest.assetType || 'Asset';
-        await queueClient.addAJob(TEMPLATE_NAMES.ASSET_PLEDGE, {
-          customerName: `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Customer',
-          assetName,
-          amount: Number(amount),
-          district: updatedRequest.district,
-          requestId: updatedRequest.id,
-          companyName: 'FundifyHub',
-          timestamp: new Date().toISOString(),
-          email: customer.email,
-          phoneNumber: customer.phoneNumber,
-          adminDashboardUrl: 'https://admin.fundifyhub.example/requests/' + updatedRequest.id,
-          supportUrl: 'https://fundifyhub.example/support'
-        }, { services: [SERVICE_NAMES.EMAIL] });
-      }
-    } catch (e) {
-      logger.error('Failed to enqueue offer notification', e as Error);
-    }
+    // TODO: enqueue offer notification to customer (left as TODO per new plan)
+    logger.info('TODO: enqueue offer notification for customer');
 
   res.status(200).json({ success: true, message: 'Offer created', data: { request: fullRequest, history: historyEntry } } as APIResponseType);
   } catch (error) {
@@ -652,18 +705,9 @@ export async function getCurrentOfferController(req: Request, res: Response): Pr
       return;
     }
 
+    // Fetch full request (select omitted to avoid client type mismatch until migration is applied)
     const request = await prisma.request.findFirst({ 
-      where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
-      select: {
-        id: true,
-        adminOfferedAmount: true,
-        adminTenureMonths: true,
-        adminInterestRate: true,
-        penaltyPercentage: true,
-        lateFeePercentage: true,
-        currentStatus: true,
-        district: true,
-      }
+      where: { OR: [{ id: requestId }, { requestNumber: requestId }] }
     });
 
     if (!request) {
@@ -686,11 +730,12 @@ export async function getCurrentOfferController(req: Request, res: Response): Pr
       success: true, 
       message: 'Current offer retrieved', 
       data: {
-        amount: request.adminOfferedAmount || null,
-        tenureMonths: request.adminTenureMonths || null,
-        interestRate: request.adminInterestRate || null,
-        penaltyPercentage: request.penaltyPercentage || DEFAULT_PENALTY_PERCENTAGE,
-        lateFeePercentage: request.lateFeePercentage || DEFAULT_LATE_FEE_PERCENTAGE,
+        amount: (request as any).adminOfferedAmount || null,
+        tenureMonths: (request as any).adminTenureMonths || null,
+        interestRate: (request as any).adminInterestRate || null,
+        penaltyPercentage: (request as any).penaltyPercentage || DEFAULT_PENALTY_PERCENTAGE,
+        lateFeePercentage: (request as any).lateFeePercentage || DEFAULT_LATE_FEE_PERCENTAGE,
+        processingFee: (request as any).adminProcessingFee || null,
       }
     } as APIResponseType);
   } catch (error) {
@@ -859,8 +904,8 @@ export async function confirmOfferController(req: Request, res: Response): Promi
       // Note: Request status remains APPROVED until admin manually disburses amount
       // No automatic status change here
 
-      // Create history entry
-      await tx.requestHistory.create({ data: { requestId: request.id, actorId: user.id, action: REQUEST_HISTORY_ACTION.LOAN_CREATED, metadata: { loanId: createdLoan.id } } });
+      // Create history entry (using helper with transaction client)
+      await createRequestHistory({ client: tx, requestId: request.id, actorId: user.id, action: REQUEST_HISTORY_ACTION.LOAN_CREATED, metadata: { loanId: createdLoan.id } });
     });
 
     res.status(200).json({ success: true, message: 'Loan created', data: { loan: createdLoan } } as APIResponseType);
@@ -1007,18 +1052,8 @@ export async function createLoanController(req: Request, res: Response): Promise
       }
 
       // Create history entry
-      await tx.requestHistory.create({ 
-        data: { 
-          requestId: request.id, 
-          actorId: user.id, 
-          action: REQUEST_HISTORY_ACTION.LOAN_CREATED, 
-          metadata: { 
-            loanId: createdLoan.id,
-            emiCount: (emiCalc).emiSchedule.length,
-            totalAmount: Number((emiCalc).totalPayment)
-          } 
-        } 
-      });
+      // Create history entry (use helper with transaction client)
+      await createRequestHistory({ client: tx, requestId: request.id, actorId: user.id, action: REQUEST_HISTORY_ACTION.LOAN_CREATED, metadata: { loanId: createdLoan.id, emiCount: (emiCalc).emiSchedule.length, totalAmount: Number((emiCalc).totalPayment) } });
     });
 
     // Fetch the created loan with EMI schedule
@@ -1134,7 +1169,7 @@ export async function generateAgreementController(req: Request, res: Response): 
     const request = await prisma.request.findFirst({
       where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
       include: {
-        customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true } }
+  customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } }
       }
     });
 
@@ -1194,6 +1229,72 @@ export async function generateAgreementController(req: Request, res: Response): 
     const { generateLoanAgreementPDF } = await import('../../utils/pdf-generator');
     const pdfBuffer = await generateLoanAgreementPDF(agreementData);
 
+    // If the client requested a signed URL (preview/download via signed URL), upload to storage and return a signed URL
+    if (String(req.query.signedUrl) === 'true') {
+      try {
+        const { UTApi } = await import('uploadthing/server');
+        const utapi = new UTApi();
+
+        // Upload generated PDF temporarily for preview/download
+  // Node environment: construct a Blob/Buffer wrapped File-compatible object for uploadthing
+  // uploadthing's UTApi.uploadFiles expects a File-like object in server Node environments; buffer is acceptable
+  const nodeFile = new File([pdfBuffer as any], `loan-agreement-${request.requestNumber || request.id}.pdf`, { type: 'application/pdf' } as any);
+  const uploadResult = await utapi.uploadFiles(nodeFile as any);
+        if (uploadResult.error) {
+          logger.error('UploadThing upload failed for agreement preview:', uploadResult.error as any);
+          res.status(500).json({ success: false, message: 'Failed to prepare agreement preview' } as APIResponseType);
+          return;
+        }
+
+        const uploadedFile = uploadResult.data;
+
+        // Generate signed URL for short preview time
+        const { url } = await generateSignedUrl(uploadedFile.key, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
+
+        // Record history (preview generated)
+        try {
+          await createRequestHistory({
+            requestId: request.id,
+            actorId: user.id,
+            action: REQUEST_HISTORY_ACTION.AGREEMENT_GENERATED,
+            metadata: {
+              generatedBy: user.id,
+              fileKey: uploadedFile.key,
+              preview: true,
+              fromStatus: request.currentStatus || null,
+              toStatus: request.currentStatus || null,
+            }
+          });
+        } catch (err) {
+          logger.error('Failed to create history entry for agreement preview generation', err as Error);
+        }
+
+        res.status(200).json({ success: true, data: { url } } as APIResponseType);
+        return;
+      } catch (err) {
+        logger.error('Failed to create signed URL for agreement preview', err as Error);
+        res.status(500).json({ success: false, message: 'Failed to generate agreement preview' } as APIResponseType);
+        return;
+      }
+    }
+
+    // Record that an agreement PDF was generated for this request (admin/customer preview)
+    try {
+      await createRequestHistory({
+        requestId: request.id,
+        actorId: user.id,
+        action: REQUEST_HISTORY_ACTION.AGREEMENT_GENERATED,
+        metadata: {
+          generatedBy: user.id,
+          generatedByName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || null,
+          fromStatus: request.currentStatus || null,
+          toStatus: request.currentStatus || null,
+        }
+      });
+    } catch (err) {
+      logger.error('Failed to create history entry for agreement generation', err as Error);
+    }
+
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="loan-agreement-${request.requestNumber || request.id}.pdf"`);
@@ -1208,9 +1309,237 @@ export async function generateAgreementController(req: Request, res: Response): 
 }
 
 /**
- * Upload Signed Agreement Controller
- * Receives base64 PDF from frontend, uploads to UploadThing, and saves document record
+ * POST /requests/:id/sign-agreement
+ * Body: { signatureDataUrl: string }
+ * Digitally signs the loan agreement with customer's signature and system stamp
  */
+export async function signAgreementController(req: Request, res: Response): Promise<void> {
+  try {
+    const requestId = req.params.id;
+    const { signatureDataUrl } = req.body;
+    const user = req.user as any;
+
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
+      return;
+    }
+
+    if (!signatureDataUrl) {
+      res.status(400).json({ success: false, message: 'Signature data is required' } as APIResponseType);
+      return;
+    }
+
+    // Fetch request with necessary details
+    const request = await prisma.request.findFirst({
+      where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
+      include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } }
+      }
+    });
+
+    if (!request) {
+      res.status(404).json({ success: false, message: 'Request not found' } as APIResponseType);
+      return;
+    }
+
+    // RBAC: Only customer can sign their own agreement
+    if (hasAnyRole(user, [ROLES.CUSTOMER])) {
+      if (request.customerId !== user.id) {
+        res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+        return;
+      }
+    } else {
+      res.status(403).json({ success: false, message: 'Only customers can sign agreements' } as APIResponseType);
+      return;
+    }
+
+    // Verify request is in correct status
+    if (request.currentStatus !== REQUEST_STATUS.PENDING_SIGNATURE) {
+      res.status(400).json({
+        success: false,
+        message: 'Agreement can only be signed when status is PENDING_SIGNATURE'
+      } as APIResponseType);
+      return;
+    }
+
+    // Prepare agreement data (same as generateAgreementController)
+    const agreementData = {
+      requestNumber: request.requestNumber || request.id,
+      customerName: `${request.customer?.firstName || ''} ${request.customer?.lastName || ''}`.trim() || 'Customer',
+      customerEmail: request.customer?.email || '',
+      customerPhone: request.customer?.phoneNumber || '',
+      customerDistrict: request.district,
+
+      assetType: request.assetType || 'Asset',
+      assetBrand: request.assetBrand || undefined,
+      assetModel: request.assetModel || undefined,
+
+      approvedAmount: Number(request.adminOfferedAmount) || 0,
+      tenureMonths: Number(request.adminTenureMonths) || 0,
+      interestRate: Number(request.adminInterestRate) || 0,
+      emiAmount: request.adminEmiSchedule ? Number((request.adminEmiSchedule as any).monthlyPayment) || 0 : 0,
+
+      emiSchedule: request.adminEmiSchedule ? (request.adminEmiSchedule as any).emiSchedule : undefined,
+
+      generatedDate: new Date().toISOString()
+    };
+
+    // Generate PDF
+    const { generateLoanAgreementPDF } = await import('../../utils/pdf-generator');
+    const pdfBuffer = await generateLoanAgreementPDF(agreementData);
+
+    // Convert signature data URL to image buffer
+    const signatureBase64 = signatureDataUrl.replace(/^data:image\/png;base64,/, '');
+    const signatureBuffer = Buffer.from(signatureBase64, 'base64');
+
+    // Apply signature to PDF
+    const { PDFDocument } = await import('pdf-lib');
+    const pdfDoc = await PDFDocument.load(pdfBuffer as Uint8Array);
+    const signatureImage = await pdfDoc.embedPng(signatureBuffer);
+
+    const pages = pdfDoc.getPages();
+    const lastPage = pages[pages.length - 1];
+    const { width, height } = lastPage.getSize();
+
+    // Position signature at bottom right
+    const signatureWidth = 200;
+    const signatureHeight = 80;
+    const x = width - signatureWidth - 50;
+    const y = 100;
+
+    lastPage.drawImage(signatureImage, {
+      x,
+      y,
+      width: signatureWidth,
+      height: signatureHeight,
+    });
+
+    // Apply system stamp if configured
+    if (config.systemSignatureFileKey) {
+      try {
+        const { url: stampUrl } = await generateSignedUrl(config.systemSignatureFileKey, 300);
+        const stampResp = await fetch(stampUrl);
+        if (stampResp.ok) {
+          const stampBuffer = Buffer.from(await stampResp.arrayBuffer());
+          const stampImage = await pdfDoc.embedPng(stampBuffer);
+
+          const maxStampWidth = 160;
+          const scale = Math.min(1, maxStampWidth / stampImage.width);
+          const stampWidth = stampImage.width * scale;
+          const stampHeight = stampImage.height * scale;
+          const stampX = Math.max(40, width - stampWidth - 40);
+          const stampY = Math.max(40, 200);
+
+          lastPage.drawImage(stampImage, {
+            x: stampX,
+            y: stampY,
+            width: stampWidth,
+            height: stampHeight,
+            opacity: 0.95
+          });
+        }
+      } catch (e) {
+        logger.error('Failed to apply system stamp', e as Error);
+      }
+    }
+
+    // Save the signed PDF
+    const signedPdfBytes = await pdfDoc.save();
+    const signedPdfBuffer = Buffer.from(signedPdfBytes);
+
+    // Upload to UploadThing
+    const { UTApi } = await import('uploadthing/server');
+    const utapi = new UTApi();
+
+    // Create a proper File object for UploadThing
+    const signedPdfFile = new File([signedPdfBuffer as any], `signed-agreement-${request.requestNumber || request.id}.pdf`, { type: 'application/pdf' } as any);
+    const uploadResult = await utapi.uploadFiles(signedPdfFile as any);
+    if (uploadResult.error) {
+      logger.error('UploadThing upload failed:', uploadResult.error as any);
+      res.status(500).json({ success: false, message: 'Failed to upload signed agreement' } as APIResponseType);
+      return;
+    }
+
+    const uploadedFile = uploadResult.data;
+
+    // Save document record
+    const document = await prisma.document.create({
+      data: {
+        requestId: request.id,
+        fileKey: uploadedFile.key,
+        fileName: uploadedFile.name,
+        fileSize: uploadedFile.size,
+        fileType: 'application/pdf',
+        uploadedBy: user.id, // Customer initiated, but system processed
+        uploaderRole: DOCUMENT_UPLOADER_ROLE.SYSTEM,
+        documentType: DOCUMENT_TYPE.LOAN_AGREEMENT,
+        description: 'Digitally signed loan agreement with customer signature and system stamp',
+      }
+    });
+
+    // Generate signed URL for the client
+    const { url: signedUrl } = await generateSignedUrl(uploadedFile.key, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
+
+    // Update request status to PENDING_BANK_DETAILS
+    const fromStatus = request.currentStatus;
+    const toStatus = REQUEST_STATUS.PENDING_BANK_DETAILS;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.request.update({
+        where: { id: request.id },
+        data: { currentStatus: toStatus }
+      });
+
+      // System uploaded the signed document (with customer signature and system stamp)
+      await createRequestHistory({
+        client: tx,
+        requestId: request.id,
+        actorId: null, // System action
+        action: REQUEST_HISTORY_ACTION.DOCUMENT_UPLOADED,
+        metadata: {
+          documentId: document.id,
+          fileKey: document.fileKey,
+          uploaderRole: DOCUMENT_UPLOADER_ROLE.SYSTEM,
+          action: 'system_uploaded_file',
+          description: 'System uploaded the digitally signed loan agreement with customer signature and system stamp',
+          signedBy: user.id,
+          signedByName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Customer'
+        }
+      });
+
+      // System changed status to next step
+      await createRequestHistory({
+        client: tx,
+        requestId: request.id,
+        actorId: null, // System action
+        action: REQUEST_HISTORY_ACTION.STATUS_UPDATED,
+        metadata: {
+          fromStatus,
+          toStatus,
+          action: 'system_status_change',
+          description: 'System automatically transitioned to bank details collection after customer signature',
+          triggeredBy: 'customer_signature_completed'
+        }
+      });
+    });
+
+    logger.info(`Agreement digitally signed for request ${request.id}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Agreement signed successfully',
+      data: {
+        signedUrl,
+        documentId: document.id,
+        nextStatus: toStatus,
+      }
+    } as APIResponseType);
+
+  } catch (error) {
+    logger.error('signAgreementController error', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to sign agreement' } as APIResponseType);
+  }
+}
 export async function uploadSignedAgreementController(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
@@ -1269,10 +1598,8 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
 
     logger.info(`Uploading signed agreement for request ${id}`);
 
-    // Create a File object from buffer
-    const file = new File([pdfBuffer], fileName, { type: 'application/pdf' });
-
-    const uploadResult = await utapi.uploadFiles(file);
+  // Upload buffer directly — uploadthing server API accepts file-like data in Node; cast to any to satisfy TS
+  const uploadResult = await utapi.uploadFiles(pdfBuffer as any);
 
     if (uploadResult.error) {
       logger.error('UploadThing upload failed:', uploadResult.error as any);
@@ -1281,6 +1608,14 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
     }
 
     const uploadedFile = uploadResult.data;
+
+    // Determine uploaderRole based on user's roles
+    let uploaderRole = 'USER_SUBMITTED';
+    if (user.roles.includes(ROLES.SUPER_ADMIN) || user.roles.includes(ROLES.DISTRICT_ADMIN)) {
+      uploaderRole = 'ADMIN_SUBMITTED';
+    } else if (user.roles.includes(ROLES.AGENT)) {
+      uploaderRole = 'AGENT_SUBMITTED';
+    }
 
     // Save document record to database
     const document = await prisma.document.create({
@@ -1291,19 +1626,181 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
         fileSize: uploadedFile.size,
         fileType: 'application/pdf',
         uploadedBy: user.id,
-        documentType: 'LOAN_AGREEMENT',
+        uploaderRole,
+        documentType: DOCUMENT_TYPE.LOAN_AGREEMENT,
         description: 'Digitally signed loan agreement',
       }
     });
 
     logger.info(`Signed agreement saved: ${document.id} for request ${id}`);
 
+    // Create a request history entry for the uploaded customer-signed agreement
+    try {
+      await createRequestHistory({
+        requestId: id,
+        actorId: user.id,
+        action: REQUEST_HISTORY_ACTION.SIGNED_AGREEMENT_UPLOADED,
+        metadata: {
+          documentId: document.id,
+          fileKey: document.fileKey,
+          fileName: document.fileName,
+          fileSize: document.fileSize,
+          fileType: document.fileType,
+          documentType: document.documentType,
+          uploaderId: user.id,
+          uploaderRole,
+          fromStatus: request.currentStatus || null,
+          toStatus: request.currentStatus || null,
+        }
+      });
+    } catch (err) {
+      logger.error('Failed to create history for signed agreement upload', err as Error);
+    }
+
+    // --- Automatic system stamping (synchronous) ---
+    // Attempt to synchronously apply the configured system stamp image to the uploaded PDF,
+    // upload the stamped PDF as a SYSTEM document, create a history entry, and return a signed URL
+    // for the stamped version to the client. If stamping fails, we still return the user-uploaded
+    // document information but include no stamped URL.
+    let stampedSignedUrl: string | null = null;
+    let stampedDocumentId: string | null = null;
+    let stampedFileKey: string | null = null;
+
+    if (config.systemSignatureFileKey) {
+      try {
+        logger.info(`Attempting automatic system stamp (synchronous) for signed agreement requestId=${id} systemKey=${config.systemSignatureFileKey}`);
+
+        const { url: stampUrl } = await generateSignedUrl(config.systemSignatureFileKey!, 300);
+        const stampResp = await fetch(stampUrl);
+        if (!stampResp.ok) throw new Error(`Failed to download system stamp image: ${stampResp.status}`);
+        const stampBuffer = Buffer.from(await stampResp.arrayBuffer());
+
+        const { PDFDocument } = await import('pdf-lib');
+        const pdfDoc = await PDFDocument.load(pdfBuffer as Uint8Array);
+
+        const contentType = stampResp.headers.get('content-type') || '';
+        let embeddedImage: any = null;
+        if (contentType.includes('png')) {
+          embeddedImage = await pdfDoc.embedPng(stampBuffer);
+        } else {
+          embeddedImage = await pdfDoc.embedJpg(stampBuffer);
+        }
+
+        const pages = pdfDoc.getPages();
+        const lastPage = pages[pages.length - 1];
+        const { width } = lastPage.getSize();
+
+        const maxStampWidth = 160;
+        const scale = Math.min(1, maxStampWidth / embeddedImage.width);
+        const stampWidth = embeddedImage.width * scale;
+        const stampHeight = embeddedImage.height * scale;
+        const x = Math.max(40, width - stampWidth - 40);
+        const y = Math.max(40, 80);
+
+        lastPage.drawImage(embeddedImage, { x, y, width: stampWidth, height: stampHeight, opacity: 0.95 });
+
+        const stampedBytes = await pdfDoc.save();
+        const stampedBuffer = Buffer.from(stampedBytes);
+        const stampedUpload = await utapi.uploadFiles(stampedBuffer as any);
+        if (stampedUpload.error) throw new Error('Failed to upload stamped PDF');
+        const stampedUploaded = stampedUpload.data;
+
+        const systemDoc = await prisma.document.create({
+          data: {
+            requestId: id,
+            fileKey: stampedUploaded.key,
+            fileName: stampedUploaded.name,
+            fileSize: stampedUploaded.size,
+            fileType: 'application/pdf',
+            uploadedBy: user.id,
+            uploaderRole: DOCUMENT_UPLOADER_ROLE.SYSTEM,
+            documentType: DOCUMENT_TYPE.LOAN_AGREEMENT,
+            description: 'System-stamped signed loan agreement',
+          }
+        });
+        // Record system-stamped document upload in history with detailed metadata about the stamp
+        try {
+          await createRequestHistory({
+            requestId: id,
+            actorId: null,
+            action: REQUEST_HISTORY_ACTION.DOCUMENT_UPLOADED,
+            metadata: {
+              documentId: systemDoc.id,
+              fileKey: systemDoc.fileKey,
+              fileName: systemDoc.fileName,
+              fileSize: systemDoc.fileSize,
+              fileType: systemDoc.fileType,
+              documentType: systemDoc.documentType,
+              uploaderRole: DOCUMENT_UPLOADER_ROLE.SYSTEM,
+              note: 'System applied digital stamp to customer-signed agreement',
+              stamp: {
+                systemStampFileKey: config.systemSignatureFileKey || null,
+                appliedBy: 'SYSTEM',
+                appliedAt: new Date().toISOString(),
+                customerDocumentId: document.id,
+                customerFileKey: document.fileKey,
+              }
+            }
+          });
+        } catch (e) {
+          logger.error('Failed to create history for system stamped upload', e as Error);
+        }
+
+        try {
+          const { url } = await generateSignedUrl(stampedUploaded.key, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
+          stampedSignedUrl = url;
+          stampedDocumentId = systemDoc.id;
+          stampedFileKey = stampedUploaded.key;
+          logger.info(`System stamping completed successfully requestId=${id} systemDocumentId=${systemDoc.id}`);
+        } catch (e) {
+          logger.error('Failed to generate signed URL for stamped document', e as Error);
+        }
+      } catch (e) {
+        logger.error('Synchronous automatic system stamping failed', e as Error);
+      }
+    }
+
+    // After upload (and stamping if available), transition request to next status and record history
+    try {
+      const fromStatus = request.currentStatus || null;
+      const toStatus = REQUEST_STATUS.PENDING_BANK_DETAILS;
+
+      await prisma.$transaction(async (tx) => {
+        // Update request status
+        await tx.request.update({ where: { id: id }, data: { currentStatus: toStatus } });
+
+        // Create history entry for automatic transition triggered by customer signature
+        await createRequestHistory({
+          client: tx,
+          requestId: id,
+          actorId: user.id,
+          action: toStatus,
+          metadata: {
+            fromStatus,
+            toStatus,
+            triggeredBy: 'SIGNED_AGREEMENT_UPLOADED',
+            customerDocumentId: document.id,
+            customerFileKey: document.fileKey,
+            systemDocumentId: stampedDocumentId,
+            systemFileKey: stampedFileKey,
+          }
+        });
+      });
+    } catch (e) {
+      logger.error('Failed to transition request status after signed agreement upload', e as Error);
+    }
+
+    // Return upload result and stamped URL (if any)
     res.status(200).json({
       success: true,
       message: 'Signed agreement uploaded successfully',
       data: {
         documentId: document.id,
         fileKey: document.fileKey,
+        stampedDocumentId,
+        stampedFileKey,
+        stampedSignedUrl,
+        nextStatus: REQUEST_STATUS.PENDING_BANK_DETAILS,
       }
     });
 
@@ -1313,6 +1810,127 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
       success: false, 
       error: 'Failed to upload signed agreement' 
     });
+  }
+}
+
+/**
+ * POST /requests/:id/inspections/complete
+ * Body: { outcome: 'APPROVE' | 'REJECT', note?: string, documentIds?: string[], checklist?: Record<string, any> }
+ * Finalizes an inspection: validates documents (if any), updates request status to INSPECTION_COMPLETED,
+ * and creates an aggregated RequestHistory entry summarizing the outcome.
+ */
+export async function completeInspectionController(req: Request, res: Response): Promise<void> {
+  try {
+    const requestId = req.params.id;
+    const { outcome, note, documentIds, checklist } = req.body as { outcome?: string; note?: string; documentIds?: string[]; checklist?: Record<string, any> };
+
+    if (!requestId) {
+      res.status(400).json({ success: false, message: 'request id required' } as APIResponseType);
+      return;
+    }
+
+    const user = req.user as any;
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
+      return;
+    }
+
+    // Fetch request
+    const request = await prisma.request.findFirst({ where: { OR: [{ id: requestId }, { requestNumber: requestId }] }, include: { documents: true } });
+    if (!request) {
+      res.status(404).json({ success: false, message: 'Request not found' } as APIResponseType);
+      return;
+    }
+
+    // Only assigned agent or admins may complete an inspection
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    const isSuper = roles.includes(ROLES.SUPER_ADMIN);
+    const isDistrictAdmin = roles.includes(ROLES.DISTRICT_ADMIN) && hasDistrictAccess(user, request.district);
+    const isAssignedAgent = roles.includes(ROLES.AGENT) && request.assignedAgentId === user.id;
+
+    if (!(isSuper || isDistrictAdmin || isAssignedAgent)) {
+      res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+      return;
+    }
+
+    // Must be in inspection in progress
+    if (request.currentStatus !== REQUEST_STATUS.INSPECTION_IN_PROGRESS) {
+      res.status(400).json({ success: false, message: `Inspection can only be completed from status ${REQUEST_STATUS.INSPECTION_IN_PROGRESS}` } as APIResponseType);
+      return;
+    }
+
+    // Outcome is optional here. If provided, normalize and validate; otherwise we'll record inspection completion
+    let normalizedOutcome: string | null = null;
+    if (typeof outcome !== 'undefined' && outcome !== null) {
+      normalizedOutcome = String(outcome).toUpperCase();
+      if (!['APPROVE', 'REJECT'].includes(normalizedOutcome)) {
+        res.status(400).json({ success: false, message: 'Invalid outcome. If provided, must be APPROVE or REJECT' } as APIResponseType);
+        return;
+      }
+    }
+
+    // If documentIds provided, ensure they belong to this request
+    if (Array.isArray(documentIds) && documentIds.length > 0) {
+      const docs = await prisma.document.findMany({ where: { id: { in: documentIds } } });
+      const invalid = docs.some(d => d.requestId !== request.id);
+      if (invalid || docs.length !== documentIds.length) {
+        res.status(400).json({ success: false, message: 'One or more documents are invalid or do not belong to this request' } as APIResponseType);
+        return;
+      }
+    }
+
+    const fromStatus = request.currentStatus;
+    const toStatus = REQUEST_STATUS.INSPECTION_COMPLETED;
+
+    // Persist update and create aggregated history entry
+    const [updatedRequest, historyEntry] = await prisma.$transaction(async (tx) => {
+      const u = await tx.request.update({ where: { id: request.id }, data: { currentStatus: toStatus } });
+
+      const metadata: any = {
+        fromStatus,
+        toStatus,
+        note: typeof note === 'string' && note.trim() ? note.trim() : null,
+        documentIds: Array.isArray(documentIds) ? documentIds : [],
+        checklist: checklist || null,
+      };
+      if (normalizedOutcome) metadata.outcome = normalizedOutcome;
+
+      const h = await createRequestHistory({
+        client: tx,
+        requestId: request.id,
+        actorId: user.id,
+        action: REQUEST_HISTORY_ACTION.INSPECTION_COMPLETED,
+        metadata,
+      });
+
+      return [u, h];
+    });
+
+    // Enrich history actor details (best-effort)
+    try {
+      const fullRequest = await prisma.request.findUnique({ where: { id: request.id }, include: { documents: true, requestHistory: { orderBy: { createdAt: 'asc' } }, customer: true, assignedAgent: true } });
+      if (fullRequest) {
+        const history = (fullRequest as any).requestHistory || [];
+        const actorIds = Array.from(new Set(history.map((h: any) => h.actorId).filter(Boolean))) as string[];
+        if (actorIds.length > 0) {
+          const actors = await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, firstName: true, lastName: true, email: true, roles: true } });
+          const actorMap: Record<string, any> = {};
+          for (const a of actors) actorMap[a.id] = a;
+          (fullRequest as any).requestHistory = history.map((h: any) => ({ ...h, actor: h.actorId ? actorMap[h.actorId] || null : null }));
+        }
+      }
+    } catch (e) {
+      logger.error('Failed to enrich requestHistory after completeInspectionController', e as Error);
+    }
+
+    // Return full updated request (client will re-fetch as needed)
+    const finalRequest = await prisma.request.findUnique({ where: { id: request.id }, include: { documents: true, requestHistory: { orderBy: { createdAt: 'asc' } }, customer: true, assignedAgent: true } });
+
+    res.status(200).json({ success: true, message: 'Inspection completed', data: { request: finalRequest, history: historyEntry } } as APIResponseType);
+    return;
+  } catch (error) {
+    logger.error('completeInspectionController error', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to complete inspection' } as APIResponseType);
   }
 }
 
@@ -1371,19 +1989,17 @@ export async function updateBankDetailsController(req: Request, res: Response): 
       }
     });
 
-    // Create history entry
-    await prisma.requestHistory.create({
-      data: {
-        requestId: request.id,
-        actorId: user.id,
-        action: REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-        metadata: {
-          fromStatus: request.currentStatus,
-          toStatus: REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-          bankAccountNumber: `***${bankAccountNumber.slice(-4)}`, // Store last 4 digits only for privacy
-          bankIfscCode,
-          hasUpi: !!upiId,
-        }
+    // Create history entry (best-effort)
+    await createRequestHistory({
+      requestId: request.id,
+      actorId: user.id,
+      action: REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
+      metadata: {
+        fromStatus: request.currentStatus,
+        toStatus: REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
+        bankAccountNumber: `***${bankAccountNumber.slice(-4)}`,
+        bankIfscCode,
+        hasUpi: !!upiId,
       }
     });
 
@@ -1432,6 +2048,10 @@ export async function getAgentAssignedRequestsController(req: Request, res: Resp
 
     const where: any = { assignedAgentId: userId };
 
+    // Agents should not see requests that have progressed past bank details submission
+    // (these are considered completed for the agent's responsibilities)
+    where.currentStatus = { notIn: AGENT_ACCESS_DENY_STATUSES };
+
     // Optional status filter
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
     if (status) {
@@ -1461,7 +2081,7 @@ export async function getAgentAssignedRequestsController(req: Request, res: Resp
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
-          customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, district: true } },
+          customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, district: true, address: true } },
           assignedAgent: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } },
           loan: { select: { id: true, approvedAmount: true, status: true, disbursedDate: true, approvedDate: true } },
           _count: { select: { documents: true, comments: true, inspections: true } },
@@ -1478,5 +2098,81 @@ export async function getAgentAssignedRequestsController(req: Request, res: Resp
   } catch (error) {
     logger.error('Get assigned requests error:', error as Error);
     res.status(500).json({ success: false, message: 'Failed to fetch assigned requests' });
+  }
+}
+
+/**
+ * POST /requests/:id/comments-enabled
+ * Body: { enabled: boolean }
+ * Admin-only: SUPER_ADMIN or DISTRICT_ADMIN (for the request district)
+ * Toggles whether customers can post comments after a request is rejected.
+ */
+export async function updateCommentsEnabledController(req: Request, res: Response): Promise<void> {
+  try {
+    const requestId = req.params.id;
+    const { enabled } = req.body as { enabled?: boolean };
+
+    if (!requestId || typeof enabled !== 'boolean') {
+      res.status(400).json({ success: false, message: 'request id and enabled boolean required' } as APIResponseType);
+      return;
+    }
+
+    const user = req.user as any;
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
+      return;
+    }
+
+    const request = await prisma.request.findFirst({ where: { OR: [{ id: requestId }, { requestNumber: requestId }] } });
+    if (!request) {
+      res.status(404).json({ success: false, message: 'Request not found' } as APIResponseType);
+      return;
+    }
+
+    const isSuper = Array.isArray(user.roles) && user.roles.includes(ROLES.SUPER_ADMIN);
+    if (!isSuper && !hasAnyRole(user, [ROLES.DISTRICT_ADMIN])) {
+      res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+      return;
+    }
+
+    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+      res.status(403).json({ success: false, message: 'Forbidden - no access to this district' } as APIResponseType);
+      return;
+    }
+
+    const dbId = request.id;
+    const prev = (request as any).commentsEnabled;
+
+    // Prisma client types may be out of sync until migration + client regenerate; use a typed-agnostic update here
+    const updated = await (prisma as any).request.update({ where: { id: dbId }, data: { commentsEnabled: enabled } });
+
+    // Create history entry recording the toggle
+    try {
+      await createRequestHistory({
+        requestId: dbId,
+        actorId: user.id,
+        action: 'COMMENTS_PERMISSION_UPDATED',
+        metadata: { previous: prev ?? null, enabled }
+      });
+    } catch (err) {
+      logger.error('Failed to write history for commentsEnabled toggle', err as Error);
+    }
+
+    // Return full request with relations
+    const fullRequest = await prisma.request.findUnique({
+      where: { id: dbId },
+      include: {
+        documents: true,
+        requestHistory: { orderBy: { createdAt: 'asc' } },
+  customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } },
+        comments: { select: { id: true, content: true, createdAt: true, authorId: true, isInternal: true, author: { select: { id: true, firstName: true, lastName: true, roles: true } } } },
+      }
+    });
+
+    res.status(200).json({ success: true, message: 'Comment permissions updated', data: { request: fullRequest } } as APIResponseType);
+    return;
+  } catch (error) {
+    logger.error('updateCommentsEnabledController error', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to update comment permissions' } as APIResponseType);
   }
 }

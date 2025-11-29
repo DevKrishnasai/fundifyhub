@@ -1,5 +1,6 @@
 import { UTApi } from "uploadthing/server";
 import type { UploadThingListFilesResponse } from "@fundifyhub/types";
+import { CLIENT_CONSTANTS } from "@fundifyhub/types";
 import config from './config';
 
 // Initialize UploadThing API using validated config (token validated at import)
@@ -26,7 +27,7 @@ const utapi = new UTApi({
  */
 export async function generateSignedUrl(
   fileKey: string,
-  expiresIn: number = 900
+  expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<{ url: string; expiresAt: Date }> {
   try {
     const result = await utapi.getSignedURL(fileKey, { expiresIn });
@@ -61,7 +62,7 @@ export async function generateSignedUrl(
  */
 export async function generateSignedUrls(
   fileKeys: string[],
-  expiresIn: number = 900
+  expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<Array<{ fileKey: string; url: string; expiresAt: Date }>> {
   try {
     const results = await Promise.all(

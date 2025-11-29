@@ -252,7 +252,7 @@ export default function UserDashboard() {
                           onUpdated={handleRequestUpdate}
                         />
                         <Button variant="outline" size="sm" asChild className="shrink-0">
-                          <Link href={`/asset-detail/${req.requestNumber ?? req.id}`}>
+                          <Link href={`/request/${req.requestNumber ?? req.id}`}>
                             <Eye className="h-4 w-4 sm:mr-2" />
                             <span className="hidden sm:inline">View Details</span>
                           </Link>

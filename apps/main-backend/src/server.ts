@@ -20,8 +20,26 @@ const app = express();
 
 // TODO [P-2]: add rate limiting, security headers, request logging, etc.
 
+// Allow a small whitelist of dev origins. Important: when credentials
+// are enabled, Access-Control-Allow-Origin must not be '*'. We prefer
+// an explicit list that includes common local/dev hosts.
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  // Add the LAN/dev IP that the frontend runs on (example from the error)
+  'http://192.168.29.97:3000',
+];
+
 app.use(cors({
-  origin: config.server.frontendUrl,
+  origin: (origin, callback) => {
+    // `origin` will be undefined for non-browser requests (server-to-server,
+    // curl, Postman). Allow those. For browser requests, check whitelist.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS policy: origin ${origin} not allowed`));
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));

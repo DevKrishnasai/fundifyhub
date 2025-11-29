@@ -116,6 +116,12 @@ export enum ASSET_TYPE {
   TABLET = "TABLET",
   CAMERA = "CAMERA",
   "GAMING CONSOLE" = "GAMING CONSOLE",
+  MOBILE = "MOBILE",
+  ELECTRONICS = "ELECTRONICS",
+  TV = "TV",
+  HOME_APPLIANCE = "HOME_APPLIANCE",
+  BICYCLE = "BICYCLE",
+  TRUCK = "TRUCK",
   MOTORCYCLE = "MOTORCYCLE",
   CAR = "CAR",
   JEWELRY = "JEWELRY",
@@ -129,11 +135,36 @@ export enum ASSET_CONDITION {
   POOR = "POOR"
 }
 
+// Client / frontend shared constants
+export const CLIENT_CONSTANTS = {
+  // Max length for comments in frontend (also enforce on backend if desired)
+  COMMENT_MAX_LENGTH: 300,
+
+  // Max length for admin requested info notes
+  MORE_INFO_NOTE_MAX: 500,
+
+  // Signed URL defaults (in seconds)
+  SIGNED_URL_EXPIRES: 3600, // 1 hour
+  SIGNED_URL_EXPIRES_SHORT: 900, // 15 minutes
+
+  // When remaining expiry is less than this (seconds), client should refresh
+  SIGNED_URL_REFRESH_THRESHOLD_SECONDS: 300, // 5 minutes
+
+  // Polling interval for background refresh (ms)
+  SIGNED_URL_REFRESH_INTERVAL_MS: 60000, // 60s
+};
+
 export const ASSET_TYPE_OPTIONS = [
   { value: "LAPTOP", label: "Laptop" },
   { value: "TABLET", label: "Tablet" },
   { value: "CAMERA", label: "Camera" },
   { value: "GAMING CONSOLE", label: "Gaming Console" },
+  { value: "MOBILE", label: "Mobile / Phone" },
+  { value: "ELECTRONICS", label: "Electronics (TV, Audio)" },
+  { value: "TV", label: "TV" },
+  { value: "HOME_APPLIANCE", label: "Home Appliance" },
+  { value: "BICYCLE", label: "Bicycle" },
+  { value: "TRUCK", label: "Truck" },
   { value: "MOTORCYCLE", label: "Motorcycle" },
   { value: "CAR", label: "Car" },
   { value: "JEWELRY", label: "Jewelry" },
@@ -223,6 +254,18 @@ export const AGENT_ACTION_REQUIRED = [
   REQUEST_STATUS.INSPECTION_IN_PROGRESS,
 ];
 
+// Statuses where agents should no longer have UI access to the request
+// (their responsibility for the request is completed and further steps are admin/customer flows)
+export const AGENT_ACCESS_DENY_STATUSES = [
+  REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
+  REQUEST_STATUS.TRANSFER_FAILED,
+  REQUEST_STATUS.AMOUNT_DISBURSED,
+  REQUEST_STATUS.ACTIVE,
+  REQUEST_STATUS.PAYMENT_OVERDUE,
+  REQUEST_STATUS.DEFAULTED,
+  REQUEST_STATUS.COMPLETED,
+];
+
 // Role-based status transition permissions
 export const CUSTOMER_ALLOWED_STATUSES = [
   REQUEST_STATUS.OFFER_ACCEPTED,
@@ -262,6 +305,9 @@ export enum REQUEST_HISTORY_ACTION {
   STATUS_UPDATED = 'STATUS_UPDATED',
   COMMENT_ADDED = 'COMMENT_ADDED',
   DOCUMENT_UPLOADED = 'DOCUMENT_UPLOADED',
+  AGREEMENT_GENERATED = 'AGREEMENT_GENERATED',
+  SIGNED_AGREEMENT_UPLOADED = 'SIGNED_AGREEMENT_UPLOADED',
+  INSPECTION_COMPLETED = 'INSPECTION_COMPLETED',
 }
 
 export enum DOCUMENT_CATEGORY {
@@ -294,6 +340,14 @@ export enum DOCUMENT_STATUS {
   ACTIVE = "ACTIVE",
   ARCHIVED = "ARCHIVED",
   DELETED = "DELETED"
+}
+
+// Document uploader role categorization (includes system role for stamped uploads)
+export enum DOCUMENT_UPLOADER_ROLE {
+  USER_SUBMITTED = "USER_SUBMITTED",
+  AGENT_SUBMITTED = "AGENT_SUBMITTED",
+  ADMIN_SUBMITTED = "ADMIN_SUBMITTED",
+  SYSTEM = "SYSTEM"
 }
 
 export enum LOAN_STATUS {
@@ -348,6 +402,19 @@ export const DEFAULT_LATE_FEE_PERCENTAGE = 0.01;
 
 // ----------- REQUEST RELATED END-----------
 
+// ----------- VALIDATION PATTERNS -----------
+
+export const VALIDATION_PATTERNS = {
+  // Indian banking validation patterns
+  ACCOUNT_NUMBER: /^\d{9,18}$/, // 9-18 digits for Indian bank accounts
+  IFSC_CODE: /^[A-Z]{4}0[A-Z0-9]{6}$/, // IFSC format: 4 letters, 0, then 6 alphanumeric
+  ACCOUNT_NAME: /^[a-zA-Z\s.]+$/, // Letters, spaces, and periods only
+  UPI_ID: /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/, // Email-like format for UPI
+  PHONE_NUMBER: /^\d{10}$/, // Exactly 10 digits
+} as const;
+
+// ----------- VALIDATION PATTERNS END -----------
+
 // ----------- UI CONSTANTS -----------
 
 export const MAX_DOCUMENT_SIZE = 4 * 1024 * 1024; // 4MB in bytes
@@ -387,7 +454,7 @@ export const DOCUMENT_TYPE_TO_CATEGORY: Record<DOCUMENT_TYPE, DOCUMENT_CATEGORY>
   [DOCUMENT_TYPE.INSPECTION_PHOTO]: DOCUMENT_CATEGORY.INSPECTION,
   [DOCUMENT_TYPE.EMI_RECEIPT]: DOCUMENT_CATEGORY.PAYMENT,
   [DOCUMENT_TYPE.TRANSFER_PROOF]: DOCUMENT_CATEGORY.TRANSFER_PROOF,
-  [DOCUMENT_TYPE.LOAN_AGREEMENT]: DOCUMENT_CATEGORY.LOAN,
+  [DOCUMENT_TYPE.LOAN_AGREEMENT]: DOCUMENT_CATEGORY.LEGAL,
   [DOCUMENT_TYPE.PROFILE_PICTURE]: DOCUMENT_CATEGORY.PROFILE,
   [DOCUMENT_TYPE.OTHER]: DOCUMENT_CATEGORY.OTHER,
 };
@@ -404,6 +471,111 @@ export const DOCUMENT_CATEGORY_LABELS: Record<DOCUMENT_CATEGORY, string> = {
   [DOCUMENT_CATEGORY.PROFILE]: 'Profile Pictures',
   [DOCUMENT_CATEGORY.TRANSFER_PROOF]: 'Transfer Proofs',
   [DOCUMENT_CATEGORY.OTHER]: 'Other Documents',
+};
+
+// Document Type Display Labels
+export const DOCUMENT_TYPE_LABELS: Record<DOCUMENT_TYPE, string> = {
+  [DOCUMENT_TYPE.ASSET_PHOTO]: 'Asset Photo',
+  [DOCUMENT_TYPE.PURCHASE_RECEIPT]: 'Purchase Receipt',
+  [DOCUMENT_TYPE.ID_PROOF]: 'ID Proof',
+  [DOCUMENT_TYPE.ADDRESS_PROOF]: 'Address Proof',
+  [DOCUMENT_TYPE.INSPECTION_PHOTO]: 'Inspection Photo',
+  [DOCUMENT_TYPE.EMI_RECEIPT]: 'EMI Receipt',
+  [DOCUMENT_TYPE.TRANSFER_PROOF]: 'Transfer Proof',
+  [DOCUMENT_TYPE.LOAN_AGREEMENT]: 'Loan Agreement',
+  [DOCUMENT_TYPE.PROFILE_PICTURE]: 'Profile Picture',
+  [DOCUMENT_TYPE.OTHER]: 'Other Document',
+};
+
+// Document Type Configuration (downloadable flags, icons, etc.)
+export const DOCUMENT_TYPE_CONFIG: Record<
+  DOCUMENT_TYPE,
+  {
+    label: string;
+    category: DOCUMENT_CATEGORY;
+    isDownloadable: boolean;
+    icon: string; // lucide icon name
+    description: string;
+  }
+> = {
+  [DOCUMENT_TYPE.ASSET_PHOTO]: {
+    label: 'Asset Photo',
+    category: DOCUMENT_CATEGORY.ASSET,
+    isDownloadable: true,
+    icon: 'FileImage',
+    description: 'Photos of the asset being pledged'
+  },
+  [DOCUMENT_TYPE.PURCHASE_RECEIPT]: {
+    label: 'Purchase Receipt',
+    category: DOCUMENT_CATEGORY.ASSET,
+    isDownloadable: true,
+    icon: 'Receipt',
+    description: 'Original purchase receipt or invoice'
+  },
+  [DOCUMENT_TYPE.ID_PROOF]: {
+    label: 'ID Proof',
+    category: DOCUMENT_CATEGORY.IDENTITY,
+    isDownloadable: false, // Sensitive document
+    icon: 'CreditCard',
+    description: 'Government issued ID proof'
+  },
+  [DOCUMENT_TYPE.ADDRESS_PROOF]: {
+    label: 'Address Proof',
+    category: DOCUMENT_CATEGORY.IDENTITY,
+    isDownloadable: false, // Sensitive document
+    icon: 'MapPin',
+    description: 'Address verification document'
+  },
+  [DOCUMENT_TYPE.INSPECTION_PHOTO]: {
+    label: 'Inspection Photo',
+    category: DOCUMENT_CATEGORY.INSPECTION,
+    isDownloadable: true,
+    icon: 'Camera',
+    description: 'Photos taken during asset inspection'
+  },
+  [DOCUMENT_TYPE.EMI_RECEIPT]: {
+    label: 'EMI Receipt',
+    category: DOCUMENT_CATEGORY.PAYMENT,
+    isDownloadable: true,
+    icon: 'Receipt',
+    description: 'EMI payment receipt'
+  },
+  [DOCUMENT_TYPE.TRANSFER_PROOF]: {
+    label: 'Transfer Proof',
+    category: DOCUMENT_CATEGORY.TRANSFER_PROOF,
+    isDownloadable: true,
+    icon: 'ArrowRightLeft',
+    description: 'Proof of amount transfer'
+  },
+  [DOCUMENT_TYPE.LOAN_AGREEMENT]: {
+    label: 'Loan Agreement',
+    category: DOCUMENT_CATEGORY.LEGAL,
+    isDownloadable: true,
+    icon: 'FileText',
+    description: 'Signed loan agreement document'
+  },
+  [DOCUMENT_TYPE.PROFILE_PICTURE]: {
+    label: 'Profile Picture',
+    category: DOCUMENT_CATEGORY.PROFILE,
+    isDownloadable: false,
+    icon: 'User',
+    description: 'User profile picture'
+  },
+  [DOCUMENT_TYPE.OTHER]: {
+    label: 'Other Document',
+    category: DOCUMENT_CATEGORY.OTHER,
+    isDownloadable: true,
+    icon: 'File',
+    description: 'Miscellaneous document'
+  },
+};
+
+// Uploader Role Display Labels
+export const UPLOADER_ROLE_LABELS: Record<DOCUMENT_UPLOADER_ROLE, string> = {
+  [DOCUMENT_UPLOADER_ROLE.USER_SUBMITTED]: 'Customer Uploaded',
+  [DOCUMENT_UPLOADER_ROLE.AGENT_SUBMITTED]: 'Agent Uploaded',
+  [DOCUMENT_UPLOADER_ROLE.ADMIN_SUBMITTED]: 'Admin Uploaded',
+  [DOCUMENT_UPLOADER_ROLE.SYSTEM]: 'System Stamped',
 };
 
 // ----------- UI CONSTANTS END -----------

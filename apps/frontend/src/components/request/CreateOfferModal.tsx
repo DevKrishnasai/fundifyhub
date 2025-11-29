@@ -30,6 +30,7 @@ type OfferForm = {
   interestRate: number;
   penaltyPercentage: number;
   lateFeePercentage: number;
+  processingFee?: number;
 };
 
 export default function CreateOfferModal({ open, onOpenChange, onSubmit, requestId, initialOffer }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (payload: OfferForm) => void; requestId: string; initialOffer?: Partial<OfferForm> }) {
@@ -38,6 +39,7 @@ export default function CreateOfferModal({ open, onOpenChange, onSubmit, request
   const [interestRate, setInterestRate] = React.useState<number | ''>('');
   const [penaltyPercentage, setPenaltyPercentage] = React.useState<number | ''>('');
   const [lateFeePercentage, setLateFeePercentage] = React.useState<number | ''>('');
+  const [processingFee, setProcessingFee] = React.useState<number | ''>('');
   const [preview, setPreview] = React.useState<EMIPreview | null>(null);
   const [previewLoading, setPreviewLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -50,6 +52,7 @@ export default function CreateOfferModal({ open, onOpenChange, onSubmit, request
       if (typeof initialOffer.interestRate === 'number') setInterestRate(initialOffer.interestRate);
       if (typeof initialOffer.penaltyPercentage === 'number') setPenaltyPercentage(initialOffer.penaltyPercentage);
       if (typeof initialOffer.lateFeePercentage === 'number') setLateFeePercentage(initialOffer.lateFeePercentage);
+      if (typeof initialOffer.processingFee === 'number') setProcessingFee(initialOffer.processingFee);
     } else if (!open) {
       // Clear fields when modal closes
       setAmount('');
@@ -57,6 +60,7 @@ export default function CreateOfferModal({ open, onOpenChange, onSubmit, request
       setInterestRate('');
       setPenaltyPercentage('');
       setLateFeePercentage('');
+      setProcessingFee('');
       setPreview(null);
       setError(null);
     }
@@ -108,8 +112,10 @@ export default function CreateOfferModal({ open, onOpenChange, onSubmit, request
       return;
     }
     
-    const p = penaltyPercentage === '' ? 4 : penaltyPercentage;
-    const l = lateFeePercentage === '' ? 0.01 : lateFeePercentage;
+  const p = penaltyPercentage === '' ? 4 : penaltyPercentage;
+  const l = lateFeePercentage === '' ? 0.01 : lateFeePercentage;
+  // Send 0 when no processing fee provided (default to 0)
+  const pf = processingFee === '' ? 0 : processingFee;
 
     setError(null);
     onSubmit({ 
@@ -117,7 +123,8 @@ export default function CreateOfferModal({ open, onOpenChange, onSubmit, request
       tenureMonths: t, 
       interestRate: i,
       penaltyPercentage: p,
-      lateFeePercentage: l
+      lateFeePercentage: l,
+      processingFee: pf
     });
   }
 
@@ -209,6 +216,20 @@ export default function CreateOfferModal({ open, onOpenChange, onSubmit, request
                   setLateFeePercentage(e.target.value === '' ? '' : Number(e.target.value));
                 }} 
                 placeholder="Default: 0.01%"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Processing Fee (₹)</label>
+              <Input 
+                type="number" 
+                step="0.01" 
+                min="0"
+                value={processingFee === '' ? '' : processingFee}
+                onChange={(e) => {
+                  setError(null);
+                  setProcessingFee(e.target.value === '' ? '' : Number(e.target.value));
+                }}
+                placeholder="Fee deducted at disbursement"
               />
             </div>
           </div>

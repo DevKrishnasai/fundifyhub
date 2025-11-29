@@ -25,7 +25,8 @@ export interface ActionInput {
   
   // For agent assignment
   agentId?: string;
-  inspectionDateTime?: string;
+  // date-only string in YYYY-MM-DD format
+  inspectionDate?: string;
   
   // For generic comments/notes
   notes?: string;
@@ -83,14 +84,14 @@ export async function executeRequestAction(
           onError?.('Please select an agent');
           return false;
         }
-        return await assignAgent(requestId, input.agentId, input.inspectionDateTime, onSuccess, onError);
+        return await assignAgent(requestId, input.agentId, input.inspectionDate, onSuccess, onError);
       
       case 'reassign-agent':
         if (!input?.agentId) {
           onError?.('Please select an agent');
           return false;
         }
-        return await assignAgent(requestId, input.agentId, input.inspectionDateTime, onSuccess, onError);
+        return await assignAgent(requestId, input.agentId, input.inspectionDate, onSuccess, onError);
       
       case 'reject':
         return await updateStatus(
@@ -244,12 +245,13 @@ export async function executeRequestAction(
       
       case 'request-reschedule':
       case 'reschedule':
+        // Customer requests a reschedule: send date-only (YYYY-MM-DD) as requestedInspectionAt
         return await updateStatus(
-          requestId, 
-          REQUEST_STATUS.INSPECTION_SCHEDULED, 
-          onSuccess, 
+          requestId,
+          REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED,
+          onSuccess,
           onError,
-          input?.notes
+          { requestedInspectionAt: input?.inspectionDate || null, note: input?.notes }
         );
       
       case 'sign-agreement':
@@ -262,22 +264,28 @@ export async function executeRequestAction(
         );
       
       case 'submit-bank-details':
-        return await updateStatus(
-          requestId, 
-          REQUEST_STATUS.BANK_DETAILS_SUBMITTED, 
-          onSuccess, 
-          onError,
-          'Bank details submitted'
-        );
+        if (!input?.accountNumber || !input?.ifscCode || !input?.accountHolderName) {
+          onError?.('Missing bank details');
+          return false;
+        }
+        return await submitBankDetails(requestId, {
+          accountNumber: input.accountNumber,
+          ifscCode: input.ifscCode,
+          accountName: input.accountHolderName,
+          upiId: input.upiId
+        }, onSuccess, onError);
       
       case 'update-bank-details':
-        return await updateStatus(
-          requestId, 
-          REQUEST_STATUS.BANK_DETAILS_SUBMITTED, 
-          onSuccess, 
-          onError,
-          'Updated bank details'
-        );
+        if (!input?.accountNumber || !input?.ifscCode || !input?.accountHolderName) {
+          onError?.('Missing bank details');
+          return false;
+        }
+        return await submitBankDetails(requestId, {
+          accountNumber: input.accountNumber,
+          ifscCode: input.ifscCode,
+          accountName: input.accountHolderName,
+          upiId: input.upiId
+        }, onSuccess, onError);
       
       case 'provide-explanation':
         // Just add a comment, don't change status
@@ -315,7 +323,7 @@ export async function executeRequestAction(
           REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE, 
           onSuccess, 
           onError,
-          input?.notes || 'Customer not available at scheduled time'
+          input?.notes || 'Customer not available on scheduled date'
         );
       
       case 'asset-mismatch':
@@ -367,14 +375,22 @@ async function updateStatus(
   status: REQUEST_STATUS,
   onSuccess?: (data: any) => void,
   onError?: (error: string) => void,
-  notes?: string
+  notes?: string | Record<string, any>
 ): Promise<boolean> {
   try {
+    // Build body allowing either a simple note string or an object with additional fields
+    const bodyData: Record<string, any> = { status };
+    if (typeof notes === 'string') {
+      bodyData.note = notes;
+    } else if (notes && typeof notes === 'object') {
+      Object.assign(bodyData, notes);
+    }
+
     const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}/status`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, notes })
+      body: JSON.stringify(bodyData),
     });
     
     const data = await res.json();
@@ -434,17 +450,20 @@ async function createOffer(
 async function assignAgent(
   requestId: string,
   agentId: string,
-  inspectionDateTime?: string,
+  inspectionDate?: string,
   onSuccess?: (data: any) => void,
   onError?: (error: string) => void
 ): Promise<boolean> {
-  console.debug('assignAgent helper:', { requestId, agentId, inspectionDateTime });
+  console.debug('assignAgent helper:', { requestId, agentId, inspectionDate });
   try {
+    const body: any = { agentId };
+    if (inspectionDate) body.inspectionDate = inspectionDate; // date-only (YYYY-MM-DD)
+
     const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}/assign`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, inspectionDateTime })
+      body: JSON.stringify(body)
     });
     
     const data = await res.json();
@@ -471,5 +490,41 @@ async function fetchFullRequest(requestId: string): Promise<any> {
     return res.ok ? data.data?.request : null;
   } catch {
     return null;
+  }
+}
+
+async function submitBankDetails(
+  requestId: string,
+  bankDetails: { accountNumber: string; ifscCode: string; accountName: string; upiId?: string },
+  onSuccess?: (data: any) => void,
+  onError?: (error: string) => void
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}/bank-details`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bankAccountNumber: bankDetails.accountNumber,
+        bankIfscCode: bankDetails.ifscCode,
+        bankAccountName: bankDetails.accountName,
+        upiId: bankDetails.upiId
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) {
+      // Fetch full request to get updated history
+      const fullRequest = await fetchFullRequest(requestId);
+      onSuccess?.(fullRequest || data.data?.request);
+      return true;
+    } else {
+      onError?.(data.message || 'Failed to submit bank details');
+      return false;
+    }
+  } catch (error) {
+    onError?.(error instanceof Error ? error.message : 'Network error');
+    return false;
   }
 }

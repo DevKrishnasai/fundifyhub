@@ -5,8 +5,10 @@ import {
   generateSignedUrls,
   deleteUploadThingFiles,
 } from "../../utils/uploadthing";
+import { CLIENT_CONSTANTS } from "@fundifyhub/types";
 import { APIResponseType, CreateDocumentRequest } from "../../types";
 import logger from "../../utils/logger";
+import { createRequestHistory } from '../../utils/history';
 
 /**
  * POST /api/v1/documents
@@ -37,6 +39,21 @@ export async function createDocumentController(req: Request, res: Response): Pro
       return;
     }
 
+    // Determine uploaderRole based on user's roles
+    let uploaderRole = "USER_SUBMITTED"; // Default
+    const user = await prisma.user.findUnique({
+      where: { id: uploadedBy },
+      select: { roles: true }
+    });
+    
+    if (user?.roles) {
+      if (user.roles.includes("SUPER_ADMIN") || user.roles.includes("DISTRICT_ADMIN")) {
+        uploaderRole = "ADMIN_SUBMITTED";
+      } else if (user.roles.includes("AGENT")) {
+        uploaderRole = "AGENT_SUBMITTED";
+      }
+    }
+
     // Create document in database
     const document = await prisma.document.create({
       data: {
@@ -48,6 +65,7 @@ export async function createDocumentController(req: Request, res: Response): Pro
         documentCategory: documentCategory || "OTHER",
         requestId: requestId || null,
         uploadedBy,
+        uploaderRole,
         description: description || null,
         displayOrder: displayOrder || null,
         metadata: metadata || null,
@@ -56,11 +74,61 @@ export async function createDocumentController(req: Request, res: Response): Pro
 
     logger.info(`Document created: ${document.id} by user: ${uploadedBy}`);
 
-    res.status(201).json({
-      success: true,
-      message: "Document created successfully",
-      data: document,
-    } as APIResponseType);
+    // Best-effort: create request history entry for document upload when linked to a request
+    try {
+      if (document.requestId) {
+        const reqSnap = await prisma.request.findUnique({ where: { id: document.requestId }, select: { currentStatus: true } });
+        await createRequestHistory({
+          requestId: document.requestId,
+          actorId: uploadedBy,
+          action: 'DOCUMENT_UPLOADED',
+          metadata: {
+            documentId: document.id,
+            fileKey: document.fileKey,
+            fileName: document.fileName,
+            fileSize: document.fileSize,
+            fileType: document.fileType,
+            documentType: document.documentType,
+            uploaderId: uploadedBy,
+            uploaderRole,
+            fromStatus: reqSnap?.currentStatus || null,
+            toStatus: reqSnap?.currentStatus || null,
+          }
+        });
+      }
+    } catch (err) {
+      logger.error('Failed to create request history for document upload', err as Error);
+    }
+
+    // Generate a short-lived signed URL for the newly created document so
+    // frontends can use it immediately without an extra request.
+    try {
+  const expiresIn = parseInt(String(req.query.expiresIn || String(CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT))) || CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT;
+  const { url, expiresAt } = await generateSignedUrl(document.fileKey, expiresIn);
+
+      const documentWithUrl = {
+        ...document,
+        url,
+        urlExpiresAt: expiresAt,
+      };
+
+      res.status(201).json({
+        success: true,
+        message: "Document created successfully",
+        data: documentWithUrl,
+      } as APIResponseType);
+      return;
+    } catch (err) {
+      // If signed URL generation fails, still return the created document for
+      // backward compatibility — the frontend can request a signed URL later.
+  logger.warn(`Failed to generate signed URL for newly created document: ${(err as Error).message}`);
+      res.status(201).json({
+        success: true,
+        message: "Document created successfully",
+        data: document,
+      } as APIResponseType);
+      return;
+    }
   } catch (error) {
     logger.error("Error creating document:", error as Error);
     res.status(500).json({
@@ -97,6 +165,24 @@ export async function createBulkDocumentsController(req: Request, res: Response)
       }
     }
 
+    // Get unique uploaders to determine their roles
+    const uniqueUploaders = Array.from(new Set(documents.map(d => d.uploadedBy)));
+    const users = await prisma.user.findMany({
+      where: { id: { in: uniqueUploaders } },
+      select: { id: true, roles: true }
+    });
+    
+    const uploaderRoleMap: Record<string, string> = {};
+    users.forEach(user => {
+      if (user.roles.includes("SUPER_ADMIN") || user.roles.includes("DISTRICT_ADMIN")) {
+        uploaderRoleMap[user.id] = "ADMIN_SUBMITTED";
+      } else if (user.roles.includes("AGENT")) {
+        uploaderRoleMap[user.id] = "AGENT_SUBMITTED";
+      } else {
+        uploaderRoleMap[user.id] = "USER_SUBMITTED";
+      }
+    });
+
     // Create documents in database
     const createdDocuments = await prisma.document.createMany({
       data: documents.map((doc: CreateDocumentRequest) => {
@@ -109,6 +195,7 @@ export async function createBulkDocumentsController(req: Request, res: Response)
           documentCategory: doc.documentCategory || "OTHER",
           requestId: doc.requestId || null,
           uploadedBy: doc.uploadedBy,
+          uploaderRole: uploaderRoleMap[doc.uploadedBy] || "USER_SUBMITTED",
           description: doc.description || null,
           displayOrder: doc.displayOrder || null,
         };
@@ -120,11 +207,71 @@ export async function createBulkDocumentsController(req: Request, res: Response)
     });
 
     logger.info(`Bulk created ${createdDocuments.count} documents`);
+    // Best-effort: fetch created documents by fileKey and create request history entries
+    let createdRows: any[] = [];
+    try {
+      const fileKeys = documents.map((d: any) => d.fileKey);
+      createdRows = await prisma.document.findMany({ where: { fileKey: { in: fileKeys } } });
+      const requestIds = Array.from(new Set(createdRows.map((r) => r.requestId).filter(Boolean)));
+      if (requestIds.length > 0) {
+        // fetch current status for involved requests
+        const reqs = await prisma.request.findMany({ where: { id: { in: requestIds as string[] } }, select: { id: true, currentStatus: true } });
+        const statusMap: Record<string, string> = {};
+        for (const r of reqs) statusMap[r.id] = r.currentStatus;
+
+        // create a single aggregated history entry per request containing the list of created document IDs
+        const docsByRequest: Record<string, typeof createdRows> = {} as any;
+        for (const doc of createdRows) {
+          if (!doc.requestId) continue;
+          docsByRequest[doc.requestId] = docsByRequest[doc.requestId] || [];
+          docsByRequest[doc.requestId].push(doc as any);
+        }
+
+        await Promise.all(Object.entries(docsByRequest).map(async ([reqId, docs]) => {
+          try {
+            const documentIds = docs.map(d => d.id);
+            const fileKeys = docs.map(d => d.fileKey);
+            const fileNames = docs.map(d => d.fileName);
+            const documentTypes = Array.from(new Set(docs.map(d => d.documentType)));
+            const uploaderRoles = Array.from(new Set(docs.map(d => d.uploaderRole).filter(Boolean)));
+            const uploaderIds = Array.from(new Set(docs.map(d => d.uploadedBy).filter(Boolean)));
+
+            // Use the first uploader as actor if available, otherwise leave null
+            const actorId = uploaderIds.length === 1 ? uploaderIds[0] : null;
+
+            await createRequestHistory({
+              requestId: reqId,
+              actorId: actorId,
+              action: 'DOCUMENTS_UPLOADED',
+              metadata: {
+                documentIds,
+                fileKeys,
+                fileNames,
+                documentTypes,
+                uploaderRoles,
+                uploaderIds,
+                fromStatus: statusMap[reqId] || null,
+                toStatus: statusMap[reqId] || null,
+                internalOnly: true, // hint that this metadata is internal; frontend shows metadata only to admins
+              }
+            });
+          } catch (err) {
+            // Best-effort: log and continue
+            logger.error(`Failed to create aggregated request history for request ${reqId}`, err as Error);
+          }
+        }));
+      }
+    } catch (err) {
+      logger.error('Failed to create request history for bulk document upload', err as Error);
+    }
+
+    // Include created document IDs in the response so callers can reference them immediately.
+    const documentIds = createdRows.map((r) => r.id);
 
     res.status(201).json({
       success: true,
       message: "Documents created successfully",
-      data: { count: createdDocuments.count },
+      data: { count: createdDocuments.count, documentIds },
     } as APIResponseType);
   } catch (error) {
     logger.error("Error creating bulk documents:", error as Error);
@@ -163,6 +310,22 @@ export async function getDocumentController(req: Request, res: Response): Promis
       } as APIResponseType);
       return;
     }
+    // If caller requested a signed URL, generate and include it. This keeps
+    // backward compatibility by defaulting to not generating URLs for every
+    // get call unless explicitly requested via `includeUrl=true`.
+    const includeUrl = String(req.query.includeUrl || 'false').toLowerCase() === 'true';
+    if (includeUrl) {
+      try {
+        const expiresIn = parseInt(String(req.query.expiresIn || String(CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT))) || CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT;
+        const { url, expiresAt } = await generateSignedUrl(document.fileKey, expiresIn);
+        const documentWithUrl = { ...document, url, urlExpiresAt: expiresAt };
+        res.json({ success: true, data: documentWithUrl } as APIResponseType);
+        return;
+      } catch (err) {
+        logger.warn(`Failed to generate signed URL for document ${id}: ${(err as Error).message}`);
+        // Fall through and return the document without URL
+      }
+    }
 
     res.json({
       success: true,
@@ -194,7 +357,7 @@ export async function getDocumentController(req: Request, res: Response): Promis
 export async function getSignedUrlByFileKeyController(req: Request, res: Response): Promise<void> {
   try {
     const { fileKey } = req.params;
-    const expiresIn = parseInt(req.query.expiresIn as string) || 900; // Default 15 minutes
+  const expiresIn = parseInt(req.query.expiresIn as string) || CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT; // Default from CLIENT_CONSTANTS
 
     if (!fileKey) {
       res.status(400).json({
@@ -257,7 +420,7 @@ export async function getSignedUrlByFileKeyController(req: Request, res: Respons
 export async function getDocumentSignedUrlController(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const expiresIn = parseInt(req.query.expiresIn as string) || 900; // Default 15 minutes
+  const expiresIn = parseInt(req.query.expiresIn as string) || CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT; // Default from CLIENT_CONSTANTS
 
     // Get document from database
     const document = await prisma.document.findUnique({
@@ -365,10 +528,35 @@ export async function listDocumentsController(req: Request, res: Response): Prom
       },
     });
 
+    // If client requested signed URLs, generate them in batch and attach to
+    // each document. This is optional to preserve performance for list calls.
+    const includeUrl = String(req.query.includeUrl || 'false').toLowerCase() === 'true';
+    let documentsWithUrls = documents;
+    if (includeUrl && documents.length > 0) {
+      try {
+        const expiresIn = parseInt(String(req.query.expiresIn || String(CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT))) || CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT;
+        const fileKeys = documents.map((d) => d.fileKey);
+        const signed = await generateSignedUrls(fileKeys, expiresIn);
+
+        documentsWithUrls = documents.map((doc) => {
+          const s = signed.find((x) => x.fileKey === doc.fileKey);
+          return {
+            ...doc,
+            url: s?.url,
+            urlExpiresAt: s?.expiresAt,
+          };
+        });
+      } catch (err) {
+        logger.warn(`Failed to generate signed URLs for list: ${(err as Error).message}`);
+        // fallback to documents without urls
+        documentsWithUrls = documents;
+      }
+    }
+
     res.json({
       success: true,
       data: {
-        documents,
+        documents: documentsWithUrls,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -407,7 +595,7 @@ export async function listDocumentsController(req: Request, res: Response): Prom
  */
 export async function getBulkSignedUrlsController(req: Request, res: Response): Promise<void> {
   try {
-    const { documentIds, expiresIn = 900 } = req.body;
+  const { documentIds, expiresIn = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT } = req.body;
 
     if (!Array.isArray(documentIds) || documentIds.length === 0) {
       res.status(400).json({
@@ -515,6 +703,37 @@ export async function deleteDocumentController(req: Request, res: Response): Pro
       success: false,
       message: "Failed to delete document",
     } as APIResponseType);
+  }
+}
+
+/**
+ * POST /api/v1/documents/delete-by-filekeys
+ * Body: { fileKeys: string[] }
+ * Deletes files from UploadThing storage by their fileKeys. This endpoint
+ * is intended for client-side staged-upload cleanup when a file was uploaded
+ * to UploadThing but not yet saved as a database Document.
+ */
+export async function deleteFilesByFileKeysController(req: Request, res: Response): Promise<void> {
+  try {
+    const user = (req as any).user;
+    if (!user) {
+      res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
+      return;
+    }
+
+    const { fileKeys } = req.body as { fileKeys?: string[] };
+    if (!Array.isArray(fileKeys) || fileKeys.length === 0) {
+      res.status(400).json({ success: false, message: 'fileKeys array is required' } as APIResponseType);
+      return;
+    }
+
+    // Use shared utility to delete files from UploadThing
+    const result = await deleteUploadThingFiles(fileKeys);
+
+    res.status(200).json({ success: true, message: 'Files deleted', data: { deletedCount: result.deletedCount } } as APIResponseType);
+  } catch (error) {
+    logger.error('deleteFilesByFileKeysController error', error as Error);
+    res.status(500).json({ success: false, message: 'Failed to delete files' } as APIResponseType);
   }
 }
 

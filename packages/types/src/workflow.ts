@@ -5,7 +5,7 @@
  * including valid transitions, role-based actions, and business rules.
  */
 
-import { REQUEST_STATUS, ROLES } from './constants';
+import { REQUEST_STATUS, ROLES, AGENT_ACCESS_DENY_STATUSES } from './constants';
 
 // ============================================
 // TYPES & INTERFACES
@@ -322,7 +322,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
   // ============================================
 
   [REQUEST_STATUS.INSPECTION_SCHEDULED]: {
-    description: 'Agent assigned with scheduled date and time',
+    description: 'Agent assigned with scheduled inspection date',
     customerActions: [
       {
         id: 'request-reschedule',
@@ -489,7 +489,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
   },
 
   [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: {
-    description: 'Customer was not available at scheduled time',
+    description: 'Customer was not available on the scheduled inspection date',
     customerActions: [
       {
         id: 'reschedule',
@@ -1049,15 +1049,17 @@ export function getActionsForUser(
  * - Request owner (customer)
  * - District admin of that district
  * - Super admin
- * - Assigned agent
+ * - Assigned agent (except when status is in AGENT_ACCESS_DENY_STATUSES)
  * 
  * @param user - User context
  * @param request - Request context
+ * @param currentStatus - Current request status
  * @returns true if user can view the request
  */
 export function canViewRequestDetail(
   user: UserContext,
-  request: RequestContext
+  request: RequestContext,
+  currentStatus?: REQUEST_STATUS
 ): boolean {
   // Super admin can view all requests
   if (user.roles.includes(ROLES.SUPER_ADMIN)) {
@@ -1076,8 +1078,11 @@ export function canViewRequestDetail(
     }
   }
 
-  // Assigned agent can view the request
+  // Assigned agent can view the request, but not if status is in AGENT_ACCESS_DENY_STATUSES
   if (user.roles.includes(ROLES.AGENT) && user.id === request.agentId) {
+    if (currentStatus && AGENT_ACCESS_DENY_STATUSES.includes(currentStatus)) {
+      return false;
+    }
     return true;
   }
 

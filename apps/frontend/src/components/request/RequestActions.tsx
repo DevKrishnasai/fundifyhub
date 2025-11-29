@@ -250,7 +250,7 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
     }
     if (actionId === 'assign-agent' || actionId === 'reassign-agent') {
       // If opts include action input (agentId), treat as a direct execution call from the modal
-      if (!opts || (!opts.agentId && !opts.inspectionDateTime)) {
+      if (!opts || (!opts.agentId && !opts.inspectionDate)) {
         setShowAssign(true);
         return false;
       }
@@ -440,11 +440,9 @@ export default function RequestActions({ requestId, requestStatus, onUpdated, di
         setShowOffer(v);
         if (!v) setInitialOffer(null);
       }} onSubmit={createOffer} requestId={requestId} initialOffer={initialOffer ?? undefined} />
-      <AssignAgentModal open={showAssign} onOpenChange={(v: boolean) => setShowAssign(v)} district={district} onSubmit={async (agentId: string, inspectionDate: string, inspectionTime: string) => {
-        // Combine date & time into an iso string and run the canonical assign-agent action
-        let inspectionDateTime: string | undefined = undefined;
-        if (inspectionDate && inspectionTime) inspectionDateTime = new Date(`${inspectionDate}T${inspectionTime}`).toISOString();
-        const ok = await runAction('assign-agent', { agentId, inspectionDateTime });
+      <AssignAgentModal open={showAssign} onOpenChange={(v: boolean) => setShowAssign(v)} district={district} onSubmit={async (agentId: string, inspectionDate: string) => {
+        // We only collect a date (no time). Pass the date string to the action handler.
+        const ok = await runAction('assign-agent', { agentId, inspectionDate });
         if (ok) setShowAssign(false);
         return ok;
           }} />
