@@ -2,6 +2,7 @@ import { UTApi } from "uploadthing/server";
 import type { UploadThingListFilesResponse } from "@fundifyhub/types";
 import { CLIENT_CONSTANTS } from "@fundifyhub/types";
 import config from './config';
+import logger from './logger';
 
 // Initialize UploadThing API using validated config (token validated at import)
 const utapi = new UTApi({
@@ -29,17 +30,36 @@ export async function generateSignedUrl(
   fileKey: string,
   expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<{ url: string; expiresAt: Date }> {
+  // Skip demo/placeholder file keys that won't exist in UploadThing
+  if (fileKey.startsWith('demo-file-key-') || fileKey.startsWith('placeholder-')) {
+    return {
+      url: '', // Return empty URL for demo files
+      expiresAt: new Date(0),
+    };
+  }
+
   try {
     const result = await utapi.getSignedURL(fileKey, { expiresIn });
-    
+
     const expiresAt = new Date(Date.now() + expiresIn * 1000);
-    
+
     return {
       url: result.url,
       expiresAt,
     };
-  } catch (error) {
-    throw new Error("Failed to generate signed URL");
+  } catch (err) {
+    const e = err as any;
+    // If the error indicates the file was not found, return empty URL (best-effort)
+    const status = e?.response?.status || e?.status || null;
+    const body = e?.response?.body || e?.message || JSON.stringify(e);
+    logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey} status=${status} body=${String(body)}`);
+
+    if (status === 404 || String(body).toLowerCase().includes('file not found')) {
+      return { url: '', expiresAt: new Date(0) };
+    }
+
+    // For other errors, throw to surface issues (auth, token, service outage)
+    throw new Error(`Failed to generate signed URL for ${fileKey}: ${String(body)}`);
   }
 }
 
@@ -48,6 +68,7 @@ export async function generateSignedUrl(
  *
  * Creates temporary, authenticated URLs for accessing multiple private files
  * stored in UploadThing. All URLs expire after the same specified time period.
+ * Demo/placeholder file keys are skipped and return empty URLs.
  *
  * @param fileKeys - Array of unique UploadThing file keys
  * @param expiresIn - Expiration time in seconds for all URLs (default: 900 = 15 minutes)
@@ -67,17 +88,43 @@ export async function generateSignedUrls(
   try {
     const results = await Promise.all(
       fileKeys.map(async (fileKey) => {
-        const result = await utapi.getSignedURL(fileKey, { expiresIn });
-        return {
-          fileKey,
-          url: result.url,
-          expiresAt: new Date(Date.now() + expiresIn * 1000),
-        };
+        // Skip demo/placeholder file keys
+        if (fileKey.startsWith('demo-file-key-') || fileKey.startsWith('placeholder-')) {
+          return {
+            fileKey,
+            url: '', // Return empty URL for demo files
+            expiresAt: new Date(0),
+          };
+        }
+
+        try {
+          const result = await utapi.getSignedURL(fileKey, { expiresIn });
+          return {
+            fileKey,
+            url: result.url,
+            expiresAt: new Date(Date.now() + expiresIn * 1000),
+          };
+        } catch (e) {
+          const ee = e as any;
+          const status = ee?.response?.status || ee?.status || null;
+          const body = ee?.response?.body || ee?.message || JSON.stringify(ee);
+          logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey} status=${status} body=${String(body)}`);
+
+          // If it's a 404, return empty URL for that file, continue other files
+          if (status === 404 || String(body).toLowerCase().includes('file not found')) {
+            return { fileKey, url: '', expiresAt: new Date(0) };
+          }
+
+          // For other errors, log and return empty to avoid failing the whole batch
+          return { fileKey, url: '', expiresAt: new Date(0) };
+        }
       })
     );
     
     return results;
   } catch (error) {
+    const e = error as any;
+    logger.error(`Failed to generate signed URLs: ${String(e?.message || e)}`);
     throw new Error("Failed to generate signed URLs");
   }
 }

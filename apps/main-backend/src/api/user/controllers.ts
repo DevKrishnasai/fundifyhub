@@ -18,6 +18,9 @@ async function updateAssetPhotos(tx: Prisma.TransactionClient, requestId: string
       data: {
         requestId,
         fileKey: url, // Assuming url contains the file key from UploadThing
+        fileName: 'asset_photo.jpg', // Default filename
+        fileSize: 0, // Default size
+        fileType: 'image/jpeg', // Default type
         documentType: 'asset_photo',
         documentCategory: DOCUMENT_CATEGORY.ASSET,
         uploadedBy: customerId,
@@ -198,6 +201,8 @@ function buildRequestData(fields: {
     assetCondition: fields.assetCondition,
     requestedAmount: typeof fields.requestedAmount === 'number' ? fields.requestedAmount : 0,
     customerId: fields.customerId,
+    requestNumber: `REQ${Date.now()}`, // Temporary request number
+    purchaseYear: fields.purchaseYear || new Date().getFullYear(), // Default to current year
   };
 
   if (typeof fields.purchaseYear === 'number') {
@@ -229,6 +234,9 @@ async function handleDocuments(tx: Prisma.TransactionClient, requestId: string, 
         data: {
           requestId,
           fileKey: url, // Assuming url contains the file key from UploadThing
+          fileName: 'asset_photo.jpg', // Default filename
+          fileSize: 0, // Default size
+          fileType: 'image/jpeg', // Default type
           documentType: 'asset_photo',
           documentCategory: DOCUMENT_CATEGORY.ASSET,
           uploadedBy: customerId,

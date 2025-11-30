@@ -1,19 +1,58 @@
-import { PrismaClient, User } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { randomUUID } from 'crypto';
+import { prisma } from "../src/client";
 
-const prisma = new PrismaClient();
+// EMI Calculation utilities
+function calculateEMI(principal: number, annualRate: number, tenureMonths: number): number {
+  const monthlyRate = annualRate / (12 * 100);
+  const emi = principal * monthlyRate * Math.pow(1 + monthlyRate, tenureMonths) /
+              (Math.pow(1 + monthlyRate, tenureMonths) - 1);
+  return Math.round(emi * 100) / 100;
+}
+
+function calculateTotalInterest(principal: number, annualRate: number, tenureMonths: number): number {
+  const emi = calculateEMI(principal, annualRate, tenureMonths);
+  return Math.round((emi * tenureMonths - principal) * 100) / 100;
+}
+
+function calculatePrincipalInterestSplit(
+  principal: number,
+  annualRate: number,
+  tenureMonths: number,
+  emiNumber: number
+): { principal: number; interest: number } {
+  const monthlyRate = annualRate / (12 * 100);
+  const emi = calculateEMI(principal, annualRate, tenureMonths);
+
+  const interest = Math.round((principal * monthlyRate) * 100) / 100;
+  const principalPart = Math.round((emi - interest) * 100) / 100;
+
+  return { principal: principalPart, interest };
+}
+
+// Constants
+const DEFAULT_PASSWORD = process.env.SEED_USER_PASSWORD || "Password123!";
+const DEFAULT_PENALTY_PERCENTAGE = 4;
+const DEFAULT_LATE_FEE_PERCENTAGE = 0.01;
 
 async function main() {
-  console.log("🌱 Starting full database seeding...");
+  console.log("🌱 Starting comprehensive database seeding for testing...");
 
-  const defaultPassword = process.env.SEED_USER_PASSWORD || "Password123!";
-  const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-  // Penalty (one-time) and Late Fee (daily percentage) defaults used by the seed
-  const DEFAULT_PENALTY_PERCENTAGE = 4; // 4% penalty
-  const DEFAULT_LATE_FEE_PERCENTAGE = 1; // 1% late fee per day
+  // Initialize serial counters
+  await prisma.serialCounter.upsert({
+    where: { id: 'REQUEST' },
+    update: {},
+    create: { id: 'REQUEST', seq: 1000 }
+  });
+  await prisma.serialCounter.upsert({
+    where: { id: 'LOAN' },
+    update: {},
+    create: { id: 'LOAN', seq: 1000 }
+  });
 
-  // Helper to increment/get serial counters in a safe way
+  const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+
+  // Helper functions
   async function nextSerial(id: string, startAt = 1000) {
     try {
       const updated = await prisma.serialCounter.update({
@@ -23,339 +62,337 @@ async function main() {
       });
       return updated.seq;
     } catch (err) {
-      // not found: create
       try {
         const created = await prisma.serialCounter.create({ data: { id, seq: startAt } });
         return created.seq;
       } catch (innerErr) {
-        // If creation fails due to race, fallback to reading existing
         const existing = await prisma.serialCounter.findUnique({ where: { id } });
         return existing ? existing.seq : startAt;
       }
     }
   }
 
-  // Check if RequestHistory table exists (some deployments/migrations may differ)
-  let hasRequestHistory = false;
-  try {
-    // to_regclass returns null if table not present
-  // raw result shape varies by Prisma runtime
-  // @ts-ignore
-  const rh = await prisma.$queryRaw`SELECT to_regclass('public.request_history') as name`;
-    // rh may be an array or object depending on client; normalize
-    if (rh) {
-      const name = Array.isArray(rh) ? rh[0]?.name : (rh as any).name;
-      hasRequestHistory = !!name;
-    }
-  } catch (err) {
-    // silently continue; we'll skip creating history rows if not available
-    hasRequestHistory = false;
-  }
-
-  // ---------------------------------------
-  // USERS (more realistic demo set)
-  // ---------------------------------------
-  const users = await Promise.all([
-    // Customers
-    prisma.user.upsert({
-      where: { email: "john.customer@example.com" },
-      update: {},
-      create: {
-        firstName: "John",
-        lastName: "Doe",
-        email: "john.customer@example.com",
-        phoneNumber: "+919810000001",
-        password: hashedPassword,
-        roles: ["CUSTOMER"],
-        district: ["Mumbai"],
-        emailVerified: true,
-        phoneVerified: true,
-        city: "Mumbai",
-        state: "Maharashtra",
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: "meena.k@example.com" },
-      update: {},
-      create: {
-        firstName: "Meena",
-        lastName: "Krishna",
-        email: "meena.k@example.com",
-        phoneNumber: "+919810000002",
-        password: hashedPassword,
-        roles: ["CUSTOMER"],
-        district: ["Delhi"],
-        emailVerified: true,
-        phoneVerified: true,
-        city: "New Delhi",
-        state: "Delhi",
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: "arjun.r@example.com" },
-      update: {},
-      create: {
-        firstName: "Arjun",
-        lastName: "Rao",
-        email: "arjun.r@example.com",
-        phoneNumber: "+919810000003",
-        password: hashedPassword,
-        roles: ["CUSTOMER"],
-        district: ["Bangalore"],
-        emailVerified: true,
-        phoneVerified: true,
-        city: "Bangalore",
-        state: "Karnataka",
-      },
-    }),
+  // Test user data
+  const testUsers = [
+    // Customers with different districts
+    {
+      firstName: "Rahul", lastName: "Sharma", email: "rahul.sharma@test.com",
+      phone: "+919810000001", district: ["Delhi"], city: "New Delhi", state: "Delhi"
+    },
+    {
+      firstName: "Priya", lastName: "Patel", email: "priya.patel@test.com",
+      phone: "+919810000002", district: ["Mumbai"], city: "Mumbai", state: "Maharashtra"
+    },
+    {
+      firstName: "Amit", lastName: "Kumar", email: "amit.kumar@test.com",
+      phone: "+919810000003", district: ["Bangalore"], city: "Bangalore", state: "Karnataka"
+    },
+    {
+      firstName: "Sneha", lastName: "Singh", email: "sneha.singh@test.com",
+      phone: "+919810000004", district: ["Chennai"], city: "Chennai", state: "Tamil Nadu"
+    },
+    {
+      firstName: "Vikram", lastName: "Joshi", email: "vikram.joshi@test.com",
+      phone: "+919810000005", district: ["Pune"], city: "Pune", state: "Maharashtra"
+    },
 
     // Agents
-    prisma.user.upsert({
-      where: { email: "agent.mumbai@fundifyhub.com" },
-      update: {},
-      create: {
-        firstName: "Ramesh",
-        lastName: "Patel",
-        email: "agent.mumbai@fundifyhub.com",
-        phoneNumber: "+919820000001",
-        password: hashedPassword,
-        roles: ["AGENT"],
-        district: ["Mumbai"],
-        emailVerified: true,
-        phoneVerified: true,
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: "agent.delhi@fundifyhub.com" },
-      update: {},
-      create: {
-        firstName: "Asha",
-        lastName: "Verma",
-        email: "agent.delhi@fundifyhub.com",
-        phoneNumber: "+919820000002",
-        password: hashedPassword,
-        roles: ["AGENT"],
-        district: ["Delhi"],
-        emailVerified: true,
-        phoneVerified: true,
-      },
-    }),
+    {
+      firstName: "Rajesh", lastName: "Verma", email: "agent.delhi@fundifyhub.com",
+      phone: "+919820000001", district: ["Delhi"], roles: ["AGENT"]
+    },
+    {
+      firstName: "Kavita", lastName: "Shah", email: "agent.mumbai@fundifyhub.com",
+      phone: "+919820000002", district: ["Mumbai"], roles: ["AGENT"]
+    },
+    {
+      firstName: "Suresh", lastName: "Rao", email: "agent.bangalore@fundifyhub.com",
+      phone: "+919820000003", district: ["Bangalore"], roles: ["AGENT"]
+    },
 
-    // District admins
-    prisma.user.upsert({
-      where: { email: "admin.mumbai@fundifyhub.com" },
-      update: {},
-      create: {
-        firstName: "Priya",
-        lastName: "Shah",
-        email: "admin.mumbai@fundifyhub.com",
-        phoneNumber: "+919830000001",
-        password: hashedPassword,
-        roles: ["DISTRICT_ADMIN"],
-        district: ["Mumbai"],
-        emailVerified: true,
-        phoneVerified: true,
-      },
-    }),
-    prisma.user.upsert({
-      where: { email: "admin.delhi@fundifyhub.com" },
-      update: {},
-      create: {
-        firstName: "Vikram",
-        lastName: "Singh",
-        email: "admin.delhi@fundifyhub.com",
-        phoneNumber: "+919830000002",
-        password: hashedPassword,
-        roles: ["DISTRICT_ADMIN"],
-        district: ["Delhi"],
-        emailVerified: true,
-        phoneVerified: true,
-      },
-    }),
+    // District Admins
+    {
+      firstName: "Anita", lastName: "Gupta", email: "admin.delhi@fundifyhub.com",
+      phone: "+919830000001", district: ["Delhi"], roles: ["DISTRICT_ADMIN"]
+    },
+    {
+      firstName: "Mohan", lastName: "Desai", email: "admin.mumbai@fundifyhub.com",
+      phone: "+919830000002", district: ["Mumbai"], roles: ["DISTRICT_ADMIN"]
+    },
 
-    // Super admin
-    prisma.user.upsert({
-      where: { email: "super.admin@fundifyhub.com" },
-      update: {},
-      create: {
-        firstName: "Super",
-        lastName: "Admin",
-        email: "super.admin@fundifyhub.com",
-        phoneNumber: "+919876543203",
-        password: hashedPassword,
-        roles: ["SUPER_ADMIN"],
-        district: ["Mumbai", "Delhi", "Bangalore"],
-        emailVerified: true,
-        phoneVerified: true,
-      },
-    }),
-  ]);
-
-  const customers = users.filter((u: User) => Array.isArray(u.roles) && u.roles.includes("CUSTOMER"));
-  const agents = users.filter((u: User) => Array.isArray(u.roles) && u.roles.includes("AGENT"));
-  const districtAdmins = users.filter((u: User) => Array.isArray(u.roles) && u.roles.includes("DISTRICT_ADMIN"));
-  const superAdmin = users.find((u: User) => Array.isArray(u.roles) && u.roles.includes("SUPER_ADMIN"));
-
-  const customer = customers[0]!;
-  const agent = agents[0]!;
-  const admin = districtAdmins[0] || superAdmin || users[0];
-
-  console.log(`✅ Created ${users.length} users`);
-
-  // ---------------------------------------
-  // REQUESTS
-  // ---------------------------------------
-  // ---------------------------------------
-  // REQUESTS (per-customer across districts and statuses)
-  // ---------------------------------------
-  // REQUESTS (with proper workflow progression)
-  // ---------------------------------------
-  const statuses = [
-    "PENDING",
-    "UNDER_REVIEW",
-    "OFFER_SENT",
-    "OFFER_ACCEPTED",
-    "INSPECTION_SCHEDULED",
-    "INSPECTION_COMPLETED",
-    "APPROVED",
-    "AMOUNT_DISBURSED",
-    "PENDING_SIGNATURE",
-    "ACTIVE",
-    "COMPLETED"
-  ];
-  const requests: any[] = [];
-
-  // Create specific test scenarios
-  const testScenarios = [
-    // Scenario 1: New request, no offer yet
-    { status: "PENDING", hasOffer: false, hasLoan: false },
-    // Scenario 2: Under review
-    { status: "UNDER_REVIEW", hasOffer: false, hasLoan: false },
-    // Scenario 3: Offer sent but not accepted
-    { status: "OFFER_SENT", hasOffer: true, hasLoan: false },
-    // Scenario 4: Offer accepted, waiting for inspection
-    { status: "OFFER_ACCEPTED", hasOffer: true, hasLoan: false },
-    // Scenario 5: Inspection scheduled
-    { status: "INSPECTION_SCHEDULED", hasOffer: true, hasLoan: false },
-    // Scenario 6: Inspection completed, approved
-    { status: "APPROVED", hasOffer: true, hasLoan: false },
-    // Scenario 7: Amount disbursed, waiting for signature
-    { status: "AMOUNT_DISBURSED", hasOffer: true, hasLoan: false },
-    // Scenario 8: Pending signature
-    { status: "PENDING_SIGNATURE", hasOffer: true, hasLoan: false },
-    // Scenario 9: ACTIVE loan with EMI schedules (ready for payment)
-    { status: "ACTIVE", hasOffer: true, hasLoan: true },
-    // Scenario 10: Completed loan
-    { status: "COMPLETED", hasOffer: true, hasLoan: true },
-  ];
-
-  for (const cust of customers) {
-    // Create one request per test scenario for the first customer
-    if (cust.email === "john.customer@example.com") {
-      for (let i = 0; i < testScenarios.length; i++) {
-        const scenario = testScenarios[i];
-        const seq = await nextSerial('REQUEST', 1000);
-        const requestNumber = `REQ${seq}`;
-
-        const district = Array.isArray(cust.district) && cust.district.length ? cust.district[0] : 'Mumbai';
-        const brandPool = ['Honda', 'Tata', 'Suzuki', 'Hyundai', 'Royal Enfield'];
-        const assetBrand = brandPool[Math.floor(Math.random() * brandPool.length)];
-
-        // Find an available agent for this district
-        // For Mumbai, specifically pick the Mumbai agent to ensure they have assigned requests
-        let assigned = agents.find((a) => Array.isArray(a.district) && a.district.includes(district));
-        if (district === 'Mumbai') {
-             assigned = agents.find(a => a.email === 'agent.mumbai@fundifyhub.com');
-        }
-
-        const req = await prisma.request.create({
-          data: {
-            requestNumber,
-            customerId: cust.id,
-            requestedAmount: 50000 + Math.floor(Math.random() * 200000),
-            district,
-            currentStatus: scenario.status,
-            purchaseYear: 2018 + Math.floor(Math.random() * 7),
-            assetType: Math.random() > 0.7 ? 'JEWELRY' : 'MOTORCYCLE',
-            assetBrand,
-            assetModel: `${assetBrand}-Model-${i + 1}`,
-            assetCondition: ['EXCELLENT', 'GOOD', 'FAIR'][Math.floor(Math.random() * 3)],
-            AdditionalDescription: `Test scenario ${i + 1}: ${scenario.status}`,
-            assignedAgentId: assigned ? assigned.id : null,
-            penaltyPercentage: DEFAULT_PENALTY_PERCENTAGE,
-            lateFeePercentage: DEFAULT_LATE_FEE_PERCENTAGE,
-            inspectionScheduledAt: scenario.status === 'INSPECTION_SCHEDULED' ? new Date(Date.now() + 24 * 60 * 60 * 1000) : undefined,
-          },
-        });
-
-        // Create offer if scenario requires it
-        if (scenario.hasOffer) {
-          const offerAmount = Math.round(req.requestedAmount * (0.7 + Math.random() * 0.25));
-          const tenure = [6, 12, 18, 24][Math.floor(Math.random() * 4)];
-          const interest = [10, 12, 14, 16][Math.floor(Math.random() * 4)];
-
-          const updatedReq = await prisma.request.update({
-            where: { id: req.id },
-            data: {
-              adminOfferedAmount: offerAmount,
-              adminTenureMonths: tenure,
-              adminInterestRate: interest,
-              offerMadeDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
-              offerResponseDate: scenario.status === 'OFFER_ACCEPTED' ? new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) : null,
-            },
-          });
-
-          requests.push(updatedReq);
-        } else {
-          requests.push(req);
-        }
-      }
-    } else {
-      // For other customers, create 1-2 random requests
-      const count = 1 + Math.floor(Math.random() * 2);
-      for (let i = 0; i < count; i++) {
-        const seq = await nextSerial('REQUEST', 1000);
-        const requestNumber = `REQ${seq}`;
-
-        const status = statuses[Math.floor(Math.random() * statuses.length)];
-        const district = Array.isArray(cust.district) && cust.district.length ? cust.district[0] : 'Mumbai';
-        const brandPool = ['Honda', 'Tata', 'Suzuki', 'Hyundai', 'Royal Enfield'];
-        const assetBrand = brandPool[Math.floor(Math.random() * brandPool.length)];
-
-        const assigned = agents.find((a) => Array.isArray(a.district) && a.district.includes(district));
-
-        const req = await prisma.request.create({
-          data: {
-            requestNumber,
-            customerId: cust.id,
-            requestedAmount: 20000 + Math.floor(Math.random() * 150000),
-            district,
-            currentStatus: status,
-            purchaseYear: 2015 + Math.floor(Math.random() * 10),
-            assetType: Math.random() > 0.7 ? 'JEWELRY' : 'MOTORCYCLE',
-            assetBrand,
-            assetModel: `${assetBrand}-Model-${i + 1}`,
-            assetCondition: ['EXCELLENT', 'GOOD', 'FAIR'][Math.floor(Math.random() * 3)],
-            AdditionalDescription: `Demo asset ${i + 1} for ${cust.firstName}`,
-            assignedAgentId: assigned ? assigned.id : null,
-            penaltyPercentage: DEFAULT_PENALTY_PERCENTAGE,
-            lateFeePercentage: DEFAULT_LATE_FEE_PERCENTAGE,
-          },
-        });
-
-        requests.push(req);
-      }
+    // Super Admin
+    {
+      firstName: "Super", lastName: "Admin", email: "super.admin@fundifyhub.com",
+      phone: "+919876543210", district: ["Delhi", "Mumbai", "Bangalore", "Chennai", "Pune"], roles: ["SUPER_ADMIN"]
     }
+  ];
+
+  // Create users
+  const users = [];
+  for (const userData of testUsers) {
+    const user = await prisma.user.upsert({
+      where: { email: userData.email },
+      update: {},
+      create: {
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        phoneNumber: userData.phone,
+        password: hashedPassword,
+        roles: userData.roles || ["CUSTOMER"],
+        district: userData.district,
+        city: userData.city,
+        state: userData.state,
+        emailVerified: true,
+        phoneVerified: true,
+      },
+    });
+    users.push(user);
   }
 
-  console.log(`✅ Created ${requests.length} requests across all statuses`);
+  const customers = users.filter(u => u.roles.includes("CUSTOMER"));
+  const agents = users.filter(u => u.roles.includes("AGENT"));
+  const admins = users.filter(u => u.roles.includes("DISTRICT_ADMIN") || u.roles.includes("SUPER_ADMIN"));
+
+  console.log(`✅ Created ${users.length} users (${customers.length} customers, ${agents.length} agents, ${admins.length} admins)`);
+
+  // Test scenarios for comprehensive testing
+  const testScenarios = [
+    // Scenario 1: Brand new request
+    {
+      customer: customers[0],
+      status: "PENDING",
+      requestedAmount: 100000,
+      district: "Delhi",
+      assetType: "MOTORCYCLE",
+      assetBrand: "Honda",
+      assetModel: "CB300R",
+      purchaseYear: 2022,
+      condition: "EXCELLENT"
+    },
+
+    // Scenario 2: Under review with agent assigned
+    {
+      customer: customers[0],
+      status: "UNDER_REVIEW",
+      requestedAmount: 150000,
+      district: "Delhi",
+      assetType: "LAPTOP",
+      assetBrand: "Dell",
+      assetModel: "XPS 13",
+      purchaseYear: 2021,
+      condition: "GOOD",
+      assignedAgent: agents.find(a => a.district.includes("Delhi"))
+    },
+
+    // Scenario 3: Offer sent but not accepted
+    {
+      customer: customers[1],
+      status: "OFFER_SENT",
+      requestedAmount: 200000,
+      district: "Mumbai",
+      assetType: "MOTORCYCLE",
+      assetBrand: "Royal Enfield",
+      assetModel: "Classic 350",
+      purchaseYear: 2020,
+      condition: "GOOD",
+      offer: { amount: 180000, tenure: 24, interest: 12 },
+      assignedAgent: agents.find(a => a.district.includes("Mumbai"))
+    },
+
+    // Scenario 4: Offer accepted, waiting for inspection
+    {
+      customer: customers[1],
+      status: "OFFER_ACCEPTED",
+      requestedAmount: 250000,
+      district: "Mumbai",
+      assetType: "JEWELRY",
+      assetBrand: "Gold",
+      assetModel: "Necklace Set",
+      purchaseYear: 2023,
+      condition: "EXCELLENT",
+      offer: { amount: 225000, tenure: 18, interest: 10 },
+      assignedAgent: agents.find(a => a.district.includes("Mumbai"))
+    },
+
+    // Scenario 5: Inspection scheduled
+    {
+      customer: customers[2],
+      status: "INSPECTION_SCHEDULED",
+      requestedAmount: 300000,
+      district: "Bangalore",
+      assetType: "MOTORCYCLE",
+      assetBrand: "KTM",
+      assetModel: "Duke 390",
+      purchaseYear: 2022,
+      condition: "EXCELLENT",
+      offer: { amount: 270000, tenure: 36, interest: 14 },
+      assignedAgent: agents.find(a => a.district.includes("Bangalore")),
+      inspectionScheduledAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) // 2 days from now
+    },
+
+    // Scenario 6: Inspection completed, approved
+    {
+      customer: customers[2],
+      status: "APPROVED",
+      requestedAmount: 180000,
+      district: "Bangalore",
+      assetType: "LAPTOP",
+      assetBrand: "Apple",
+      assetModel: "MacBook Pro 14",
+      purchaseYear: 2021,
+      condition: "GOOD",
+      offer: { amount: 162000, tenure: 24, interest: 11 },
+      assignedAgent: agents.find(a => a.district.includes("Bangalore"))
+    },
+
+    // Scenario 7: Amount disbursed, waiting for signature
+    {
+      customer: customers[3],
+      status: "AMOUNT_DISBURSED",
+      requestedAmount: 120000,
+      district: "Chennai",
+      assetType: "MOTORCYCLE",
+      assetBrand: "Suzuki",
+      assetModel: "Gixxer SF",
+      purchaseYear: 2023,
+      condition: "EXCELLENT",
+      offer: { amount: 108000, tenure: 12, interest: 13 },
+      assignedAgent: agents.find(a => a.district.includes("Chennai"))
+    },
+
+    // Scenario 8: ACTIVE loan - just disbursed, no EMIs due yet
+    {
+      customer: customers[3],
+      status: "ACTIVE",
+      requestedAmount: 80000,
+      district: "Chennai",
+      assetType: "ELECTRONICS",
+      assetBrand: "Samsung",
+      assetModel: "Galaxy S23",
+      purchaseYear: 2023,
+      condition: "EXCELLENT",
+      offer: { amount: 72000, tenure: 12, interest: 12 },
+      hasLoan: true,
+      loanStatus: "ACTIVE",
+      disbursedDaysAgo: 5
+    },
+
+    // Scenario 9: ACTIVE loan - some EMIs paid, some pending
+    {
+      customer: customers[4],
+      status: "ACTIVE",
+      requestedAmount: 500000,
+      district: "Pune",
+      assetType: "MOTORCYCLE",
+      assetBrand: "BMW",
+      assetModel: "G 310 R",
+      purchaseYear: 2022,
+      condition: "EXCELLENT",
+      offer: { amount: 450000, tenure: 36, interest: 15 },
+      hasLoan: true,
+      loanStatus: "ACTIVE",
+      disbursedDaysAgo: 120, // 4 months ago
+      emisPaid: 4 // 4 EMIs paid out of 36
+    },
+
+    // Scenario 10: ACTIVE loan - with overdue EMIs
+    {
+      customer: customers[4],
+      status: "ACTIVE",
+      requestedAmount: 350000,
+      district: "Pune",
+      assetType: "LAPTOP",
+      assetBrand: "HP",
+      assetModel: "Pavilion 15",
+      purchaseYear: 2021,
+      condition: "GOOD",
+      offer: { amount: 315000, tenure: 24, interest: 13 },
+      hasLoan: true,
+      loanStatus: "ACTIVE",
+      disbursedDaysAgo: 200, // ~6 months ago
+      emisPaid: 5, // 5 EMIs paid, 1 overdue
+      hasOverdue: true
+    },
+
+    // Scenario 11: COMPLETED loan
+    {
+      customer: customers[0],
+      status: "COMPLETED",
+      requestedAmount: 60000,
+      district: "Delhi",
+      assetType: "MOTORCYCLE",
+      assetBrand: "Hero",
+      assetModel: "Splendor Plus",
+      purchaseYear: 2020,
+      condition: "FAIR",
+      offer: { amount: 54000, tenure: 12, interest: 14 },
+      hasLoan: true,
+      loanStatus: "COMPLETED",
+      disbursedDaysAgo: 400, // ~13 months ago
+      emisPaid: 12 // All EMIs paid
+    }
+  ];
+
+  // Create requests with comprehensive data
+  const requests = [];
+  for (const scenario of testScenarios) {
+    const seq = await nextSerial('REQUEST', 1000);
+    const requestNumber = `REQ${seq}`;
+
+    const requestData: any = {
+      requestNumber,
+      customerId: scenario.customer.id,
+      requestedAmount: scenario.requestedAmount,
+      district: scenario.district,
+      currentStatus: scenario.status,
+      purchaseYear: scenario.purchaseYear,
+      assetType: scenario.assetType,
+      assetBrand: scenario.assetBrand,
+      assetModel: scenario.assetModel,
+      assetCondition: scenario.condition,
+      AdditionalDescription: `Test scenario: ${scenario.status} - ${scenario.assetBrand} ${scenario.assetModel}`,
+      assignedAgentId: scenario.assignedAgent?.id || null,
+      penaltyPercentage: DEFAULT_PENALTY_PERCENTAGE,
+      lateFeePercentage: DEFAULT_LATE_FEE_PERCENTAGE,
+      adminProcessingFee: 0,
+      inspectionScheduledAt: scenario.inspectionScheduledAt || null,
+    };
+
+    // Add offer data if present
+    if (scenario.offer) {
+      requestData.adminOfferedAmount = scenario.offer.amount;
+      requestData.adminTenureMonths = scenario.offer.tenure;
+      requestData.adminInterestRate = scenario.offer.interest;
+      requestData.offerMadeDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+
+      if (["OFFER_ACCEPTED", "INSPECTION_SCHEDULED", "INSPECTION_COMPLETED", "APPROVED", "AMOUNT_DISBURSED", "PENDING_SIGNATURE", "ACTIVE", "COMPLETED"].includes(scenario.status)) {
+        requestData.offerResponseDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000); // 3 days ago
+      }
+    }
+
+    // Add bank details for advanced statuses
+    if (["AMOUNT_DISBURSED", "PENDING_SIGNATURE", "ACTIVE", "COMPLETED"].includes(scenario.status)) {
+      requestData.bankAccountNumber = `ACC${Math.floor(Math.random() * 9000000000) + 1000000000}`;
+      requestData.bankIfscCode = ["HDFC0000123", "ICIC0000456", "SBIN0000789", "AXIS0000987"][Math.floor(Math.random() * 4)];
+      requestData.bankAccountName = `${scenario.customer.firstName} ${scenario.customer.lastName}`;
+      requestData.upiId = `${scenario.customer.email.split('@')[0]}@paytm`;
+      requestData.bankDetailsSubmittedAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    }
+
+    const request = await prisma.request.create({ data: requestData });
+    requests.push({ ...request, scenario });
+  }
+
+  console.log(`✅ Created ${requests.length} test requests with comprehensive scenarios`);
 
   // ---------------------------------------
-  // LOANS + EMI + PAYMENTS
+  // LOANS + EMI + PAYMENTS + PAYMENT ORDERS
   // ---------------------------------------
   const loans = [];
   const emis = [];
   const payments = [];
+  const paymentOrders = [];
 
   for (const req of requests) {
     // Only create loans for ACTIVE and COMPLETED requests (loans are created after disbursement and signature)
@@ -368,8 +405,12 @@ async function main() {
     const totalInterest = Math.round(approvedAmount * (interestRate / 100));
     const totalAmount = approvedAmount + totalInterest;
 
+    const loanSeq = await nextSerial('LOAN', 1000);
+    const loanNumber = `LN${loanSeq}`;
+
     const loan = await prisma.loan.create({
       data: {
+        loanNumber,
         requestId: req.id,
         approvedAmount,
         interestRate,
@@ -382,12 +423,16 @@ async function main() {
         disbursedDate: new Date(),
         firstEMIDate: new Date(),
         lastEMIDate: new Date(Date.now() + tenureMonths * 30 * 24 * 60 * 60 * 1000),
-        totalPaidAmount: 0
+        totalPaidAmount: 0,
+        remainingAmount: totalAmount,
+        paidEMIs: 0,
+        remainingEMIs: tenureMonths,
+        overdueEMIs: 0,
       },
     });
     loans.push(loan);
 
-    // EMI Schedule - Create realistic EMI statuses for testing
+    // EMI Schedule - Create comprehensive EMI scenarios for testing
     for (let n = 1; n <= tenureMonths; n++) {
       const dueDate = new Date(Date.now() - (tenureMonths - n) * 30 * 24 * 60 * 60 * 1000); // Past dates for realism
       const daysLate = Math.max(0, Math.floor((Date.now() - dueDate.getTime()) / (24 * 60 * 60 * 1000)));
@@ -397,7 +442,7 @@ async function main() {
       let paidAmount = null;
       let lateFee = 0;
 
-      // For ACTIVE loans, create realistic payment scenarios
+      // For ACTIVE loans, create diverse payment scenarios
       if (req.currentStatus === 'ACTIVE') {
         if (n === 1) {
           // First EMI always paid
@@ -405,13 +450,22 @@ async function main() {
           paidDate = new Date(dueDate.getTime() + 2 * 24 * 60 * 60 * 1000); // Paid 2 days after due
           paidAmount = emiAmount;
         } else if (n === 2 && daysLate > 5) {
-          // Second EMI overdue
+          // Second EMI overdue with high penalty
           status = "OVERDUE";
-          // Calculate late fees
+          // Calculate late fees - high penalty scenario
           const dailyLateRate = DEFAULT_LATE_FEE_PERCENTAGE / 100;
           const dailyLateFee = Number((emiAmount * dailyLateRate * Math.max(0, daysLate - 30)).toFixed(2));
           const overduePenalty = daysLate > 30 ? Number((emiAmount * (DEFAULT_PENALTY_PERCENTAGE / 100)).toFixed(2)) : 0;
           lateFee = Math.round((dailyLateFee + overduePenalty) * 100) / 100;
+        } else if (n === 3) {
+          // Third EMI pending but approaching due date
+          status = "PENDING";
+          // No late fee yet
+        } else if (n === 4 && req.scenario.customer.email === "john.customer@example.com") {
+          // Special scenario: EMI with multiple payment attempts
+          status = "OVERDUE";
+          const overdueDays = Math.max(0, daysLate - 30);
+          lateFee = Number((emiAmount * (DEFAULT_PENALTY_PERCENTAGE / 100 + overdueDays * DEFAULT_LATE_FEE_PERCENTAGE / 100)).toFixed(2));
         } else if (n <= Math.floor(tenureMonths * 0.7)) {
           // 70% of EMIs paid for active loans
           status = "PAID";
@@ -454,14 +508,135 @@ async function main() {
             paymentType: "EMI",
             paymentMethod: ["UPI", "BANK_TRANSFER", "CASH"][Math.floor(Math.random() * 3)],
             paymentReference: `TXN-${randomUUID()}`,
+            processedBy: req.customerId,
           },
         });
         payments.push(payment);
+
+        // Create payment order for ALL paid EMIs (successful payment)
+        const paymentOrder = await prisma.paymentOrder.create({
+          data: {
+            razorpayOrderId: `order_${randomUUID()}`,
+            loanId: loan.id,
+            requestId: req.id,
+            emiScheduleId: emi.id,
+            customerId: req.customerId,
+            emiAmount: emiAmount,
+            penalty: lateFee || 0,
+            totalAmount: emiAmount + (lateFee || 0),
+            status: "PAID",
+            attempts: 1,
+            lastAttemptAt: paidDate,
+            razorpayPaymentId: `pay_${randomUUID()}`,
+            razorpaySignature: `signature_${randomUUID()}`,
+            paymentMethod: ["card", "upi", "netbanking"][Math.floor(Math.random() * 3)],
+            paidAt: paidDate,
+            expiresAt: new Date(paidDate.getTime() + 30 * 60 * 1000), // 30 minutes from payment
+            notes: {
+              emi_number: n,
+              customer_email: req.scenario.customer.email,
+              test_scenario: `EMI ${n} successful payment`
+            }
+          },
+        });
+        paymentOrders.push(paymentOrder);
+      }
+
+      // Create Payment Orders for specific EMI scenarios (overdue/failed attempts)
+      if (req.scenario.customer.email === "john.customer@example.com" && (n === 2 || n === 4)) {
+        // Create payment orders for overdue EMIs to test payment flow
+        const orderStatus = n === 2 ? "CREATED" : ["ATTEMPTED", "FAILED", "EXPIRED"][Math.floor(Math.random() * 4)];
+        const attempts = orderStatus === "ATTEMPTED" ? Math.floor(Math.random() * 3) + 1 : 0;
+
+        const paymentOrder = await prisma.paymentOrder.create({
+          data: {
+            razorpayOrderId: `order_${randomUUID()}`,
+            loanId: loan.id,
+            requestId: req.id,
+            emiScheduleId: emi.id,
+            customerId: req.customerId,
+            emiAmount: emiAmount,
+            penalty: lateFee,
+            totalAmount: emiAmount + lateFee,
+            status: orderStatus,
+            attempts: attempts,
+            lastAttemptAt: attempts > 0 ? new Date(Date.now() - Math.floor(Math.random() * 7) * 24 * 60 * 60 * 1000) : null,
+            razorpayPaymentId: orderStatus === "PAID" ? `pay_${randomUUID()}` : null,
+            razorpaySignature: orderStatus === "PAID" ? `signature_${randomUUID()}` : null,
+            paymentMethod: orderStatus === "PAID" ? ["card", "upi", "netbanking"][Math.floor(Math.random() * 3)] : null,
+            paidAt: orderStatus === "PAID" ? new Date() : null,
+            failureReason: orderStatus === "FAILED" ? "Payment cancelled by user" : null,
+            failureCode: orderStatus === "FAILED" ? "CANCELLED" : null,
+            expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes from now
+            notes: {
+              emi_number: n,
+              customer_email: req.scenario.customer.email,
+              test_scenario: `EMI ${n} payment order`
+            }
+          },
+        });
+        paymentOrders.push(paymentOrder);
+
+        // Create additional failed attempts for EMI 4
+        if (n === 4 && orderStatus === "ATTEMPTED") {
+          for (let attempt = 1; attempt <= attempts - 1; attempt++) {
+            const failedOrder = await prisma.paymentOrder.create({
+              data: {
+                razorpayOrderId: `order_${randomUUID()}`,
+                loanId: loan.id,
+                requestId: req.id,
+                emiScheduleId: emi.id,
+                customerId: req.customerId,
+                emiAmount: emiAmount,
+                penalty: lateFee,
+                totalAmount: emiAmount + lateFee,
+                status: "FAILED",
+                attempts: 1,
+                lastAttemptAt: new Date(Date.now() - attempt * 24 * 60 * 60 * 1000),
+                failureReason: ["Payment timeout", "Insufficient funds", "Card declined"][Math.floor(Math.random() * 3)],
+                failureCode: ["TIMEOUT", "INSUFFICIENT_FUNDS", "DECLINED"][Math.floor(Math.random() * 3)],
+                expiresAt: new Date(Date.now() - attempt * 24 * 60 * 60 * 1000 + 30 * 60 * 1000),
+                notes: {
+                  emi_number: n,
+                  attempt_number: attempt,
+                  failure_type: "test_failure"
+                }
+              },
+            });
+            paymentOrders.push(failedOrder);
+          }
+        }
       }
     }
+
+    // Recalculate loan aggregate fields based on actual EMI statuses
+    const allEmisForLoan = await prisma.eMISchedule.findMany({
+      where: { loanId: loan.id }
+    });
+
+    const paidEmisCount = allEmisForLoan.filter(e => e.status === 'PAID').length;
+    const totalPaidAmount = allEmisForLoan
+      .filter(e => e.status === 'PAID')
+      .reduce((sum, e) => sum + e.emiAmount + (e.lateFee || 0), 0);
+    const remainingAmount = loan.totalAmount - totalPaidAmount;
+    const remainingEmisCount = allEmisForLoan.filter(e => e.status !== 'PAID').length;
+    const overdueEmisCount = allEmisForLoan.filter(e => e.status === 'OVERDUE').length;
+
+    // Update loan with recalculated values
+    await prisma.loan.update({
+      where: { id: loan.id },
+      data: {
+        paidEMIs: paidEmisCount,
+        totalPaidAmount,
+        remainingAmount: Math.max(0, remainingAmount),
+        remainingEMIs: remainingEmisCount,
+        overdueEMIs: overdueEmisCount,
+        status: paidEmisCount === loan.tenureMonths ? 'COMPLETED' : 'ACTIVE'
+      }
+    });
   }
 
-  console.log(`✅ Created ${loans.length} loans, ${emis.length} EMIs, ${payments.length} payments`);
+  console.log(`✅ Created ${loans.length} loans, ${emis.length} EMIs, ${payments.length} payments, ${paymentOrders.length} payment orders`);
 
   // ---------------------------------------
   // BANK DETAILS (for requests with loans)
@@ -495,15 +670,15 @@ async function main() {
       prisma.document.create({
         data: {
           requestId: req.id,
-          fileKey: `demo-file-key-${req.id}`,
-          fileName: `document-${req.id}.pdf`,
+          fileKey: `demo-file-key-${req.id}-${i}`,
+          fileName: `document-${req.id}-${i}.pdf`,
           fileSize: 1024000,
           fileType: "application/pdf",
           documentType: "id_proof",
           documentCategory: "KYC",
-          uploadedBy: customer.id,
+          uploadedBy: customers[0].id,
           isVerified: true,
-          verifiedBy: admin.id,
+          verifiedBy: admins[0].id,
           verifiedAt: new Date(),
         },
       })
@@ -518,7 +693,7 @@ async function main() {
       prisma.comment.create({
         data: {
           requestId: req.id,
-          authorId: admin.id,
+          authorId: admins[0].id,
           content: `This is a comment for request ${i + 1}`,
           commentType: "GENERAL",
         },
@@ -534,7 +709,7 @@ async function main() {
       prisma.inspection.create({
         data: {
           requestId: req.id,
-          agentId: agent.id,
+          agentId: agents[0].id,
           scheduledDate: new Date(),
           completedDate: new Date(),
           status: "COMPLETED",
@@ -589,7 +764,7 @@ async function main() {
           isActive: true,
           connectionStatus: "CONNECTED",
           config: { apiKey: "demo-key", sender: "FundifyHub" },
-          configuredBy: admin.id,
+          configuredBy: admins[0].id,
           configuredAt: new Date(),
         },
       })
@@ -632,6 +807,7 @@ async function main() {
             assignedAgentId: mumbaiAgent.id,
             penaltyPercentage: DEFAULT_PENALTY_PERCENTAGE,
             lateFeePercentage: DEFAULT_LATE_FEE_PERCENTAGE,
+            adminProcessingFee: 0,
             inspectionScheduledAt: scenario.status === 'INSPECTION_SCHEDULED' ? new Date(Date.now() + (i + 1) * 24 * 60 * 60 * 1000) : undefined,
             // Add offer details as these statuses imply an offer was accepted
             adminOfferedAmount: 70000,

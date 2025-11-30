@@ -7,7 +7,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // User model shd add username and Legal names as 2 diff columns instead of id and name to better identify.
@@ -62,28 +61,28 @@ model User {
 // Main Request model (simplified)
 model Request {
   id              String        @id @default(cuid())
-  requestNumber   String?       @unique
+  requestNumber   String        @unique
   customerId      String
   requestedAmount Float
   district        String
   currentStatus   String    @default("PENDING")
   
-  // Asset details (inline)
-  purchaseYear    Int?
+  // Asset details (inline) - required for asset-based lending
+  purchaseYear    Int
   assetType       String
   assetBrand      String
   assetModel      String
   assetCondition  String
-  AdditionalDescription String?
+  AdditionalDescription String @default("")
   
-  // Admin Offer Details
+  // Admin Offer Details - required when status is not PENDING
   adminOfferedAmount Float?     // Amount offered by admin
   adminTenureMonths  Int?       // Tenure offered by admin
   adminInterestRate  Float?     // Interest rate offered by admin
   adminEmiSchedule   Json?      // JSON snapshot of EMI schedule/admin offer (immutable snapshot)
   // Processing fee (amount in currency units) that will be deducted at disbursement.
   // This does not affect EMI calculations; EMIs are calculated on adminOfferedAmount.
-  adminProcessingFee Float? 
+  adminProcessingFee Float @default(0)
   offerMadeDate      DateTime?  // When admin made the offer
   offerResponseDate  DateTime?  // When customer responded
   penaltyPercentage   Float     @default(4)     // Penalty percentage for late payment (default 4%)
@@ -91,7 +90,7 @@ model Request {
   // Admin requested information (when status is MORE_INFO_REQUIRED)
   adminRequestedInfo String?    // What additionWal info/documents admin needs
   
-  // Bank Details (for disbursement)
+  // Bank Details (for disbursement) - required for loan disbursement
   bankAccountNumber  String?    // Customer's bank account number
   bankIfscCode       String?    // Bank IFSC code
   bankAccountName    String?    // Account holder name
@@ -121,6 +120,7 @@ model Request {
   inspections     Inspection[]
   emiSchedules    EMISchedule[]
   payments        Payment[]
+  paymentOrders   PaymentOrder[]
   documents       Document[]     
   requestHistory  RequestHistory[]
 
@@ -134,7 +134,7 @@ model Request {
 // Enhanced Loan model for EMI-based fixed loans
 model Loan {
   id              String     @id @default(cuid())
-  loanNumber      String?    @unique
+  loanNumber      String     @unique
   requestId       String     @unique
   
   // Fixed Loan Terms (Set by Admin - Cannot be changed)
@@ -149,16 +149,16 @@ model Loan {
   
   // Loan Status & Dates
   status          String   @default("ACTIVE")
-  approvedDate    DateTime?  // When loan was approved by agent
+  approvedDate    DateTime // When loan was approved by agent
   disbursedDate   DateTime?  // When amount was transferred to customer
-  firstEMIDate    DateTime?  // When first EMI is due
-  lastEMIDate     DateTime?  // When last EMI is due
+  firstEMIDate    DateTime // When first EMI is due
+  lastEMIDate     DateTime // When last EMI is due
   
   // Payment Tracking
   totalPaidAmount Float      @default(0) // Total amount paid so far
-  remainingAmount Float?     // Remaining amount to be paid
+  remainingAmount Float      // Remaining amount to be paid
   paidEMIs        Int        @default(0) // Number of EMIs paid
-  remainingEMIs   Int?       // Number of EMIs remaining
+  remainingEMIs   Int        // Number of EMIs remaining
   overdueEMIs     Int        @default(0) // Number of overdue EMIs
   
   // Transfer Details (When loan is disbursed)
@@ -177,6 +177,7 @@ model Loan {
   request         Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
   emisSchedule    EMISchedule[]
   payments        Payment[]
+  paymentOrders   PaymentOrder[]
 
   @@index([requestId])
   @@index([status])
@@ -205,6 +206,7 @@ model EMISchedule {
   loan            Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
   request         Request   @relation(fields: [requestId], references: [id], onDelete: Cascade)
   payments        Payment[]
+  paymentOrders   PaymentOrder[]
 
   @@unique([loanId, emiNumber])
   @@index([loanId])
@@ -223,9 +225,9 @@ model Payment {
   amount           Float      // Full amount paid (no partial payments allowed)
   paymentType      String     @default("EMI") // "EMI", "ADVANCE", "LATE_FEE" (PARTIAL removed)
   paymentMethod    String     // "UPI", "BANK_TRANSFER", "CASH", "CARD", "RAZORPAY"
-  paymentReference String?    // Transaction ID/reference (Razorpay payment ID)
+  paymentReference String     // Transaction ID/reference (Razorpay payment ID) - required for audit
   paidDate         DateTime   @default(now())
-  processedBy      String?    // User ID who processed/verified payment
+  processedBy      String     // User ID who processed/verified payment - required for audit
   remarks          String?    // Any remarks about the payment
   receiptPath      String?    // Payment receipt/proof document path
   createdAt        DateTime   @default(now())
@@ -243,15 +245,65 @@ model Payment {
   @@map("payments")
 }
 
+// PaymentOrder model - Tracks Razorpay order lifecycle for audit and retry
+model PaymentOrder {
+  id                String    @id @default(cuid())
+  razorpayOrderId   String    @unique
+  loanId            String
+  requestId         String
+  emiScheduleId     String
+  customerId        String    // User ID of the customer initiating payment
+  
+  // Amount breakdown (in INR)
+  emiAmount         Float     // Base EMI amount (principal + interest)
+  penalty           Float     @default(0) // Late fee + overdue penalty
+  totalAmount       Float     // emiAmount + penalty
+  
+  // Status tracking
+  status            String    @default("CREATED") // CREATED, ATTEMPTED, PAID, FAILED, EXPIRED
+  attempts          Int       @default(0)
+  lastAttemptAt     DateTime?
+  
+  // Payment details (populated after success)
+  razorpayPaymentId String?   // Razorpay payment_id when paid
+  razorpaySignature String?   // Signature for verification
+  paymentMethod     String?   // card, upi, netbanking, wallet, etc.
+  paidAt            DateTime?
+  
+  // Failure tracking
+  failureReason     String?
+  failureCode       String?
+  
+  // Metadata
+  notes             Json?     // Copy of Razorpay order notes
+  expiresAt         DateTime  // Razorpay orders expire in ~30 minutes
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  loan              Loan        @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  request           Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  emiSchedule       EMISchedule @relation(fields: [emiScheduleId], references: [id], onDelete: Cascade)
+
+  @@index([razorpayOrderId])
+  @@index([loanId])
+  @@index([requestId])
+  @@index([emiScheduleId])
+  @@index([customerId])
+  @@index([status])
+  @@map("payment_orders")
+}
+
 // Document model - Unified file storage with UploadThing integration
 model Document {
   id                String    @id @default(cuid())
   
   // UploadThing Integration
-  fileKey           String    @unique @default("") // UploadThing file key (used for signed URL generation)
-  fileName          String    @default("unknown") // Original file name
-  fileSize          Int       @default(0) // File size in bytes
-  fileType          String    @default("application/octet-stream") // MIME type (image/png, application/pdf, etc.)
+  fileKey           String    @unique // UploadThing file key (used for signed URL generation) - required
+  fileName          String    // Original file name - required
+  fileSize          Int       // File size in bytes - required
+  fileType          String    // MIME type (image/png, application/pdf, etc.) - required
   
   // Document Classification
   documentType      String    // "ASSET_PHOTO", "ID_PROOF", "PURCHASE_RECEIPT", "EMI_RECEIPT", "TRANSFER_PROOF", "PROFILE_PICTURE", etc.
@@ -324,7 +376,7 @@ model Comment {
 model RequestHistory {
   id         String   @id @default(cuid())
   requestId  String
-  actorId    String?  // User who performed the action (could be system)
+  actorId    String   // User who performed the action (could be system) - required for audit
   action     String   // e.g. "ASSIGNED_AGENT", "OFFER_CREATED", "STATUS_UPDATED"
   metadata   Json?
   createdAt  DateTime @default(now())
@@ -411,7 +463,7 @@ model ServiceConfig {
   qrCode          String?  @db.Text // Base64 QR code for WhatsApp (large text)
   
   // Admin tracking
-  configuredBy    String?  // Admin user ID who configured
+  configuredBy    String   // Admin user ID who configured - required for audit
   configuredAt    DateTime?
   
   createdAt       DateTime @default(now())

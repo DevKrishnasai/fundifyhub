@@ -13,9 +13,9 @@
     "@fundifyhub/logger": "workspace:*",
     "@fundifyhub/utils": "workspace:*",
     "dotenv": "^17.2.3",
-    "ws": "^8.18.0"
+    "ws": "^8.18.1"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.12"
+    "@types/ws": "^8.5.13"
   }
 }

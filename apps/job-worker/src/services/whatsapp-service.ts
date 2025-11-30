@@ -111,6 +111,7 @@ export const startWhatsAppService = async () => {
         isActive: false,
         connectionStatus: CONNECTION_STATUS.INITIALIZING,
         config: {},
+        configuredBy: 'system',
       }
     });
 
@@ -159,6 +160,7 @@ export const startWhatsAppService = async () => {
             connectionStatus: CONNECTION_STATUS.WAITING_FOR_QR_SCAN,
             config: {},
             qrCode: qrCodeDataUrl,
+            configuredBy: 'system',
           }
         });
       } catch (err) {
@@ -189,6 +191,7 @@ export const startWhatsAppService = async () => {
           connectionStatus: CONNECTION_STATUS.CONNECTED,
           config: {},
           lastConnectedAt: new Date(),
+          configuredBy: 'system',
         }
       });
     });
@@ -206,6 +209,7 @@ export const startWhatsAppService = async () => {
           isActive: false,
           connectionStatus: CONNECTION_STATUS.AUTHENTICATED,
           config: {},
+          configuredBy: 'system',
         }
       });
     });
@@ -228,6 +232,7 @@ export const startWhatsAppService = async () => {
           connectionStatus: CONNECTION_STATUS.ERROR,
           config: {},
           lastError: 'Authentication failed',
+          configuredBy: 'system',
         }
       });
     });
@@ -251,6 +256,7 @@ export const startWhatsAppService = async () => {
           isActive: false,
           connectionStatus: CONNECTION_STATUS.DISCONNECTED,
           config: {},
+          configuredBy: 'system',
         }
       });
     });
@@ -280,6 +286,7 @@ export const startWhatsAppService = async () => {
         connectionStatus: CONNECTION_STATUS.ERROR,
         config: {},
         lastError: (error as Error).message,
+        configuredBy: 'system',
       }
     }).catch((err: unknown) => {
       const errorLogger = logger.child('[whatsapp-service]');
@@ -313,6 +320,7 @@ export const stopWhatsAppService = async () => {
         connectionStatus: CONNECTION_STATUS.DISCONNECTED,
         config: {},
         qrCode: null,
+        configuredBy: 'system',
       }
     });
     

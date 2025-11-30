@@ -773,27 +773,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
   [REQUEST_STATUS.ACTIVE]: {
     description: 'Loan is active, customer paying EMIs',
     customerActions: [],
-    adminActions: [
-      {
-        id: 'mark-overdue',
-        label: 'Mark Overdue',
-        icon: 'AlertCircle',
-        variant: 'outline',
-        targetStatus: REQUEST_STATUS.PAYMENT_OVERDUE,
-        districtCheck: true,
-        priority: 5,
-      },
-      {
-        id: 'mark-completed',
-        label: 'Mark Completed',
-        icon: 'CheckCheck',
-        variant: 'default',
-        targetStatus: REQUEST_STATUS.COMPLETED,
-        requiresConfirmation: true,
-        districtCheck: true,
-        priority: 10,
-      }
-    ],
+    adminActions: [],
     agentActions: [],
     systemActions: [
       {
@@ -816,29 +796,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
   [REQUEST_STATUS.PAYMENT_OVERDUE]: {
     description: 'Customer missed EMI payment',
     customerActions: [],
-    adminActions: [
-      {
-        id: 'mark-paid',
-        label: 'Mark as Paid',
-        icon: 'CheckCircle',
-        variant: 'default',
-        targetStatus: REQUEST_STATUS.ACTIVE,
-        requiresInput: true,
-        districtCheck: true,
-        priority: 1,
-      },
-      {
-        id: 'mark-defaulted',
-        label: 'Mark as Defaulted',
-        icon: 'AlertTriangle',
-        variant: 'destructive',
-        targetStatus: REQUEST_STATUS.DEFAULTED,
-        requiresInput: true,
-        requiresConfirmation: true,
-        districtCheck: true,
-        priority: 5,
-      }
-    ],
+    adminActions: [],
     agentActions: [],
     systemActions: [
       {
@@ -846,6 +804,13 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
         label: 'Auto default',
         targetStatus: REQUEST_STATUS.DEFAULTED,
         description: 'Auto-defaults after 3 missed EMIs',
+        priority: 99,
+      },
+      {
+        id: 'auto-active',
+        label: 'Auto re-activate',
+        targetStatus: REQUEST_STATUS.ACTIVE,
+        description: 'Auto-activates when overdue EMI is paid',
         priority: 99,
       }
     ],

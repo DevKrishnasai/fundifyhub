@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import config from './utils/config';
 import apiRoutes from './api';
+import { razorpayWebhookController } from './api/payments/razorpay';
 import logger from './utils/logger';
 
 /*
@@ -42,6 +43,39 @@ app.use(cors({
   },
   credentials: true,
 }));
+// NOTE: For webhook verification, we MUST use the raw body exactly as Razorpay sends it.
+// Using `express.json()` will transform the body which breaks signature verification.
+// So we mount a raw body parser for the Razorpay webhook route and then still use
+// the normal JSON middleware for other routes.
+
+// Raw body parser for webhook
+app.post('/api/v1/payments/razorpay/webhook', express.raw({ type: 'application/json', limit: '10mb' }), (req, res, next) => {
+  // Raw buffer -> string
+  const bodyString = (req.body && Buffer.isBuffer(req.body)) ? req.body.toString('utf8') : '';
+  // Parse JSON and attach both parsed body and raw string to req for the controller
+  try {
+    // @ts-ignore - temporarily assign parsed body for the controller
+    req.body = bodyString ? JSON.parse(bodyString) : {};
+    // store raw body string for signature verification
+    // @ts-ignore
+    req.rawBody = bodyString;
+  } catch (err) {
+    // Ignore JSON parse errors here; the controller will validate further
+    // and return an informative message
+    // @ts-ignore
+    req.rawBody = bodyString;
+  }
+
+  // Call the controller directly
+  return razorpayWebhookController(req as any, res as any);
+});
+
+// Handle GET on webhook (return 405) - this prevents 404 in logs and provides clearer feedback.
+app.get('/api/v1/payments/razorpay/webhook', (req, res) => {
+  res.status(405).json({ success: false, message: 'Method not allowed. POST only for webhooks' });
+});
+
+// Continue to mount JSON middleware for other routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

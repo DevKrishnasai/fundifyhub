@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "prisma generate && tsc -b --force",
+    "build": "npx dotenv -e ../../.env -- prisma generate && tsc -b --force",
     "dev": "tsc --watch",
     "lint": "eslint .",
     "clean": "rimraf dist",
@@ -36,12 +36,15 @@
   "dependencies": {
     "@fundifyhub/logger": "workspace:*",
     "@fundifyhub/utils": "workspace:*",
-    "@prisma/client": "^5.22.0",
-    "bcrypt": "^6.0.0"
+    "@prisma/adapter-pg": "^7.0.1",
+    "@prisma/client": "^7.0.1",
+    "bcrypt": "^6.0.0",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
+    "@types/pg": "^8.15.6",
     "dotenv-cli": "^7.4.2",
-    "prisma": "^5.22.0"
+    "prisma": "^7.0.1"
   }
 }

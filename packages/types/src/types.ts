@@ -42,7 +42,7 @@ export interface AdminEMISchedulePreview {
 export interface RequestHistoryItem {
   id: string;
   requestId: string;
-  actorId: string | null;
+  actorId: string; // Required for audit
   action: string;
   // Structured metadata for known events. Keep a fallback of free-form object
   // for legacy or untyped events.
@@ -101,6 +101,84 @@ export interface DisbursementMetadata {
   amount?: number | null;
   transactionRef?: string | null;
   proofDocumentId?: string | null;
+}
+
+// Payment-related metadata shapes
+export interface PaymentInitiatedMetadata {
+  paymentOrderId: string;
+  razorpayOrderId: string;
+  emiId: string;
+  emiNumber: number;
+  emiAmount: number;
+  penalty: number;
+  totalAmount: number;
+  initiatedBy: string; // customer ID
+}
+
+export interface PaymentSuccessMetadata {
+  paymentOrderId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  emiId: string;
+  emiNumber: number;
+  amountPaid: number;
+  penalty: number;
+  paymentMethod?: string | null;
+  paidAt: string; // ISO timestamp
+}
+
+export interface PaymentFailedMetadata {
+  paymentOrderId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId?: string | null;
+  emiId: string;
+  emiNumber: number;
+  attemptedAmount: number;
+  failureReason?: string | null;
+  failureCode?: string | null;
+  failedAt: string; // ISO timestamp
+}
+
+export interface PaymentExpiredMetadata {
+  paymentOrderId: string;
+  razorpayOrderId: string;
+  emiId: string;
+  emiNumber: number;
+  totalAmount: number;
+  expiredAt: string; // ISO timestamp
+}
+
+export interface EMIOverdueMetadata {
+  emiId: string;
+  emiNumber: number;
+  emiAmount: number;
+  dueDate: string; // ISO date
+  daysOverdue: number;
+  lateFee: number;
+  previousStatus: string;
+}
+
+export interface EMIPenaltyAppliedMetadata {
+  emiId: string;
+  emiNumber: number;
+  penaltyAmount: number;
+  penaltyType: string; // 'LATE_FEE' or 'OVERDUE_PENALTY'
+  daysLate: number;
+  calculatedAt: string; // ISO timestamp
+}
+
+export interface LoanDefaultedMetadata {
+  loanId: string;
+  overdueEmiCount: number;
+  totalOverdueAmount: number;
+  defaultedAt: string; // ISO timestamp
+}
+
+export interface LoanCompletedMetadata {
+  loanId: string;
+  totalPaidAmount: number;
+  totalEmisPaid: number;
+  completedAt: string; // ISO timestamp
 }
 
 export interface HistoryEventDescription {
@@ -337,19 +415,19 @@ export interface ServiceStatusJobDataType {
 
 export interface RequestType {
   id: string;
-  requestNumber: string | null;
+  requestNumber: string; // Required for production
   customerId: string;
   requestedAmount: number;
   district: string;
   currentStatus: string;
   
-  // Asset details
-  purchaseYear: number | null;
+  // Asset details - required for asset-based lending
+  purchaseYear: number;
   assetType: string;
   assetBrand: string;
   assetModel: string;
   assetCondition: string;
-  AdditionalDescription: string | null;
+  AdditionalDescription: string; // Required with default empty string
   
   // Admin Offer Details
   adminOfferedAmount: number | null;
@@ -360,7 +438,7 @@ export interface RequestType {
   offerResponseDate: Date | null;
   // Processing fee that will be deducted from disbursed amount when loan is disbursed.
   // This does NOT change EMI calculation (EMIs are calculated on adminOfferedAmount).
-  adminProcessingFee?: number | null;
+  adminProcessingFee: number; // Required with default 0
   penaltyPercentage: number | null;
   lateFeePercentage: number | null;
   adminRequestedInfo: string | null;
@@ -387,6 +465,7 @@ export interface RequestType {
   documents?: DocumentType[];
   emisSchedule?: EMIScheduleType[];
   payments?: PaymentType[];
+  paymentOrders?: PaymentOrderType[];
   comments?: CommentType[];
   // Whether customers are allowed to post comments on this request. Admins can
   // toggle this at any time; frontend/backend business logic may decide when
@@ -397,7 +476,7 @@ export interface RequestType {
 
 export interface LoanType {
   id: string;
-  loanNumber: string | null;
+  loanNumber: string; // Required for production
   requestId: string;
   
   // Fixed Loan Terms
@@ -412,16 +491,16 @@ export interface LoanType {
   
   // Loan Status & Dates
   status: string;
-  approvedDate: Date | null;
+  approvedDate: Date; // Required for active loans
   disbursedDate: Date | null;
-  firstEMIDate: Date | null;
-  lastEMIDate: Date | null;
+  firstEMIDate: Date; // Required for active loans
+  lastEMIDate: Date; // Required for active loans
   
   // Payment Tracking
   totalPaidAmount: number;
-  remainingAmount: number | null;
+  remainingAmount: number; // Required for active loans
   paidEMIs: number;
-  remainingEMIs: number | null;
+  remainingEMIs: number; // Required for active loans
   overdueEMIs: number;
   
   // Transfer Details
@@ -440,6 +519,7 @@ export interface LoanType {
   request?: RequestType;
   emisSchedule?: EMIScheduleType[];
   payments?: PaymentType[];
+  paymentOrders?: PaymentOrderType[];
 }
 
 export interface EMIScheduleType {
@@ -462,6 +542,7 @@ export interface EMIScheduleType {
   loan?: LoanType;
   request?: RequestType;
   payments?: PaymentType[];
+  paymentOrders?: PaymentOrderType[];
 }
 
 export interface PaymentType {
@@ -472,9 +553,9 @@ export interface PaymentType {
   amount: number;
   paymentType: string;
   paymentMethod: string;
-  paymentReference: string | null;
+  paymentReference: string; // Required for audit
   paidDate: Date;
-  processedBy: string | null;
+  processedBy: string; // Required for audit
   remarks: string | null;
   receiptPath: string | null;
   createdAt: Date;
@@ -486,12 +567,54 @@ export interface PaymentType {
   emiSchedule?: EMIScheduleType | null;
 }
 
+// PaymentOrder - Tracks Razorpay order lifecycle
+export interface PaymentOrderType {
+  id: string;
+  razorpayOrderId: string;
+  loanId: string;
+  requestId: string;
+  emiScheduleId: string;
+  customerId: string;
+  
+  // Amount breakdown (in INR)
+  emiAmount: number;
+  penalty: number;
+  totalAmount: number;
+  
+  // Status tracking
+  status: string; // PAYMENT_ORDER_STATUS
+  attempts: number;
+  lastAttemptAt: Date | null;
+  
+  // Payment details (populated after success)
+  razorpayPaymentId: string | null;
+  razorpaySignature: string | null;
+  paymentMethod: string | null;
+  paidAt: Date | null;
+  
+  // Failure tracking
+  failureReason: string | null;
+  failureCode: string | null;
+  
+  // Metadata
+  notes: Record<string, unknown> | null;
+  expiresAt: Date;
+  
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  loan?: LoanType;
+  request?: RequestType;
+  emiSchedule?: EMIScheduleType;
+}
+
 export interface DocumentType {
   id: string;
-  fileKey: string;
-  fileName: string;
-  fileSize: number;
-  fileType: string;
+  fileKey: string; // Required - no default empty string
+  fileName: string; // Required
+  fileSize: number; // Required
+  fileType: string; // Required
   documentType: string;
   documentCategory: string;
   requestId: string | null;

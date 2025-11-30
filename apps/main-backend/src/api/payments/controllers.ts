@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { prisma } from '@fundifyhub/prisma';
 import { calculateEmiBreakdown } from '@fundifyhub/utils';
 import { createEnqueueClient } from '@fundifyhub/utils/src/enqueue';
-import { TEMPLATE_NAMES } from '@fundifyhub/types';
+import { TEMPLATE_NAMES, ROLES } from '@fundifyhub/types';
 
 /**
  * GET /api/v1/payments/loan/:loanId/total-due
@@ -105,29 +105,9 @@ export const payEmiController = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Loan is not active' });
     }
 
-    // Sequential payment validation: Find the oldest unpaid EMI
-    const oldestUnpaidEmi = await prisma.eMISchedule.findFirst({
-      where: {
-        loanId: emi.loanId,
-        status: { in: ['PENDING', 'OVERDUE'] }
-      },
-      orderBy: { dueDate: 'asc' }
-    });
-
-    if (!oldestUnpaidEmi) {
-      return res.status(400).json({ success: false, message: 'No unpaid EMIs found' });
-    }
-
-    if (oldestUnpaidEmi.id !== emiId) {
-      return res.status(400).json({
-        success: false,
-        message: 'You must pay the oldest unpaid EMI first',
-        oldestUnpaidEmi: {
-          id: oldestUnpaidEmi.id,
-          emiNumber: oldestUnpaidEmi.emiNumber,
-          dueDate: oldestUnpaidEmi.dueDate
-        }
-      });
+    // Check if EMI is payable (not already paid)
+    if (emi.status === 'PAID') {
+      return res.status(400).json({ success: false, message: 'EMI is already paid' });
     }
 
     // Get all EMIs for penalty calculation
@@ -176,7 +156,36 @@ export const payEmiController = async (req: Request, res: Response) => {
         amount: breakdown.totalDue,
         paymentType: 'EMI',
         paymentMethod: 'RAZORPAY', // Will be updated after Razorpay verification
+        paymentReference: `EMI-${emi.loan.loanNumber}-${emi.emiNumber}-${Date.now()}`,
+        processedBy: userId,
         remarks: `EMI #${emi.emiNumber} payment`
+      }
+    });
+
+    // Recalculate loan aggregate fields
+    const allEmisAfterPayment = await prisma.eMISchedule.findMany({
+      where: { loanId: emi.loanId }
+    });
+
+    const paidEmisCount = allEmisAfterPayment.filter(e => e.status === 'PAID').length;
+    const totalPaidAmount = allEmisAfterPayment
+      .filter(e => e.status === 'PAID')
+      .reduce((sum, e) => sum + e.emiAmount + (e.lateFee || 0), 0);
+    const remainingAmount = emi.loan.totalAmount - totalPaidAmount;
+    const remainingEmisCount = allEmisAfterPayment.filter(e => e.status !== 'PAID').length;
+    const overdueEmisCount = allEmisAfterPayment.filter(e => e.status === 'OVERDUE').length;
+
+    // Update loan with recalculated values
+    await prisma.loan.update({
+      where: { id: emi.loanId },
+      data: {
+        paidEMIs: paidEmisCount,
+        totalPaidAmount,
+        remainingAmount: Math.max(0, remainingAmount), // Ensure non-negative
+        remainingEMIs: remainingEmisCount,
+        overdueEMIs: overdueEmisCount,
+        // Update loan status if all EMIs are paid
+        status: paidEmisCount === emi.loan.tenureMonths ? 'COMPLETED' : 'ACTIVE'
       }
     });
 
@@ -212,6 +221,103 @@ export const payEmiController = async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error('Error processing EMI payment:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+/**
+ * GET /api/v1/payments/emi/:emiId/breakdown
+ * Get payment breakdown for a specific EMI including penalties
+ */
+export const getEmiBreakdownController = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { emiId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    // Get the EMI with loan and request details
+    const emi = await prisma.eMISchedule.findFirst({
+      where: { id: emiId },
+      include: {
+        loan: {
+          include: {
+            request: {
+              include: {
+                customer: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!emi) {
+      return res.status(404).json({ success: false, message: 'EMI not found' });
+    }
+
+    // Verify ownership - customer can view their own EMIs, admins can view all
+    const isOwner = emi.loan.request.customerId === userId;
+    const user = req.user;
+    const isAdmin = user?.roles?.includes(ROLES.SUPER_ADMIN) || user?.roles?.includes(ROLES.DISTRICT_ADMIN);
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Check if loan is ACTIVE
+    if (emi.loan.request.currentStatus !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: 'Loan is not active' });
+    }
+
+    // Get all EMIs for penalty calculation
+    const allEmis = await prisma.eMISchedule.findMany({
+      where: { loanId: emi.loanId },
+      orderBy: { emiNumber: 'asc' }
+    });
+
+    // Calculate breakdown with penalties
+    const breakdown = calculateEmiBreakdown(
+      {
+        emiNumber: emi.emiNumber,
+        emiAmount: emi.emiAmount,
+        principalAmount: emi.principalAmount,
+        interestAmount: emi.interestAmount,
+        status: emi.status,
+        dueDate: emi.dueDate.toISOString()
+      },
+      allEmis.map(e => ({
+        emiNumber: e.emiNumber,
+        status: e.status,
+        emiAmount: e.emiAmount,
+        lateFee: e.lateFee || 0,
+        dueDate: e.dueDate.toISOString()
+      })),
+      emi.loan.request.penaltyPercentage || 4, // Default 4%
+      emi.loan.request.lateFeePercentage || 0.01 // Default 0.01%
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        emiId,
+        breakdown,
+        emi: {
+          emiNumber: emi.emiNumber,
+          dueDate: emi.dueDate,
+          status: emi.status,
+          emiAmount: emi.emiAmount,
+          principalAmount: emi.principalAmount,
+          interestAmount: emi.interestAmount,
+          lateFee: emi.lateFee
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error calculating EMI breakdown:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

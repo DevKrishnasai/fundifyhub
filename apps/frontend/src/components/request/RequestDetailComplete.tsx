@@ -37,10 +37,10 @@ import { UploadButton } from '@/components/uploadthing-components';
 import type { ClientUploadedFileData } from 'uploadthing/types';
 import { SignaturePad } from '@/components/SignaturePad';
 import PreviewModal from '@/components/common/PreviewModal';
-import PaymentModal from '@/components/payments/RazorpayPaymentModal';
-import { ActiveLoanSummary } from '@/components/request/ActiveLoanSummary';
+import { useRazorpay } from '@/hooks/use-razorpay';
 import { DocumentGallery } from '@/components/request/DocumentGallery';
-import { EMIPaymentCard } from '@/components/request/EMIPaymentCard';
+import { LoanSummaryCard } from '@/components/request/LoanSummaryCard';
+import { EMIPaymentsCard } from '@/components/request/EMIPaymentsCard';
 import CreateOfferModal from '@/components/request/CreateOfferModal';
 import AssignAgentModal from '@/components/request/AssignAgentModal';
 import EmiScheduleTable from '@/components/request/EmiScheduleTable';
@@ -144,6 +144,7 @@ interface RequestDetail {
   };
   loan?: {
     id: string;
+    loanNumber?: string | null;
     approvedAmount: number;
     interestRate: number;
     tenureMonths: number;
@@ -153,10 +154,12 @@ interface RequestDetail {
     status: string;
     paidEMIs: number;
     totalPaidAmount: number;
+    overdueEMIs: number;
     remainingAmount?: number | null;
     remainingEMIs?: number | null;
     firstEMIDate?: string | null;
     lastEMIDate?: string | null;
+    disbursedDate?: string | null;
     emisSchedule?: Array<{
       id: string;
       emiNumber: number;
@@ -167,6 +170,23 @@ interface RequestDetail {
       status: string;
       paidDate?: string | null;
       paidAmount?: number | null;
+      lateFee: number;
+    }>;
+    paymentOrders?: Array<{
+      id: string;
+      razorpayOrderId: string;
+      emiScheduleId: string;
+      emiAmount: number;
+      penalty: number;
+      totalAmount: number;
+      status: string;
+      razorpayPaymentId?: string | null;
+      failureReason?: string | null;
+      failureCode?: string | null;
+      attempts: number;
+      createdAt: string;
+      updatedAt: string;
+      paidAt?: string | null;
     }>;
   } | null;
 }
@@ -544,12 +564,21 @@ export default function RequestDetailComplete({ id }: { id: string }) {
   const [pendingCompleteInspectionAction, setPendingCompleteInspectionAction] = useState<WorkflowAction | null>(null);
   const [completeInspectionNote, setCompleteInspectionNote] = useState('');
   const [submittingCompleteInspection, setSubmittingCompleteInspection] = useState(false);
-  // Payment modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedEmiId, setSelectedEmiId] = useState<string | null>(null);
-  const [selectedEmiAmount, setSelectedEmiAmount] = useState<number>(0);
-  const [selectedEmiNumber, setSelectedEmiNumber] = useState<number>(0);
-  const [selectedEmiBreakdown, setSelectedEmiBreakdown] = useState<any>(null);
+
+  // Direct Razorpay payment hook
+  const { success: toastSuccess2, error: toastError2 } = useToast();
+  const { initiatePayment, isProcessing: isPaymentProcessing } = useRazorpay({
+    onSuccess: () => {
+      toastSuccess2('EMI payment successful!');
+      window.location.reload();
+    },
+    onError: (errorMsg) => {
+      toastError2(errorMsg || 'Payment failed');
+    },
+    onCancel: () => {
+      toastError2('Payment was cancelled');
+    },
+  });
   
   // Disbursement form
   const [transactionRef, setTransactionRef] = useState('');
@@ -802,15 +831,8 @@ export default function RequestDetailComplete({ id }: { id: string }) {
         // Continue anyway, don't block disbursement
       }
 
-      // Create individual audit entries for each document upload
-      for (let i = 0; i < disbursementFiles.length; i++) {
-        const file = disbursementFiles[i];
-        const auditNote = `Disbursement Proof ${i + 1} Uploaded: ${file.fileName || file.fileKey}`;
-        await handleStatusUpdate(REQUEST_STATUS.AMOUNT_DISBURSED, auditNote);
-      }
-
       // Update status to AMOUNT_DISBURSED with final summary note
-      const note = `💰 Amount Disbursed\nTransaction Ref: ${transactionRef}\n${disbursementFiles.length} proof document(s) uploaded`;
+      const note = `Amount Disbursed\nTransaction Ref: ${transactionRef}\n${disbursementFiles.length} proof document(s) uploaded`;
       const ok = await handleStatusUpdate(REQUEST_STATUS.AMOUNT_DISBURSED, note);
       if (!ok) {
         toastError('Failed to record disbursement');
@@ -1281,11 +1303,9 @@ export default function RequestDetailComplete({ id }: { id: string }) {
           )}
 
           <div className="mt-4">
-            {isCustomer ? (
+            {isCustomer &&
               <p className="text-sm">If you accept this offer, click <strong>Accept</strong>. If you want revisions, click <strong>Decline</strong> and provide feedback.</p>
-            ) : (
-              <p className="text-sm">Admin view: use the actions above to revise, resend, or finalize this offer. Processing fee will be deducted at disbursement.</p>
-            )}
+            }
           </div>
         </CardContent>
       </Card>
@@ -1563,7 +1583,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg">
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   <span className="text-xs font-medium text-muted-foreground">Application No:</span>
-                  <span className="text-sm font-bold">{request.requestNumber || request.id.slice(0, 8)}</span>
+                  <span className="text-sm font-bold">{request.requestNumber || 'N/A'}</span>
                 </div>
               </div>
               
@@ -1575,7 +1595,7 @@ export default function RequestDetailComplete({ id }: { id: string }) {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Loan Amount</p>
-                    <p className="text-sm font-bold">₹{request.requestedAmount.toLocaleString('en-IN')}</p>
+                    <p className="text-sm font-bold">₹{(request.adminOfferedAmount ?? request.requestedAmount).toLocaleString('en-IN')}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1735,82 +1755,30 @@ export default function RequestDetailComplete({ id }: { id: string }) {
               
               {/* Customer Pay EMI Button */}
               {isCustomer && request.loan && request.loan.emisSchedule && request.loan.emisSchedule.length > 0 && request.currentStatus === REQUEST_STATUS.ACTIVE && (() => {
-                const nextPending = request.loan.emisSchedule.find((e) => e.status === EMI_STATUS.PENDING);
+                const nextPending = request.loan.emisSchedule.find((e) => e.status === EMI_STATUS.PENDING || e.status === EMI_STATUS.OVERDUE);
                 if (!nextPending) return null;
                 
                 return (
                   <Button
                     key="pay-emi"
-                    variant="default"
+                    variant={nextPending.status === EMI_STATUS.OVERDUE ? 'destructive' : 'default'}
                     onClick={() => {
-                      setSelectedEmiId(nextPending.id);
-                      setSelectedEmiAmount(nextPending.emiAmount);
-                      setSelectedEmiNumber(nextPending.emiNumber);
-                      setShowPaymentModal(true);
+                      if (request.loan) {
+                        initiatePayment({
+                          loanId: request.loan.id,
+                          emiId: nextPending.id,
+                          emiNumber: nextPending.emiNumber,
+                        });
+                      }
                     }}
+                    disabled={isPaymentProcessing}
                     title={`Pay EMI #${nextPending.emiNumber}`}
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
-                    Pay EMI #{nextPending.emiNumber} – ₹{nextPending.emiAmount.toLocaleString()}
+                    Pay EMI #{nextPending.emiNumber} – ₹{(nextPending.emiAmount + (nextPending.lateFee ?? 0)).toLocaleString()}
                   </Button>
                 );
               })()}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Bank Details Display Card - After Available Actions */}
-      {request.bankAccountNumber && request.bankDetailsSubmittedAt && (
-        <Card className="mb-4 sm:mb-6">
-          <CardHeader>
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              {isCustomer ? '🏦' : <CreditCard className="h-4 w-4 shrink-0" />}
-              <span>{isCustomer ? 'Your Bank Account' : 'Bank Details'}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col lg:flex-row gap-6">
-              {/* Left side - Bank Details */}
-              <div className="flex-1 space-y-3">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Account Holder</p>
-                  <p className="text-sm font-medium">{request.bankAccountName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Account Number</p>
-                  <p className="text-sm font-mono font-medium">{request.bankAccountNumber}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">IFSC Code</p>
-                  <p className="text-sm font-mono font-medium">{request.bankIfscCode}</p>
-                </div>
-                {request.upiId && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">UPI ID</p>
-                    <p className="text-sm font-mono font-medium">{request.upiId}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Right side - Submission Info */}
-              <div className="shrink-0 lg:border-l lg:pl-6">
-                <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-2">
-                  <CheckCircle className="h-4 w-4" />
-                  <p className="font-medium text-sm">
-                    {isCustomer
-                      ? 'You submitted'
-                      : `Customer ${request.customer?.firstName} ${request.customer?.lastName} submitted`
-                    }
-                  </p>
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  {new Date(request.bankDetailsSubmittedAt).toLocaleString('en-IN', {
-                    dateStyle: 'medium',
-                    timeStyle: 'short'
-                  })}
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -2261,30 +2229,89 @@ export default function RequestDetailComplete({ id }: { id: string }) {
       (OFFER_SENT, OFFER_ACCEPTED, OFFER_DECLINED). This prevents showing offers in PENDING, UNDER_REVIEW, REJECTED, CANCELLED, etc. */}
     {showOfferEarly && <OfferCard />}
 
-      
+      {/* Loan Summary & EMI Payments Cards - For both Customer and Admin */}
+      {request.loan && (request.currentStatus === REQUEST_STATUS.ACTIVE || request.currentStatus === REQUEST_STATUS.PAYMENT_OVERDUE) && (
+        <>
+          {/* Loan Summary Card */}
+          <LoanSummaryCard
+            loan={request.loan}
+            isCustomer={isCustomer || undefined}
+            isAdmin={isAdmin || undefined}
+          />
 
-      {/* EMI Payment Card */}
-      {isCustomer && request.loan && request.currentStatus === REQUEST_STATUS.ACTIVE && (
-        <ActiveLoanSummary
-          loan={request.loan}
-          onPayNow={() => {
-            // Find the next pending EMI and open payment modal
-            const nextPendingEmi = request.loan.emisSchedule?.find(e => e.status === 'PENDING' || e.status === 'OVERDUE');
-            if (nextPendingEmi) {
-              setSelectedEmiId(nextPendingEmi.id);
-              setSelectedEmiNumber(nextPendingEmi.emiNumber);
-              setSelectedEmiAmount(nextPendingEmi.emiAmount + nextPendingEmi.lateFee);
-              setSelectedEmiBreakdown({
-                principal: nextPendingEmi.emiAmount - (nextPendingEmi.emiAmount * 0.1), // Approximate breakdown
-                interest: nextPendingEmi.emiAmount * 0.1,
-                lateFee: nextPendingEmi.lateFee,
-                totalDue: nextPendingEmi.emiAmount + nextPendingEmi.lateFee
-              });
-              setShowPaymentModal(true);
-            }
-          }}
-          isCustomer={isCustomer}
-        />
+          {/* EMI Payments Card */}
+          <EMIPaymentsCard
+            loan={request.loan}
+            onPayEMI={(emiId, breakdown) => {
+              const selectedEmi = request.loan?.emisSchedule?.find(e => e.id === emiId);
+              if (selectedEmi && request.loan) {
+                initiatePayment({
+                  loanId: request.loan.id,
+                  emiId: selectedEmi.id,
+                  emiNumber: selectedEmi.emiNumber,
+                });
+              }
+            }}
+            isCustomer={isCustomer || undefined}
+            isAdmin={isAdmin || undefined}
+          />
+        </>
+      )}
+
+      {/* Bank Details Display Card - After Loan Card */}
+      {request.bankAccountNumber && request.bankDetailsSubmittedAt && (
+        <Card className="mb-4 sm:mb-6">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              {isCustomer ? '🏦' : <CreditCard className="h-4 w-4 shrink-0" />}
+              <span>{isCustomer ? 'Your Bank Account' : 'Bank Details'}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col lg:flex-row gap-6">
+              {/* Left side - Bank Details */}
+              <div className="flex-1 space-y-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Account Holder</p>
+                  <p className="text-sm font-medium">{request.bankAccountName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Account Number</p>
+                  <p className="text-sm font-mono font-medium">{request.bankAccountNumber}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">IFSC Code</p>
+                  <p className="text-sm font-mono font-medium">{request.bankIfscCode}</p>
+                </div>
+                {request.upiId && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">UPI ID</p>
+                    <p className="text-sm font-mono font-medium">{request.upiId}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right side - Submission Info */}
+              <div className="shrink-0 lg:border-l lg:pl-6">
+                <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-2">
+                  <CheckCircle className="h-4 w-4" />
+                  <p className="font-medium text-sm">
+                    {isCustomer
+                      ? 'You submitted'
+                      : `Customer ${request.customer?.firstName} ${request.customer?.lastName} submitted`
+                    }
+                  </p>
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  {new Date(request.bankDetailsSubmittedAt).toLocaleString('en-IN', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                  })}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Agent Inspection Alert - Points to upload section below */}
@@ -2959,19 +2986,6 @@ export default function RequestDetailComplete({ id }: { id: string }) {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Payment Modal */}
-      {request?.loan && (
-        <PaymentModal
-          isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          loanId={request.loan.id}
-          emiId={selectedEmiId || ''}
-          emiNumber={selectedEmiNumber || 0}
-          amount={selectedEmiAmount}
-          onSuccess={() => { setShowPaymentModal(false); window.location.reload(); }}
-        />
-      )}
 
       {/* Request More Info Modal */}
       <Dialog open={showRequestInfo} onOpenChange={setShowRequestInfo}>
@@ -3843,27 +3857,6 @@ export default function RequestDetailComplete({ id }: { id: string }) {
           </Card>
         </div>
       </div>
-
-      {/* Payment Modal */}
-      {showPaymentModal && selectedEmiId && request?.loan && (
-        <PaymentModal
-          isOpen={showPaymentModal}
-          onClose={() => {
-            setShowPaymentModal(false);
-            setSelectedEmiId(null);
-            setSelectedEmiBreakdown(null);
-          }}
-          loanId={request.loan.id}
-          emiId={selectedEmiId}
-          emiNumber={selectedEmiNumber}
-          amount={selectedEmiBreakdown?.totalDue || selectedEmiAmount}
-          breakdown={selectedEmiBreakdown}
-          onSuccess={() => {
-            // Reload the page to show updated EMI status
-            window.location.reload();
-          }}
-        />
-      )}
       </div>
 
       {/* Preview Modal for agreements and stamped documents */}

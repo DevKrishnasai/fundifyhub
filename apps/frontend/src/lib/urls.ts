@@ -73,8 +73,12 @@ export const BACKEND_API_CONFIG = {
       CONFIRM_OFFER: (id: string) => `/api/v1/requests/${id}/offers/admin-offer/confirm`,
     },
     PAYMENTS: {
+      BASE: '/api/v1/payments',
       RAZORPAY_CREATE_ORDER: '/api/v1/payments/razorpay/create-order',
+      RAZORPAY_VERIFY: '/api/v1/payments/razorpay/verify',
       EMI_PAY: '/api/v1/payments/emi/pay',
+      EMI_BREAKDOWN: (emiId: string) => `/api/v1/payments/emi/${emiId}/breakdown`,
+      EMI_HISTORY: (emiId: string) => `/api/v1/payments/emi/${emiId}/history`,
     },
   }
 }

@@ -41,6 +41,31 @@ FundifyHub is a production-ready full-stack financial application that includes:
 - **Prisma ORM** - Type-safe database access with optimized logging
 - **Centralized URLs** - Environment-based configuration for all services
 
+#### Razorpay Webhook Configuration
+
+FundifyHub uses a dedicated endpoint for Razorpay webhook events. Configure the webhook in the Razorpay dashboard to POST to:
+
+`https://<YOUR_HOST>/api/v1/payments/razorpay/webhook`
+
+Set the `RAZORPAY_WEBHOOK_SECRET` environment variable for the `main-backend` service in order to verify webhook signatures. The server uses the raw body for signature verification to avoid tampering. The backend processes events such as `payment.captured`, `payment.failed` and `order.paid` and updates EMI/payment records accordingly.
+
+Tip: Use a unique `RAZORPAY_WEBHOOK_SECRET` with the Razorpay dashboard, and avoid using the same value as `RAZORPAY_KEY_SECRET` in production.
+
+Troubleshooting webhook signature issues
+-------------------------------------
+
+- If your webhook requests reach the server but logs say "Missing webhook signature":
+   - Confirm you configured a webhook secret in the Razorpay dashboard — without a secret Razorpay won't include the signature header.
+   - If using a reverse proxy (ngrok, Cloudflare, API Gateway) verify that it forwards `x-razorpay-signature` header to your backend (some configurations remove or rewrite headers).
+   - Check the server logs for the `x-razorpay-event-id` header — if it's present but `x-razorpay-signature` is missing, this strongly indicates the webhook secret is not set or headers are being stripped.
+   - Use the included test script to simulate a signed webhook locally:
+
+      ```powershell
+      node scripts/send-razorpay-webhook.js --port=3001
+      ```
+
+      Ensure your `.env` file contains `RAZORPAY_WEBHOOK_SECRET` and matches what's in the Razorpay dashboard.
+
 ### Database & Infrastructure
 - **PostgreSQL 15** - Robust relational database
 - **Redis 7** - In-memory data store for caching and queues
@@ -428,6 +453,16 @@ curl.exe http://localhost:3000                     # Frontend (in browser)
 redis-cli ping                                     # Redis connection
 pnpm db:status                                     # Database status
 ```
+
+### Webhook testing (local)
+
+To test Razorpay webhooks locally, ensure your main-backend is running and the `RAZORPAY_WEBHOOK_SECRET` is set in your `.env`, then run:
+
+```powershell
+node scripts/send-razorpay-webhook.js --port=3001
+```
+
+This script posts a sample `payment.captured` event to `/api/v1/payments/razorpay/webhook` with a valid HMAC signature computed using the webhook secret.
 
 ### 📞 **Need Help?**
 - Check the terminal logs for colored error messages

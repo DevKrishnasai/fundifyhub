@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
-import { createRazorpayOrderController, verifyRazorpayPaymentController, razorpayWebhookController } from './razorpay';
-import { getLoanTotalDueController, payEmiController } from './controllers';
+import {
+  createRazorpayOrderController,
+  verifyRazorpayPaymentController,
+  razorpayWebhookController,
+  getEMIPaymentHistoryController,
+  getPaymentOrderStatusController,
+} from './razorpay';
+import { getLoanTotalDueController, payEmiController, getEmiBreakdownController } from './controllers';
 import { authMiddleware } from '../../utils/jwt';
 
 const router: ExpressRouter = Router();
@@ -26,15 +32,31 @@ router.post('/razorpay/create-order', authMiddleware, createRazorpayOrderControl
 
 /**
  * POST /api/v1/payments/razorpay/verify
- * Verify Razorpay payment after completion
+ * Verify Razorpay payment after completion (fallback for webhook)
  */
 router.post('/razorpay/verify', authMiddleware, verifyRazorpayPaymentController);
 
 /**
- * POST /api/v1/payments/razorpay/webhook
- * Razorpay webhook endpoint (NO AUTH - signature verified)
- * Handles payment.captured and payment.failed events
+ * GET /api/v1/payments/razorpay/order/:orderId/status
+ * Get payment order status for polling
  */
-router.post('/razorpay/webhook', razorpayWebhookController);
+router.get('/razorpay/order/:orderId/status', authMiddleware, getPaymentOrderStatusController);
+
+// NOTE: The Razorpay webhook route is mounted in server.ts with
+// express.raw() middleware so the raw body can be used for signature
+// verification. We intentionally do NOT add the webhook route here to
+// avoid double mounting and to ensure the raw body remains intact.
+
+/**
+ * GET /api/v1/payments/emi/:emiId/history
+ * Get payment attempt history for an EMI
+ */
+router.get('/emi/:emiId/history', authMiddleware, getEMIPaymentHistoryController);
+
+/**
+ * GET /api/v1/payments/emi/:emiId/breakdown
+ * Get breakdown of an EMI payment
+ */
+router.get('/emi/:emiId/breakdown', authMiddleware, getEmiBreakdownController);
 
 export default router;

@@ -4,6 +4,7 @@ import baseLogger from '../../utils/logger';
 
 const logger = baseLogger.child('[RequestsController]');
 import { createRequestHistory } from '../../utils/history';
+import { generateLoanNumber } from '../../utils/serial';
 import { APIResponseType } from '../../types';
 import { hasAnyRole, hasDistrictAccess } from '../../utils/rbac';
 import { calculateEmiSchedule, calculateEmiBreakdown, isEmiOverdue, type EMIBreakdown } from '@fundifyhub/utils';
@@ -57,6 +58,25 @@ export async function getRequestDetailController(req: Request, res: Response): P
             emisSchedule: {
               select: { id: true, emiNumber: true, dueDate: true, emiAmount: true, principalAmount: true, interestAmount: true, status: true, paidDate: true, paidAmount: true, lateFee: true },
               orderBy: { emiNumber: 'asc' }
+            },
+            paymentOrders: {
+              select: { 
+                id: true, 
+                razorpayOrderId: true, 
+                emiScheduleId: true, 
+                emiAmount: true,
+                penalty: true,
+                totalAmount: true,
+                status: true, 
+                razorpayPaymentId: true,
+                failureReason: true,
+                failureCode: true,
+                attempts: true,
+                createdAt: true, 
+                updatedAt: true,
+                paidAt: true
+              },
+              orderBy: { createdAt: 'desc' }
             }
           }
         }
@@ -875,16 +895,23 @@ export async function confirmOfferController(req: Request, res: Response): Promi
     // Create loan and emis schedule transactionally
     let createdLoan: any = null;
     await prisma.$transaction(async (tx) => {
+      // Generate loan number
+      const loanNumber = await generateLoanNumber(tx);
+      
       createdLoan = await tx.loan.create({ data: {
         requestId: request.id,
+        loanNumber,
         approvedAmount: Number(request.adminOfferedAmount) || Number((emiCalc).monthlyPayment * (emiCalc).emiSchedule.length),
         interestRate: Number(request.adminInterestRate) || 0,
         tenureMonths: Number(request.adminTenureMonths) || (emiCalc).emiSchedule.length,
         emiAmount: Number((emiCalc).monthlyPayment) || 0,
         totalInterest: Number((emiCalc).totalInterest) || 0,
         totalAmount: Number((emiCalc).totalPayment) || 0,
-        firstEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[0].paymentDate) : undefined,
-        lastEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[(emiCalc).emiSchedule.length - 1].paymentDate) : undefined,
+        remainingAmount: Number((emiCalc).totalPayment) || 0,
+        remainingEMIs: (emiCalc).emiSchedule.length,
+        approvedDate: new Date(),
+        firstEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[0].paymentDate) : new Date(),
+        lastEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[(emiCalc).emiSchedule.length - 1].paymentDate) : new Date(),
       } });
 
       // Create EMI schedule entries
@@ -1015,10 +1042,14 @@ export async function createLoanController(req: Request, res: Response): Promise
     // Create loan and EMI schedule transactionally
     let createdLoan: any = null;
     await prisma.$transaction(async (tx) => {
+      // Generate loan number
+      const loanNumber = await generateLoanNumber(tx);
+      
       // Create Loan record
       createdLoan = await tx.loan.create({ 
         data: {
           requestId: request.id,
+          loanNumber,
           approvedAmount: Number(request.adminOfferedAmount) || Number((emiCalc).monthlyPayment * (emiCalc).emiSchedule.length),
           interestRate: Number(request.adminInterestRate) || 0,
           tenureMonths: Number(request.adminTenureMonths) || (emiCalc).emiSchedule.length,
@@ -1028,8 +1059,8 @@ export async function createLoanController(req: Request, res: Response): Promise
           status: 'ACTIVE',
           approvedDate: new Date(),
           disbursedDate: new Date(),
-          firstEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[0].paymentDate) : undefined,
-          lastEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[(emiCalc).emiSchedule.length - 1].paymentDate) : undefined,
+          firstEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[0].paymentDate) : new Date(),
+          lastEMIDate: (emiCalc).emiSchedule && (emiCalc).emiSchedule.length ? new Date((emiCalc).emiSchedule[(emiCalc).emiSchedule.length - 1].paymentDate) : new Date(),
           remainingAmount: Number((emiCalc).totalPayment) || 0,
           remainingEMIs: (emiCalc).emiSchedule.length,
         } 

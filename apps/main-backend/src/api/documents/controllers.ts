@@ -369,6 +369,10 @@ export async function getSignedUrlByFileKeyController(req: Request, res: Respons
 
     // Generate signed URL directly from fileKey
     const { url, expiresAt } = await generateSignedUrl(fileKey, expiresIn);
+    if (!url) {
+      res.status(404).json({ success: false, message: 'File not found or unavailable' } as APIResponseType);
+      return;
+    }
 
     // If the caller prefers JSON (e.g., API client), return JSON.
     // If the request is coming from a browser img/src or direct navigation, redirect to the signed URL
@@ -440,6 +444,10 @@ export async function getDocumentSignedUrlController(req: Request, res: Response
 
     // Generate signed URL
     const { url, expiresAt } = await generateSignedUrl(document.fileKey, expiresIn);
+    if (!url) {
+      res.status(404).json({ success: false, message: 'File not found or unavailable' } as APIResponseType);
+      return;
+    }
 
     const accept = String(req.headers.accept || '').toLowerCase();
     const prefersJson = accept.includes('application/json') || accept.includes('text/json') || req.xhr;
@@ -620,9 +628,11 @@ export async function getBulkSignedUrlsController(req: Request, res: Response): 
       return;
     }
 
-    // Generate signed URLs
-    const fileKeys = documents.map((doc) => doc.fileKey);
-    const signedUrls = await generateSignedUrls(fileKeys, expiresIn);
+  // Generate signed URLs
+  const fileKeys = documents.map((doc) => doc.fileKey);
+  logger.info(`Requesting signed URLs for fileKeys: ${fileKeys.join(',')}`);
+  const signedUrls = await generateSignedUrls(fileKeys, expiresIn);
+  logger.info(`Signed URLs generation result: ${signedUrls.map(s => `${s.fileKey}:${s.url ? 'OK':'MISSING'}`).join(',')}`);
 
     // Map results
     const results = documents.map((doc) => {

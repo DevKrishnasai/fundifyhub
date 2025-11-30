@@ -106,7 +106,8 @@ export type EMIBreakdown = {
   principal: number;         // Principal component of current EMI
   interest: number;          // Interest component of current EMI
   overdue: number;           // Total overdue amount (sum of unpaid EMIs from previous months)
-  overdueEmiPenalty: number; // Penalty on overdue EMIs (4% one-time)
+  overdueEmiPenalty: number; // Penalty on overdue EMIs (4% × EMI × months overdue - industry standard)
+  monthsOverdue: number;     // Number of months overdue for current EMI
   daysLate: number;          // Number of days late for current EMI payment
   latePaymentPenalty: number; // Daily penalty on current EMI (0.01% per day × days late)
   penalty: number;           // Total penalty (overdueEmiPenalty + latePaymentPenalty)
@@ -142,17 +143,20 @@ export function calculateOverdueAmount(
 }
 
 /**
- * Calculate penalty (4% of overdue amount)
- * @param overdueAmount - Total overdue amount
- * @param penaltyRate - Penalty rate (default 4%)
+ * Calculate penalty (percentage of EMI amount per month - industry standard)
+ * @param emiAmount - EMI amount (principal + interest)
+ * @param monthsOverdue - Number of months overdue
+ * @param penaltyRate - Monthly penalty rate (default 4%)
  * @returns Penalty amount
  */
 export function calculatePenalty(
-  overdueAmount: number,
+  emiAmount: number,
+  monthsOverdue: number,
   penaltyRate: number = 4
 ): number {
-  if (overdueAmount <= 0) return 0;
-  const penalty = (overdueAmount * penaltyRate) / 100;
+  if (emiAmount <= 0 || monthsOverdue <= 0) return 0;
+  // Industry standard: penaltyRate% × EMI × months overdue
+  const penalty = (emiAmount * penaltyRate * monthsOverdue) / 100;
   return roundTo(penalty, 2);
 }
 
@@ -197,6 +201,39 @@ export function calculateDaysLate(
 }
 
 /**
+ * Calculate number of months overdue (for penalty calculation)
+ * @param dueDate - EMI due date (ISO string)
+ * @param paymentDate - Payment date (ISO string or Date, defaults to today)
+ * @param gracePeriodDays - Grace period in days before penalty applies (default 30)
+ * @returns Number of full months overdue (0 if within grace period)
+ */
+export function calculateMonthsOverdue(
+  dueDate: string,
+  paymentDate: string | Date = new Date(),
+  gracePeriodDays: number = 30
+): number {
+  const due = new Date(dueDate);
+  const payment = typeof paymentDate === 'string' ? new Date(paymentDate) : paymentDate;
+  
+  // Reset time to start of day for accurate date comparison
+  due.setHours(0, 0, 0, 0);
+  payment.setHours(0, 0, 0, 0);
+  
+  const diffMs = payment.getTime() - due.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  // Only count days after grace period
+  const daysAfterGrace = diffDays - gracePeriodDays;
+  
+  if (daysAfterGrace <= 0) return 0;
+  
+  // Calculate months (ceiling to charge for partial month)
+  const monthsOverdue = Math.ceil(daysAfterGrace / 30);
+  
+  return monthsOverdue;
+}
+
+/**
  * Calculate number of days overdue after grace period (for penalty calculation)
  * @param dueDate - EMI due date (ISO string)
  * @param paymentDate - Payment date (ISO string or Date, defaults to today)
@@ -230,16 +267,16 @@ export function calculateDaysOverdue(
  * PAYMENT LOGIC:
  * - Customer MUST pay EMIs sequentially (enforced at API level)
  * - When paying EMI #N, they pay ONLY for EMI #N (not previous skipped EMIs)
- * - However, penalty includes overdue penalty from ALL unpaid previous EMIs
+ * - However, penalty includes overdue penalty based on months overdue
  * 
- * PENALTY CALCULATION:
- * - Overdue Penalty: 4% of total unpaid EMI amounts (EMIs that crossed 30-day grace period)
+ * PENALTY CALCULATION (Industry Standard):
+ * - Overdue Penalty: 4% × EMI Amount × Months Overdue (per-month compounding)
  * - Late Fee: 0.01% per day from day 1 (no grace period) on current EMI only
  * - Total Due = Current EMI + Late Fee + Overdue Penalty
  * 
  * @param currentEmi - Current EMI details
  * @param allEmis - All EMI records for the loan
- * @param penaltyRate - Overdue penalty rate (default 4%)
+ * @param penaltyRate - Monthly overdue penalty rate (default 4%)
  * @param dailyPenaltyRate - Daily penalty rate (default 0.01%)
  * @param paymentDate - Payment date for calculating days late (defaults to today)
  * @param gracePeriodDays - Grace period before penalties apply (default 30)
@@ -268,34 +305,27 @@ export function calculateEmiBreakdown(
 ): EMIBreakdown {
   const currentDate = typeof paymentDate === 'string' ? new Date(paymentDate) : paymentDate;
   
-  // Calculate total overdue amount from ALL unpaid EMIs before current that crossed grace period
-  // This creates accountability - if you skip EMI #1 and #2, penalty accumulates on both
+  // Calculate months overdue for CURRENT EMI (industry standard per-month penalty)
+  const monthsOverdue = calculateMonthsOverdue(currentEmi.dueDate, currentDate, gracePeriodDays);
+  
+  // Calculate overdue penalty: 4% × EMI × months overdue
+  // Example: EMI ₹10,500, 3 months overdue = 4% × ₹10,500 × 3 = ₹1,260
+  const overdueEmiPenalty = calculatePenalty(currentEmi.emiAmount, monthsOverdue, penaltyRate);
+  
+  // Calculate total overdue amount from ALL unpaid EMIs before current (for reference)
   let overdueAmount = 0;
-  let overdueCount = 0;
   
   for (const emi of allEmis) {
-    // Only consider EMIs before current EMI
     if (emi.emiNumber >= currentEmi.emiNumber) continue;
-    
-    // Only consider unpaid EMIs
     if (emi.status !== 'PENDING' && emi.status !== 'OVERDUE') continue;
     
-    // Check if this EMI has crossed grace period (30 days)
     const daysOverdue = calculateDaysOverdue(emi.dueDate, currentDate, gracePeriodDays);
     if (daysOverdue > 0) {
-      // Add EMI amount (not including its late fee, as that's for when they pay that specific EMI)
       overdueAmount += emi.emiAmount;
-      overdueCount++;
     }
   }
   
-  // Calculate 4% penalty on total overdue amount (one-time)
-  // Example: Skipped EMI #1 (₹10,500) + EMI #2 (₹10,500) = ₹21,000
-  // Overdue Penalty = ₹21,000 × 4% = ₹840
-  const overdueEmiPenalty = calculatePenalty(overdueAmount, penaltyRate);
-  
   // Calculate days late for CURRENT EMI (from due date, no grace period for daily charges)
-  // Example: EMI #3 due on Jan 1, paying on Jan 31 = 30 days late
   const daysLate = calculateDaysLate(currentEmi.dueDate, paymentDate);
   
   // Calculate late payment penalty (0.01% per day on current EMI only)
@@ -306,12 +336,10 @@ export function calculateEmiBreakdown(
     dailyPenaltyRate
   );
   
-  // Total penalty = Overdue penalty from skipped EMIs + Late fee on current EMI
-  // Example: ₹840 (overdue) + ₹31.50 (late) = ₹871.50
+  // Total penalty = Overdue penalty (per month) + Late fee (per day)
   const totalPenalty = roundTo(overdueEmiPenalty + latePaymentPenalty, 2);
   
   // Total amount customer must pay for CURRENT EMI
-  // Example: ₹10,500 (EMI) + ₹871.50 (penalties) = ₹11,371.50
   const totalDue = roundTo(
     currentEmi.principalAmount + currentEmi.interestAmount + totalPenalty,
     2
@@ -320,14 +348,15 @@ export function calculateEmiBreakdown(
   return {
     principal: roundTo(currentEmi.principalAmount, 2),
     interest: roundTo(currentEmi.interestAmount, 2),
-    overdue: roundTo(overdueAmount, 2), // Total unpaid EMI amounts that crossed grace period
-    overdueEmiPenalty: roundTo(overdueEmiPenalty, 2), // 4% penalty on overdue amount
-    daysLate, // Days late for current EMI
-    latePaymentPenalty: roundTo(latePaymentPenalty, 2), // Daily penalty on current EMI
-    penalty: totalPenalty, // Total penalty (overdue + late)
-    totalDue, // Final amount to pay (EMI + penalties)
+    overdue: roundTo(overdueAmount, 2),
+    overdueEmiPenalty: roundTo(overdueEmiPenalty, 2),
+    monthsOverdue,
+    daysLate,
+    latePaymentPenalty: roundTo(latePaymentPenalty, 2),
+    penalty: totalPenalty,
+    totalDue,
     emiAmount: roundTo(currentEmi.emiAmount, 2),
-    lateFee: totalPenalty, // Total penalty for database field
+    lateFee: totalPenalty,
   };
 }
 

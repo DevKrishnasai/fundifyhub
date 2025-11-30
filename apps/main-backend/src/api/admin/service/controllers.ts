@@ -30,6 +30,7 @@ export async function getAllServicesController(req: Request, res: Response): Pro
             config: {},
             createdAt: new Date(),
             updatedAt: new Date(),
+            configuredBy: 'system',
           }
         });
       }
@@ -99,6 +100,7 @@ export async function enableServiceController(req: Request, res: Response): Prom
           config: {},
           createdAt: new Date(),
           updatedAt: new Date(),
+          configuredBy: 'system',
         }
       });
     } else {
@@ -298,6 +300,7 @@ export async function configureServiceController(req: Request, res: Response): P
           config: configData,
           createdAt: new Date(),
           updatedAt: new Date(),
+          configuredBy: 'system',
         }
       });
     } else {

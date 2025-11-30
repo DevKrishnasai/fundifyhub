@@ -308,6 +308,16 @@ export enum REQUEST_HISTORY_ACTION {
   AGREEMENT_GENERATED = 'AGREEMENT_GENERATED',
   SIGNED_AGREEMENT_UPLOADED = 'SIGNED_AGREEMENT_UPLOADED',
   INSPECTION_COMPLETED = 'INSPECTION_COMPLETED',
+  // Payment-related actions
+  PAYMENT_INITIATED = 'PAYMENT_INITIATED',
+  PAYMENT_SUCCESS = 'PAYMENT_SUCCESS',
+  PAYMENT_FAILED = 'PAYMENT_FAILED',
+  PAYMENT_EXPIRED = 'PAYMENT_EXPIRED',
+  // EMI status changes (system automated)
+  EMI_MARKED_OVERDUE = 'EMI_MARKED_OVERDUE',
+  EMI_PENALTY_APPLIED = 'EMI_PENALTY_APPLIED',
+  LOAN_MARKED_DEFAULTED = 'LOAN_MARKED_DEFAULTED',
+  LOAN_COMPLETED = 'LOAN_COMPLETED',
 }
 
 export enum DOCUMENT_CATEGORY {
@@ -395,10 +405,51 @@ export enum PAYMENT_TYPE {
   LATE_FEE = "LATE_FEE"     // Late fee/penalty payment (PARTIAL removed)
 }
 
+// Payment Order Status - Tracks Razorpay order lifecycle
+export enum PAYMENT_ORDER_STATUS {
+  CREATED = "CREATED",       // Order created, awaiting payment attempt
+  ATTEMPTED = "ATTEMPTED",   // Customer opened Razorpay checkout
+  PAID = "PAID",             // Payment successful
+  FAILED = "FAILED",         // Payment failed
+  EXPIRED = "EXPIRED"        // Order expired (not paid within ~30 min)
+}
+
+// Razorpay order expiry time in minutes
+export const RAZORPAY_ORDER_EXPIRY_MINUTES = 30;
+
 // Penalty Configuration
 export const OVERDUE_GRACE_PERIOD_DAYS = 30;
 export const DEFAULT_PENALTY_PERCENTAGE = 4;
 export const DEFAULT_LATE_FEE_PERCENTAGE = 0.01;
+
+// Payment Processing Configuration
+export const PAYMENT_PROCESSING_CONFIG = {
+  /** Maximum retry attempts for webhook processing */
+  MAX_WEBHOOK_RETRIES: 5,
+  /** Webhook retry delay in milliseconds (exponential backoff base) */
+  WEBHOOK_RETRY_BASE_DELAY_MS: 1000,
+  /** Order expiry check buffer in minutes */
+  ORDER_EXPIRY_BUFFER_MINUTES: 5,
+} as const;
+
+// Razorpay Webhook Event Types (for type-safe event handling)
+export enum RAZORPAY_WEBHOOK_EVENT {
+  PAYMENT_CAPTURED = 'payment.captured',
+  PAYMENT_AUTHORIZED = 'payment.authorized',
+  PAYMENT_FAILED = 'payment.failed',
+  ORDER_PAID = 'order.paid',
+  REFUND_CREATED = 'refund.created',
+}
+
+// EMI Payment Info - Status indicators for UI
+export enum EMI_PAYMENT_AVAILABILITY {
+  /** EMI can be paid normally */
+  AVAILABLE = 'AVAILABLE',
+  /** EMI already paid */
+  PAID = 'PAID',
+  /** EMI has penalties accumulated (can still be paid) */
+  AVAILABLE_WITH_PENALTY = 'AVAILABLE_WITH_PENALTY',
+}
 
 // ----------- REQUEST RELATED END-----------
 
