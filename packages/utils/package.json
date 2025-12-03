@@ -9,11 +9,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    }
-    ,
-    "./src/enqueue": {
-      "import": "./src/enqueue.ts",
-      "require": "./src/enqueue.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "require": "./dist/server.js",
+      "types": "./dist/server.d.ts"
     }
   },
   "scripts": {

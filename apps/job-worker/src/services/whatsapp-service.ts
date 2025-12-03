@@ -82,11 +82,45 @@ let whatsappClient: Client | null = null;
  * so the admin UI can display scanner state and connection health.
  */
 export const startWhatsAppService = async () => {
+  const startLogger = logger.child('[whatsapp-service]');
+  
   try {
+    // If client already exists, check its actual state and sync database
     if (whatsappClient) {
-      const contextLogger = logger.child('[whatsapp-service]');
-      contextLogger.warn('Service already running');
-      return;
+      startLogger.warn('Service already running, syncing status...');
+      
+      try {
+        // Check if client is actually connected
+        const state = await whatsappClient.getState();
+        startLogger.info(`Current WhatsApp state: ${state}`);
+        
+        if (state === 'CONNECTED') {
+          // Client is connected, ensure database reflects this
+          await prisma.serviceConfig.update({
+            where: { serviceName: 'WHATSAPP' },
+            data: {
+              isActive: true,
+              connectionStatus: CONNECTION_STATUS.CONNECTED,
+              lastError: null,
+            }
+          });
+          serviceManager.setWhatsAppClient(whatsappClient);
+        }
+      } catch (stateError) {
+        // If we can't get state, the client might be broken - destroy and restart
+        startLogger.warn('Could not get client state, restarting service...');
+        try {
+          await whatsappClient.destroy();
+        } catch (_) { /* ignore destroy errors */ }
+        whatsappClient = null;
+        serviceManager.setWhatsAppClient(null);
+        // Continue to reinitialize below
+      }
+      
+      // If client is still valid after state check, return
+      if (whatsappClient) {
+        return;
+      }
     }
 
     const serviceConfig = await prisma.serviceConfig.findUnique({
@@ -94,8 +128,7 @@ export const startWhatsAppService = async () => {
     });
 
     if (!serviceConfig || !serviceConfig.isEnabled) {
-      const contextLogger = logger.child('[whatsapp-service]');
-      contextLogger.warn('Service not enabled in database');
+      startLogger.warn('Service not enabled in database');
       return;
     }
 

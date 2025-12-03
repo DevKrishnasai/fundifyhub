@@ -4,39 +4,39 @@ import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/contexts/AuthContext'
-import { Toaster } from 'react-hot-toast'
+import { SocketProvider } from '@/contexts/SocketContext'
+import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
-import Navbar from '@/components/navbar'
 
 export const metadata: Metadata = {
   title: {
-    default: 'AssetLend - Quick Asset-Backed Loans',
-    template: '%s | AssetLend',
+    default: 'FundifyHub - Quick Asset-Backed Loans',
+    template: '%s | FundifyHub',
   },
   description: 'Turn your phones, laptops, vehicles, and other valuable assets into immediate cash. Quick approval, fair valuations, and flexible repayment terms.',
   keywords: ['asset-backed loans', 'quick loans', 'phone loans', 'laptop loans', 'vehicle loans', 'instant cash'],
-  authors: [{ name: 'AssetLend Team' }],
-  creator: 'AssetLend',
-  publisher: 'AssetLend',
+  authors: [{ name: 'FundifyHub Team' }],
+  creator: 'FundifyHub',
+  publisher: 'FundifyHub',
   formatDetection: {
     email: false,
     address: false,
     telephone: false,
   },
-  metadataBase: new URL('https://assetlend.com'),
+  metadataBase: new URL('https://fundifyhub.com'),
   openGraph: {
-    title: 'AssetLend - Quick Asset-Backed Loans',
+    title: 'FundifyHub - Quick Asset-Backed Loans',
     description: 'Turn your phones, laptops, vehicles, and other valuable assets into immediate cash.',
-    url: 'https://assetlend.com',
-    siteName: 'AssetLend',
+    url: 'https://fundifyhub.com',
+    siteName: 'FundifyHub',
     locale: 'en_US',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AssetLend - Quick Asset-Backed Loans',
+    title: 'FundifyHub - Quick Asset-Backed Loans',
     description: 'Turn your phones, laptops, vehicles, and other valuable assets into immediate cash.',
-    creator: '@assetlend',
+    creator: '@fundifyhub',
   },
   robots: {
     index: true,
@@ -66,33 +66,12 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <div className="min-h-screen flex flex-col">
-              <Navbar />
-              <main className="flex-1">{children}</main>
-
-              <Toaster
-                position="top-center"
-                toastOptions={{
-                  duration: 4000,
-                  style: {
-                    background: 'hsl(var(--background))',
-                    color: 'hsl(var(--foreground))',
-                    border: '1px solid hsl(var(--border))',
-                    minWidth: '220px',
-                    fontSize: '1rem',
-                    fontWeight: 500,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                  },
-                  // Default icons for different types
-                  iconTheme: {
-                    primary: '#10b981', // success
-                    secondary: '#f87171', // error
-                  },
-                }}
-              />
-            </div>
+            <SocketProvider>
+              <div className="min-h-screen flex flex-col">
+                <main className="flex-1">{children}</main>
+                <Toaster />
+              </div>
+            </SocketProvider>
           </AuthProvider>
         </ThemeProvider>
         <Analytics />

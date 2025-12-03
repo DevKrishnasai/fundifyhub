@@ -5,7 +5,7 @@
  * including valid transitions, role-based actions, and business rules.
  */
 
-import { REQUEST_STATUS, ROLES, AGENT_ACCESS_DENY_STATUSES } from './constants';
+import { REQUEST_STATUS, ROLES, AGENT_ACCESS_DENY_STATUSES, PENDING_REQUEST_STATUSES } from './constants';
 
 // ============================================
 // TYPES & INTERFACES
@@ -62,6 +62,15 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
     ],
     adminActions: [
       {
+        id: 'assign-admin',
+        label: 'Assign Admin',
+        icon: 'UserCog',
+        variant: 'outline',
+        targetStatus: REQUEST_STATUS.PENDING, // No status change, just assignment
+        requiresInput: true,
+        priority: 2,
+      },
+      {
         id: 'start-review',
         label: 'Start Review',
         icon: 'FileSearch',
@@ -89,6 +98,16 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
     description: 'Admin is reviewing the request',
     customerActions: [],
     adminActions: [
+      {
+        id: 'assign-admin',
+        label: 'Assign Admin',
+        icon: 'UserCog',
+        variant: 'outline',
+        targetStatus: REQUEST_STATUS.UNDER_REVIEW, // No status change, just assignment
+        requiresInput: true,
+        districtCheck: true,
+        priority: 3,
+      },
       {
         id: 'make-offer',
         label: 'Make Offer',
@@ -894,6 +913,7 @@ export interface RequestContext {
   customerId: string;
   district: string;
   agentId?: string | null;
+  adminId?: string | null;
 }
 
 /**
@@ -1036,10 +1056,22 @@ export function canViewRequestDetail(
     return true;
   }
 
-  // District admin can view requests in their district
+  // District admin can view:
+  // 1. Requests assigned to them (assignedAdminId = their id) - regardless of district
+  // 2. Requests in their districts (for unassigned requests in pending statuses)
   if (user.roles.includes(ROLES.DISTRICT_ADMIN)) {
-    if (user.districts?.includes(request.district)) {
+    // Check if admin is assigned to this request
+    if (user.id === request.adminId) {
       return true;
+    }
+    // Check if request is in their district and unassigned (for any pending status)
+    if (user.districts?.includes(request.district)) {
+      // For pending requests, district admins can see unassigned ones
+      if (currentStatus && PENDING_REQUEST_STATUSES.includes(currentStatus) && !request.adminId) {
+        return true;
+      }
+      // For other statuses, they can only see if assigned
+      return false;
     }
   }
 

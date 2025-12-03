@@ -1,13 +1,12 @@
 import { Job } from 'bullmq';
 import { BaseWorker } from '../utils/base-worker-class';
 import { prisma } from '@fundifyhub/prisma';
-import { SimpleLogger } from '@fundifyhub/logger';
+import type { Logger } from '@fundifyhub/logger';
 import { 
   EMI_STATUS, 
   LOAN_STATUS,
   QUEUE_NAMES, 
   OVERDUE_GRACE_PERIOD_DAYS, 
-  REQUEST_HISTORY_ACTION,
   REQUEST_STATUS,
   DEFAULT_PENALTY_PERCENTAGE,
   DEFAULT_LATE_FEE_PERCENTAGE,
@@ -44,7 +43,7 @@ interface JobResult {
 }
 
 export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
-  constructor(queueName: QUEUE_NAMES, logger: SimpleLogger) {
+  constructor(queueName: QUEUE_NAMES, logger: Logger) {
     super(queueName, logger);
   }
 
@@ -144,18 +143,22 @@ export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
             penaltiesApplied++;
           }
 
-          // Log to request history
-          await tx.requestHistory.create({
+          // Log to audit log
+          await tx.auditLog.create({
             data: {
-              requestId: emi.loan.requestId,
-              actorId: 'system',
-              action: REQUEST_HISTORY_ACTION.EMI_MARKED_OVERDUE,
+              actorId: null,
+              action: 'EMI_MARKED_OVERDUE',
+              entityType: 'EMISchedule',
+              entityId: emi.id,
+              description: `EMI #${emi.emiNumber} for loan ${emi.loan.loanNumber} marked as overdue (${daysOverdue} days)`,
               metadata: {
+                requestId: emi.loan.requestId,
                 emiId: emi.id,
                 emiNumber: emi.emiNumber,
                 daysOverdue,
                 lateFee: breakdown.penalty,
-              }
+              },
+              status: 'SUCCESS',
             }
           });
         }
@@ -192,17 +195,21 @@ export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
               data: { currentStatus: REQUEST_STATUS.DEFAULTED }
             });
 
-            await tx.requestHistory.create({
+            await tx.auditLog.create({
               data: {
-                requestId: loan.requestId,
-                actorId: 'system',
-                action: REQUEST_HISTORY_ACTION.LOAN_MARKED_DEFAULTED,
+                actorId: null,
+                action: 'LOAN_MARKED_DEFAULTED',
+                entityType: 'Loan',
+                entityId: loanId,
+                description: `Loan marked as defaulted due to ${overdueCount} overdue EMIs`,
                 metadata: {
+                  requestId: loan.requestId,
                   loanId,
                   overdueEmiCount: overdueCount,
                   threshold: DEFAULT_THRESHOLD_EMIS,
                   defaultedAt: new Date().toISOString(),
-                }
+                },
+                status: 'SUCCESS',
               }
             });
 

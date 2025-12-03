@@ -1,8 +1,15 @@
-export const trackEvent = (eventName: string, payload: Record<string, any> = {}) => {
+// Type declaration for Google Tag Manager dataLayer
+declare global {
+  interface Window {
+    dataLayer?: Array<Record<string, unknown>>;
+  }
+}
+
+export const trackEvent = (eventName: string, payload: Record<string, unknown> = {}): void => {
   // Lightweight analytics helper: push to dataLayer if available, otherwise console.log
   try {
-    if (typeof window !== 'undefined' && (window as any).dataLayer) {
-      (window as any).dataLayer.push({ event: eventName, ...payload });
+    if (typeof window !== 'undefined' && window.dataLayer) {
+      window.dataLayer.push({ event: eventName, ...payload });
     } else {
       console.info('[analytics]', eventName, payload);
     }

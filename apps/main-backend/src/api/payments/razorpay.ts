@@ -2,17 +2,14 @@ import type { Request, Response } from 'express';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { z } from 'zod';
-import { prisma } from '@fundifyhub/prisma';
-import { createEnqueueClient } from '@fundifyhub/utils/src/enqueue';
+import { prisma, PaymentOrderStatus, Prisma } from '@fundifyhub/prisma';
 import { 
-  TEMPLATE_NAMES,
   PAYMENT_METHOD, 
   EMI_STATUS, 
   PAYMENT_TYPE, 
   OVERDUE_GRACE_PERIOD_DAYS,
   PAYMENT_ORDER_STATUS,
   RAZORPAY_ORDER_EXPIRY_MINUTES,
-  REQUEST_HISTORY_ACTION,
   REQUEST_STATUS,
   LOAN_STATUS,
   ROLES,
@@ -20,7 +17,7 @@ import {
   DEFAULT_LATE_FEE_PERCENTAGE,
 } from '@fundifyhub/types';
 import { calculateEmiBreakdown } from '@fundifyhub/utils';
-import { createRequestHistory } from '../../utils/history';
+import { sendEMIReminderNotification } from '../../utils/notifications';
 import baseLogger from '../../utils/logger';
 import config from '../../utils/config';
 
@@ -105,7 +102,7 @@ function verifyWebhookSignature(body: string, signature: string): boolean {
 /**
  * Update loan statistics after EMI payment
  */
-async function updateLoanStatistics(tx: any, loanId: string): Promise<void> {
+async function updateLoanStatistics(tx: Prisma.TransactionClient, loanId: string): Promise<void> {
   const loan = await tx.loan.findUnique({ where: { id: loanId } });
   if (!loan) {
     logger.warn(`updateLoanStatistics: Loan not found: ${loanId}`);
@@ -148,7 +145,7 @@ async function updateLoanStatistics(tx: any, loanId: string): Promise<void> {
 /**
  * Check and complete loan if all EMIs are paid
  */
-async function checkAndCompleteLoan(tx: any, loanId: string, requestId: string): Promise<boolean> {
+async function checkAndCompleteLoan(tx: Prisma.TransactionClient, loanId: string, requestId: string): Promise<boolean> {
   const remainingEMIs = await tx.eMISchedule.count({
     where: { loanId, status: { in: [EMI_STATUS.PENDING, EMI_STATUS.OVERDUE] } }
   });
@@ -166,19 +163,6 @@ async function checkAndCompleteLoan(tx: any, loanId: string, requestId: string):
     await tx.request.update({
       where: { id: requestId },
       data: { currentStatus: REQUEST_STATUS.COMPLETED },
-    });
-
-    await createRequestHistory({
-      client: tx,
-      requestId,
-      actorId: null,
-      action: REQUEST_HISTORY_ACTION.LOAN_COMPLETED,
-      metadata: {
-        loanId,
-        totalPaidAmount: loan.totalPaidAmount,
-        totalEmisPaid: loan.paidEMIs,
-        completedAt: new Date().toISOString(),
-      },
     });
 
     logger.info(`🎉 LOAN COMPLETED: ${loanId} - All EMIs paid!`);
@@ -402,26 +386,6 @@ async function processPayment(params: {
     // Update loan statistics
     await updateLoanStatistics(tx, actualLoanId);
 
-    // Add history entry
-    await createRequestHistory({
-      client: tx,
-      requestId: actualRequestId,
-      actorId: actualCustomerId || 'system',
-      action: REQUEST_HISTORY_ACTION.PAYMENT_SUCCESS,
-      metadata: {
-        paymentOrderId: paymentOrder?.id || null,
-        razorpayOrderId: orderId,
-        razorpayPaymentId: paymentId,
-        emiId: actualEmiId,
-        emiNumber: emi.emiNumber,
-        amountPaid: amount,
-        penalty,
-        paymentMethod: method,
-        paidAt: new Date().toISOString(),
-        source,
-      },
-    });
-
     // Check for loan completion
     const isCompleted = await checkAndCompleteLoan(tx, actualLoanId, actualRequestId);
 
@@ -443,24 +407,22 @@ async function processPayment(params: {
     if (actualCustomerId) {
       const customer = await prisma.user.findUnique({ where: { id: actualCustomerId } });
       if (customer) {
-        const enqueueClient = createEnqueueClient({
-          host: config.redis.host,
-          port: config.redis.port,
-        });
-
-        await enqueueClient.addAJob(TEMPLATE_NAMES.EMI_REMINDER, {
-          customerName: `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
-          email: customer.email || '',
-          phoneNumber: customer.phoneNumber || '',
-          loanNumber: '',
-          emiNumber: Number(result.emiNumber || 0),
-          emiAmount: amount,
-          dueDate: new Date().toISOString(),
-          daysUntilDue: 0,
-          totalOutstanding: 0,
-          paymentUrl: '',
-          companyName: 'FundifyHub'
-        });
+        await sendEMIReminderNotification(
+          {
+            userId: customer.id,
+            email: customer.email || undefined,
+            phoneNumber: customer.phoneNumber || undefined,
+            name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
+          },
+          {
+            loanNumber: '',
+            emiNumber: Number(result.emiNumber || 0),
+            emiAmount: amount,
+            dueDate: new Date().toISOString(),
+            daysUntilDue: 0,
+            totalOutstanding: 0,
+          }
+        );
       }
     }
   } catch (err) {
@@ -747,26 +709,6 @@ export const createRazorpayOrderController = async (req: Request, res: Response)
         });
       }
 
-      // Add request history entry
-      await createRequestHistory({
-        client: tx,
-        requestId: loan.requestId,
-        actorId: userId,
-        action: REQUEST_HISTORY_ACTION.PAYMENT_INITIATED,
-        metadata: {
-          paymentOrderId: order.id,
-          razorpayOrderId: razorpayOrder.id,
-          emiId,
-          emiNumber: emi.emiNumber,
-          emiAmount: breakdown.emiAmount,
-          penalty: breakdown.penalty,
-          totalAmount,
-          initiatedBy: userId,
-          isRetry: !!existingOrder,
-          previousAttempts: existingOrder?.attempts || 0,
-        },
-      });
-
       return order;
     });
 
@@ -992,7 +934,7 @@ export const razorpayWebhookController = async (req: Request, res: Response) => 
     }
 
   // Use the raw body if available (set by server middleware), otherwise stringify
-  const webhookBody = (req as any).rawBody ?? JSON.stringify(req.body);
+  const webhookBody = req.rawBody ?? JSON.stringify(req.body);
     
   if (webhookSignature && !verifyWebhookSignature(webhookBody, webhookSignature)) {
       webhookLogger.warn('❌ Invalid webhook signature - possible tampering attempt');
@@ -1072,7 +1014,7 @@ export const razorpayWebhookController = async (req: Request, res: Response) => 
 /**
  * Update PaymentOrder status helper
  */
-async function updatePaymentOrderStatus(orderId: string | undefined, status: string): Promise<void> {
+async function updatePaymentOrderStatus(orderId: string | undefined, status: PaymentOrderStatus): Promise<void> {
   if (!orderId) return;
   
   try {
@@ -1228,33 +1170,6 @@ async function handlePaymentFailed(payload: any, webhookLogger: typeof logger): 
           },
         });
         webhookLogger.info(`PaymentOrder ${paymentOrder.id} marked as FAILED`);
-
-        // Add history entry for tracking
-        if (actualRequestId) {
-          const emi = actualEmiId ? await tx.eMISchedule.findUnique({ where: { id: actualEmiId } }) : null;
-          
-          await createRequestHistory({
-            client: tx,
-            requestId: actualRequestId,
-            actorId: actualCustomerId || 'system',
-            action: REQUEST_HISTORY_ACTION.PAYMENT_FAILED,
-            metadata: {
-              paymentOrderId: paymentOrder.id,
-              razorpayOrderId: orderId,
-              razorpayPaymentId: paymentId,
-              emiId: actualEmiId || null,
-              emiNumber: emi?.emiNumber || null,
-              attemptedAmount: paymentOrder.totalAmount,
-              errorCode,
-              errorDescription,
-              errorSource,
-              errorStep,
-              errorReason,
-              failedAt: new Date().toISOString(),
-              source: 'webhook',
-            },
-          });
-        }
       } else {
         webhookLogger.warn(`PaymentOrder not found for failed order: ${orderId}`);
       }
@@ -1386,27 +1301,20 @@ export const getEMIPaymentHistoryController = async (req: Request, res: Response
       }
     });
 
-    // Get payment history from request history
-    const paymentHistory = await prisma.requestHistory.findMany({
+    // Get payment history from AuditLog
+    const paymentHistory = await prisma.auditLog.findMany({
       where: {
-        requestId: emi.loan.requestId,
+        entityType: 'PAYMENT',
+        entityId: emiId,
         action: {
-          in: [
-            REQUEST_HISTORY_ACTION.PAYMENT_INITIATED,
-            REQUEST_HISTORY_ACTION.PAYMENT_SUCCESS,
-            REQUEST_HISTORY_ACTION.PAYMENT_FAILED
-          ]
-        },
-        metadata: {
-          path: ['emiId'],
-          equals: emiId
+          in: ['PAYMENT_INITIATED', 'PAYMENT_SUCCESS', 'PAYMENT_FAILED']
         }
       },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         action: true,
-        metadata: true,
+        newValue: true,
         createdAt: true,
       }
     });

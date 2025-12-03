@@ -302,11 +302,10 @@ fundifyhub/
 ├── apps/                          # Applications
 │   ├── frontend/                  # 📱 Next.js 15 dashboard (Port: 3000)
 │   │   └── src/                  # 🎨 App router, components, contexts
-│   ├── main-backend/             # 🔗 Express API server (Port: 3001)
-│   │   └── src/                  # 📊 API routes, middleware, services
-│   ├── live-sockets/             # 🌐 WebSocket server (Port: 3002)
+│   ├── main-backend/             # 🔗 Express API + WebSocket (Port: 3001)
+│   │   └── src/                  # 📊 API routes, socket handlers, services
 │   └── job-worker/               # ⚡ Background job processor (BullMQ)
-│       └── src/                  # � Email & WhatsApp workers
+│       └── src/                  # 📧 Email & WhatsApp workers
 │
 ├── packages/                      # Shared packages
 │   ├── logger/                   # 🎯 Logging utility

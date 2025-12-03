@@ -45,7 +45,7 @@ export interface AuthValidationResponse {
 }
 
 // API Response types
-export interface APIResponseType<T = any> {
+export interface APIResponseType<T = unknown> {
   success: boolean;
   message?: string;
   data?: T;

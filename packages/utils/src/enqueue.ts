@@ -1,128 +1,208 @@
 import { Queue } from 'bullmq';
 import {
-  SERVICE_NAMES,
-  TEMPLATE_NAMES,
-  TemplatePayloadMapType,
-  JobOptionsType,
-  AddJobResultType,
-  AddServiceControlJobType,
-  AddServiceStatusJobResultType,
   JOB_TYPES,
-  QUEUE_NAMES
+  QUEUE_NAMES,
+  SERVICE_NAMES,
+  SERVICE_CONTROL_ACTIONS,
+  NotificationChannel,
+  NotificationPriority,
+  DeliveryMode,
+  type NotificationRequest,
 } from '@fundifyhub/types';
-import TEMPLATE_REGISTRY from '@fundifyhub/templates';
+
+/** Notification job data for queue processing */
+export interface NotificationJobData {
+  correlationId: string;
+  templateName: string;
+  variables: Record<string, unknown>;
+  channels: NotificationChannel[];
+  deliveryMode: DeliveryMode;
+  priority: NotificationPriority;
+  recipient: {
+    userId?: string;
+    email?: string;
+    phoneNumber?: string;
+    name?: string;
+  };
+  metadata?: Record<string, unknown>;
+  scheduledAt?: string;
+  expiresAt?: string;
+}
+
+/** Service control job data */
+export interface ServiceControlJobData {
+  serviceName: SERVICE_NAMES;
+  action: SERVICE_CONTROL_ACTIONS;
+  config?: Record<string, unknown>;
+}
+
+/** Result of adding a notification job */
+export interface AddNotificationJobResult {
+  correlationId: string;
+  jobId?: string;
+  error?: string;
+}
+
+/** Result of adding a service control job */
+export interface AddServiceControlJobResult {
+  jobId?: string;
+  error?: string;
+}
 
 export interface EnqueueClient {
-  addAJob<T extends TEMPLATE_NAMES>(
-    templateName: T,
-    variables: TemplatePayloadMapType[T],
-    options?: JobOptionsType
-  ): Promise<AddJobResultType[]>;
-
-  addAServiceControlJob(
-    data: AddServiceControlJobType
-  ): Promise<AddServiceStatusJobResultType>;
+  addNotificationJob(request: NotificationRequest): Promise<AddNotificationJobResult>;
+  addNotificationJobs(requests: NotificationRequest[]): Promise<AddNotificationJobResult[]>;
+  addServiceControlJob(data: ServiceControlJobData): Promise<AddServiceControlJobResult>;
+  close(): Promise<void>;
 }
 
 export function createEnqueueClient(connection: { host: string; port: number }): EnqueueClient {
-  const emailQueue = new Queue(QUEUE_NAMES.EMAIL_QUEUE, { connection });
-  const whatsappQueue = new Queue(QUEUE_NAMES.WHATSAPP_QUEUE, { connection });
+  const notificationQueue = new Queue(QUEUE_NAMES.NOTIFICATION_QUEUE, { connection });
+  const serviceControlQueue = new Queue(QUEUE_NAMES.SERVICE_CONTROL_QUEUE, { connection });
 
-  const addAJob = async <T extends TEMPLATE_NAMES>(
-    templateName: T,
-    variables: TemplatePayloadMapType[T],
-    options?: JobOptionsType
-  ): Promise<AddJobResultType[]> => {
-    const template = TEMPLATE_REGISTRY[templateName];
+  const addNotificationJob = async (
+    request: NotificationRequest
+  ): Promise<AddNotificationJobResult> => {
+    const correlationId = request.correlationId || generateCorrelationId();
 
-    const servicesToEnqueue = options?.services && options.services.length > 0 ? options.services : template.supportedServices;
-
-    const jobOptions: JobOptionsType = {
-      priority: options?.priority ?? Number(template.defaults?.priority),
-      delay: options?.delay ?? Number(template.defaults?.delay),
-      attempts: options?.attempts ?? Number(template.defaults?.attempts),
-    };
-
-    // Add backoff strategy for retries (exponential with 30s initial delay)
-    const bullmqOptions = {
-      ...jobOptions,
-      backoff: {
-        type: 'exponential',
-        delay: 30000, // 30 seconds initial delay
-      },
-    };
-
-    const results: AddJobResultType[] = [];
-
-    for (const svc of servicesToEnqueue) {
-      // Ensure the template actually supports this service
-      if (!template.supportedServices.includes(svc)) {
-        results.push({ jobId: "", error: `Service not supported by template ${svc}` });
-        continue;
+    try {
+      if (!request.templateName) {
+        return { correlationId, error: 'Template name is required' };
       }
 
-      // Channel-specific validation: fail early if required channel fields are absent
-      if (svc === SERVICE_NAMES.EMAIL) {
-        // templates expect `variables.email` for email
-        // runtime-check because TemplatePayloadMapType is a compile-time type
-        if (!('email' in (variables as any)) || !(variables as any).email) {
-          results.push({ jobId: "", error: `Missing required field "email" for service EMAIL` });
-          continue;
+      if (!request.channels || request.channels.length === 0) {
+        return { correlationId, error: 'At least one channel is required' };
+      }
+
+      const validationError = validateRecipientForChannels(request.recipient, request.channels);
+      if (validationError) {
+        return { correlationId, error: validationError };
+      }
+
+      const bullmqPriority = request.priority || NotificationPriority.NORMAL;
+
+      let delay = 0;
+      if (request.scheduledAt) {
+        const scheduledTime = new Date(request.scheduledAt).getTime();
+        const now = Date.now();
+        delay = Math.max(0, scheduledTime - now);
+      }
+
+      const jobData: NotificationJobData = {
+        correlationId,
+        templateName: request.templateName,
+        variables: request.variables,
+        channels: request.channels,
+        deliveryMode: request.deliveryMode || DeliveryMode.BROADCAST,
+        priority: request.priority || NotificationPriority.NORMAL,
+        recipient: request.recipient,
+        metadata: request.metadata,
+        scheduledAt: request.scheduledAt,
+        expiresAt: request.expiresAt,
+      };
+
+      const job = await notificationQueue.add(
+        JOB_TYPES.SEND_NOTIFICATION,
+        jobData,
+        {
+          priority: bullmqPriority,
+          delay,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000,
+          },
+          jobId: request.idempotencyKey || undefined,
         }
-      }
+      );
 
-      if (svc === SERVICE_NAMES.WHATSAPP) {
-        // templates expect `variables.phoneNumber` for WhatsApp
-        if (!('phoneNumber' in (variables as any)) || !(variables as any).phoneNumber) {
-          results.push({ jobId: "", error: `Missing required field "phoneNumber" for service WHATSAPP` });
-          continue;
-        }
-      }
-
-      try {
-        if (svc === SERVICE_NAMES.EMAIL) {
-          const job = await emailQueue.add(JOB_TYPES.SEND_EMAIL, { templateName, variables }, bullmqOptions);
-          results.push({ jobId: job?.id! });
-        } else if (svc === SERVICE_NAMES.WHATSAPP) {
-          const job = await whatsappQueue.add(JOB_TYPES.SEND_WHATSAPP, { templateName, variables }, bullmqOptions);
-          results.push({ jobId: job?.id! });
-        } else {
-          results.push({ jobId: "", error: 'Unsupported service' });
-        }
-      } catch (err: any) {
-        results.push({ jobId: "", error: err?.message || String(err) });
-      }
+      return {
+        correlationId,
+        jobId: job?.id,
+      };
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      return {
+        correlationId,
+        error: errorMessage,
+      };
     }
-
-    return results;
   };
 
-  const addAServiceControlJob = async (
-    data: AddServiceControlJobType
-  ): Promise<AddServiceStatusJobResultType> => {
+  const addNotificationJobs = async (
+    requests: NotificationRequest[]
+  ): Promise<AddNotificationJobResult[]> => {
+    return Promise.all(requests.map(request => addNotificationJob(request)));
+  };
+
+  const addServiceControlJob = async (
+    data: ServiceControlJobData
+  ): Promise<AddServiceControlJobResult> => {
     try {
-      const { serviceName } = data;
-      let job;
-
-      if (serviceName === SERVICE_NAMES.EMAIL) {
-        job = await emailQueue.add(JOB_TYPES.SERVICE_CONTROL, data, { priority: 1 }); // High priority
-      } else if (serviceName === SERVICE_NAMES.WHATSAPP) {
-        job = await whatsappQueue.add(JOB_TYPES.SERVICE_CONTROL, data, { priority: 1 }); // High priority
-      } else {
-        return { jobId: "", error: 'Unsupported service' };
-      }
-
-      return { jobId: job?.id! };
-    } catch (err: any) {
-      return { jobId: "", error: err?.message || String(err) };
+      const job = await serviceControlQueue.add(
+        JOB_TYPES.SERVICE_CONTROL,
+        data,
+        {
+          priority: 1, // High priority
+          attempts: 1,
+          removeOnComplete: true,
+          removeOnFail: 100,
+        }
+      );
+      return { jobId: job?.id };
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      return { error: errorMessage };
     }
+  };
+
+  const close = async (): Promise<void> => {
+    await notificationQueue.close();
+    await serviceControlQueue.close();
   };
 
   return {
-    addAJob,
-    addAServiceControlJob
+    addNotificationJob,
+    addNotificationJobs,
+    addServiceControlJob,
+    close,
   };
 }
 
+function validateRecipientForChannels(
+  recipient: NotificationRequest['recipient'],
+  channels: NotificationChannel[]
+): string | null {
+  for (const channel of channels) {
+    switch (channel) {
+      case NotificationChannel.EMAIL:
+        if (!recipient.email) {
+          return 'Email address is required for EMAIL channel';
+        }
+        break;
+      case NotificationChannel.WHATSAPP:
+      case NotificationChannel.SMS:
+        if (!recipient.phoneNumber) {
+          return 'Phone number is required for WHATSAPP/SMS channel';
+        }
+        break;
+      case NotificationChannel.IN_APP:
+        if (!recipient.userId) {
+          return 'User ID is required for IN_APP channel';
+        }
+        break;
+      case NotificationChannel.PUSH:
+        if (!recipient.userId) {
+          return 'User ID is required for PUSH channel';
+        }
+        break;
+    }
+  }
+  return null;
+}
+
+function generateCorrelationId(): string {
+  return `notif_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+}
 
 export default createEnqueueClient;

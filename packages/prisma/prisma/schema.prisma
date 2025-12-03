@@ -9,6 +9,115 @@ datasource db {
   provider = "postgresql"
 }
 
+// ============================================
+// ENUMS - Centralized status definitions
+// ============================================
+
+// Request lifecycle states (28 total)
+enum RequestStatus {
+  // PHASE 1: SUBMISSION & REVIEW
+  PENDING
+  UNDER_REVIEW
+  MORE_INFO_REQUIRED
+  
+  // PHASE 2: OFFER & NEGOTIATION
+  OFFER_SENT
+  OFFER_ACCEPTED
+  OFFER_DECLINED
+  OFFER_EXPIRED
+  
+  // PHASE 3: INSPECTION
+  INSPECTION_SCHEDULED
+  INSPECTION_RESCHEDULE_REQUESTED
+  INSPECTION_IN_PROGRESS
+  INSPECTION_COMPLETED
+  CUSTOMER_NOT_AVAILABLE
+  ASSET_MISMATCH
+  AGENT_NOT_AVAILABLE
+  
+  // PHASE 4: APPROVAL & DOCUMENTATION
+  APPROVED
+  PENDING_SIGNATURE
+  PENDING_BANK_DETAILS
+  
+  // PHASE 5: LOAN PROCESSING & DISBURSEMENT
+  BANK_DETAILS_SUBMITTED
+  TRANSFER_FAILED
+  AMOUNT_DISBURSED
+  
+  // PHASE 6: ACTIVE LOAN
+  ACTIVE
+  PAYMENT_OVERDUE
+  DEFAULTED
+  COMPLETED
+  
+  // TERMINAL STATES
+  REJECTED
+  CANCELLED
+}
+
+// Loan lifecycle states
+enum LoanStatus {
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+}
+
+// EMI payment states
+enum EMIStatus {
+  PENDING
+  PAID
+  OVERDUE
+  DEFAULTED
+}
+
+// Inspection states
+enum InspectionStatus {
+  PENDING
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Payment order states (Razorpay order lifecycle)
+enum PaymentOrderStatus {
+  CREATED
+  ATTEMPTED
+  PAID
+  FAILED
+  EXPIRED
+}
+
+// Document states
+enum DocumentStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+// Asset lifecycle states
+enum AssetStatus {
+  PLEDGED        // Asset is currently pledged against a loan
+  RELEASED       // Asset returned to customer after loan completion
+  IN_AUCTION     // Asset is in auction process (future)
+  SOLD           // Asset was sold in auction (future)
+}
+
+// Admin offer status
+enum OfferStatus {
+  PENDING        // Offer sent, awaiting customer response
+  ACCEPTED       // Customer accepted the offer
+  DECLINED       // Customer declined the offer
+  EXPIRED        // Offer expired without response
+  REVISED        // Offer was superseded by a new offer
+  CANCELLED      // Admin cancelled the offer
+}
+
+// ============================================
+// MODELS
+// ============================================
+
 // User model shd add username and Legal names as 2 diff columns instead of id and name to better identify.
 // Phone is mandatory to contact with the user.
 model User {
@@ -45,17 +154,192 @@ model User {
   // Relations
   requests        Request[] @relation("CustomerRequests")
   assignedRequests Request[] @relation("AgentAssignments")
+  adminAssignedRequests Request[] @relation("AdminAssignments")
   comments        Comment[]
   inspections     Inspection[]
   otpVerifications OTPVerification[]
+  inAppNotifications InAppNotification[]
+  notificationPreferences NotificationPreference[]
+  auditLogs       AuditLog[]
+  sessions        Session[]
+  adminOffers     AdminOffer[] @relation("AdminOffers") // Offers made by this admin
 
   // NOTE: we removed the separate UserDistrict join table and use the
   // `district` string array directly on User to simplify queries and indexes.
 
+  bankDetails     BankDetails[]  // Users can have multiple bank accounts
+
   @@index([email])
+  @@index([phoneNumber])
   @@index([roles])
   @@index([district])
   @@map("users")
+}
+
+// ============================================
+// BANK DETAILS MODEL - User bank accounts for disbursement
+// ============================================
+model BankDetails {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  // Bank account information
+  accountNumber   String    // Bank account number
+  ifscCode        String    // Bank IFSC code
+  accountName     String    // Account holder name (as per bank records)
+  bankName        String?   // Bank name (optional, can be derived from IFSC)
+  branchName      String?   // Branch name (optional)
+  
+  // UPI (alternative payment method)
+  upiId           String?   // UPI ID (e.g., name@bank)
+  
+  // Verification status
+  isVerified      Boolean   @default(false)
+  verifiedAt      DateTime?
+  
+  // Primary account flag (only one account can be primary per user)
+  isPrimary       Boolean   @default(false)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests        Request[] @relation("DisbursementAccount") // Requests using this account for disbursement
+  
+  @@unique([userId, accountNumber]) // Prevent duplicate accounts per user
+  @@index([userId])
+  @@index([isPrimary])
+  @@map("bank_details")
+}
+
+// ============================================
+// ADMIN OFFER MODEL - Tracks offer history and revisions
+// ============================================
+model AdminOffer {
+  id              String      @id @default(cuid())
+  requestId       String
+  offeredById     String      // Admin who made the offer
+  
+  // Offer terms
+  offeredAmount   Float       // Loan amount offered
+  tenureMonths    Int         // Repayment tenure in months
+  interestRate    Float       // Annual interest rate percentage
+  processingFee   Float       @default(0) // Processing fee amount
+  
+  // EMI calculation snapshot
+  emiAmount       Float?      // Monthly EMI amount
+  totalInterest   Float?      // Total interest over tenure
+  totalAmount     Float?      // Total repayable amount
+  emiSchedule     Json?       // Detailed EMI schedule snapshot
+  
+  // Penalty settings
+  penaltyPercentage Float     @default(4)     // Penalty for late payment
+  lateFeePercentage Float     @default(0.01)  // Late fee for overdue
+  
+  // Status and dates
+  status          OfferStatus @default(PENDING)
+  expiresAt       DateTime?   // When the offer expires
+  respondedAt     DateTime?   // When customer responded
+  
+  // Revision tracking
+  revision        Int         @default(1)     // Offer revision number
+  previousOfferId String?     // Reference to previous offer (for revision chain)
+  notes           String?     // Admin notes about the offer
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  // Relations
+  request         Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  offeredBy       User        @relation("AdminOffers", fields: [offeredById], references: [id], onDelete: Restrict)
+  previousOffer   AdminOffer? @relation("OfferRevisions", fields: [previousOfferId], references: [id], onDelete: SetNull)
+  revisions       AdminOffer[] @relation("OfferRevisions")
+  
+  @@index([requestId])
+  @@index([offeredById])
+  @@index([status])
+  @@index([requestId, status])
+  @@map("admin_offers")
+}
+
+// ============================================
+// SESSION MODEL - Tracks user login sessions for security
+// ============================================
+model Session {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  // Token for session identification (hashed JWT ID or session token)
+  tokenHash       String    @unique
+  
+  // Device information for "Manage Sessions" feature
+  deviceName      String?   // e.g., "Chrome on Windows", "Safari on iPhone"
+  deviceType      String?   // "desktop", "mobile", "tablet"
+  browser         String?   // e.g., "Chrome 120", "Safari 17"
+  os              String?   // e.g., "Windows 11", "iOS 17"
+  
+  // Location information (from IP geolocation)
+  ipAddress       String?
+  city            String?
+  country         String?
+  
+  // Session status
+  isActive        Boolean   @default(true)
+  lastActivityAt  DateTime  @default(now())
+  expiresAt       DateTime
+  
+  // Revocation tracking
+  revokedAt       DateTime?
+  revokedReason   String?   // "user_logout", "admin_revoke", "password_change", "security_concern"
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@index([lastActivityAt])
+  @@map("sessions")
+}
+
+// ============================================
+// ASSET MODEL - Collateral for loans
+// ============================================
+model Asset {
+  id              String      @id @default(cuid())
+  
+  // Asset identification
+  assetType       String      // "GOLD", "SILVER", "ELECTRONICS", "VEHICLE", etc.
+  brand           String      // Brand name
+  model           String      // Model name/number
+  condition       String      // "EXCELLENT", "GOOD", "FAIR", "POOR"
+  purchaseYear    Int         // Year of purchase
+  description     String      @default("") // Additional description
+  
+  // Valuation
+  estimatedValue  Float?      // Customer's estimated value
+  inspectedValue  Float?      // Value determined during inspection
+  
+  // Status
+  status          AssetStatus @default(PLEDGED)
+  
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  // Relations
+  request         Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId       String      @unique // One asset per request (for now)
+  
+  @@index([assetType])
+  @@index([status])
+  @@index([requestId])
+  @@map("assets")
 }
 
 // Main Request model (simplified)
@@ -65,40 +349,36 @@ model Request {
   customerId      String
   requestedAmount Float
   district        String
-  currentStatus   String    @default("PENDING")
+  currentStatus   RequestStatus @default(PENDING)
   
-  // Asset details (inline) - required for asset-based lending
-  purchaseYear    Int
-  assetType       String
-  assetBrand      String
-  assetModel      String
-  assetCondition  String
-  AdditionalDescription String @default("")
+  // Asset relation (replaces inline fields)
+  asset           Asset?
   
-  // Admin Offer Details - required when status is not PENDING
+  // Current active offer reference (for quick access to accepted/pending offer)
+  activeOfferId   String?       // Reference to the current active AdminOffer
+  
+  // Legacy Admin Offer Details - kept for backward compatibility during migration
+  // These will be removed once all offers are migrated to AdminOffer model
   adminOfferedAmount Float?     // Amount offered by admin
   adminTenureMonths  Int?       // Tenure offered by admin
   adminInterestRate  Float?     // Interest rate offered by admin
   adminEmiSchedule   Json?      // JSON snapshot of EMI schedule/admin offer (immutable snapshot)
-  // Processing fee (amount in currency units) that will be deducted at disbursement.
-  // This does not affect EMI calculations; EMIs are calculated on adminOfferedAmount.
   adminProcessingFee Float @default(0)
   offerMadeDate      DateTime?  // When admin made the offer
   offerResponseDate  DateTime?  // When customer responded
   penaltyPercentage   Float     @default(4)     // Penalty percentage for late payment (default 4%)
   lateFeePercentage    Float     @default(0.01)  // Late fee percentage for overdue payments (default 0.01%)
+  
   // Admin requested information (when status is MORE_INFO_REQUIRED)
   adminRequestedInfo String?    // What additionWal info/documents admin needs
   
-  // Bank Details (for disbursement) - required for loan disbursement
-  bankAccountNumber  String?    // Customer's bank account number
-  bankIfscCode       String?    // Bank IFSC code
-  bankAccountName    String?    // Account holder name
-  upiId              String?    // UPI ID (optional alternative)
-  bankDetailsSubmittedAt DateTime? // When bank details were submitted
+  // Bank Details (for disbursement) - reference to user's bank account
+  disbursementAccountId String?  // Reference to BankDetails for disbursement
+  bankDetailsSubmittedAt DateTime? // When bank details were submitted for this request
   
   // Assignment Details
   assignedAgentId    String?    // Agent assigned for inspection
+  assignedAdminId    String?    // District admin who self-assigned to handle this request
   inspectionScheduledAt DateTime? // When inspection is scheduled to take place
   // Generic comments enable/disable flag. Admins can toggle this at any time.
   // Use a single `commentsEnabled` flag for all comment-related toggles to
@@ -115,6 +395,9 @@ model Request {
 
   customer        User          @relation("CustomerRequests", fields: [customerId], references: [id], onDelete: Cascade)
   assignedAgent   User?         @relation("AgentAssignments", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  assignedAdmin   User?         @relation("AdminAssignments", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  disbursementAccount BankDetails? @relation("DisbursementAccount", fields: [disbursementAccountId], references: [id], onDelete: SetNull)
+  offers          AdminOffer[]  // All offers made for this request (history)
   loan            Loan?
   comments        Comment[]
   inspections     Inspection[]
@@ -122,12 +405,19 @@ model Request {
   payments        Payment[]
   paymentOrders   PaymentOrder[]
   documents       Document[]     
-  requestHistory  RequestHistory[]
+  inAppNotifications InAppNotification[]
 
   @@index([customerId])
   @@index([currentStatus])
   @@index([district])
   @@index([assignedAgentId])
+  @@index([assignedAdminId])
+  @@index([requestNumber])
+  @@index([disbursementAccountId])
+  @@index([activeOfferId])
+  @@index([district, currentStatus])
+  @@index([customerId, currentStatus])
+  @@index([assignedAgentId, currentStatus])
   @@map("requests")
 }
 
@@ -148,7 +438,7 @@ model Loan {
   totalAmount     Float      // Total amount to be repaid (principal + interest)
   
   // Loan Status & Dates
-  status          String   @default("ACTIVE")
+  status          LoanStatus @default(ACTIVE)
   approvedDate    DateTime // When loan was approved by agent
   disbursedDate   DateTime?  // When amount was transferred to customer
   firstEMIDate    DateTime // When first EMI is due
@@ -178,10 +468,13 @@ model Loan {
   emisSchedule    EMISchedule[]
   payments        Payment[]
   paymentOrders   PaymentOrder[]
+  inAppNotifications InAppNotification[]
 
   @@index([requestId])
   @@index([status])
   @@index([disbursedDate])
+  @@index([loanNumber])
+  @@index([status, disbursedDate])
   @@map("loans")
 }
 
@@ -195,7 +488,7 @@ model EMISchedule {
   emiAmount       Float     // Fixed EMI amount
   principalAmount Float     // Principal component of this EMI
   interestAmount  Float     // Interest component of this EMI
-  status          String   @default("PENDING")
+  status          EMIStatus @default(PENDING)
   paidDate        DateTime? // When this EMI was paid
   paidAmount      Float?    // Amount paid (kept for audit trail, always equals emiAmount + lateFee)
   lateFee         Float     @default(0) // Penalty charged (4% of overdue amount)
@@ -207,12 +500,15 @@ model EMISchedule {
   request         Request   @relation(fields: [requestId], references: [id], onDelete: Cascade)
   payments        Payment[]
   paymentOrders   PaymentOrder[]
+  inAppNotifications InAppNotification[]
 
   @@unique([loanId, emiNumber])
   @@index([loanId])
   @@index([requestId])
   @@index([dueDate])
   @@index([status])
+  @@index([dueDate, status])
+  @@index([loanId, status])
   @@map("emi_schedules")
 }
 
@@ -242,6 +538,8 @@ model Payment {
   @@index([requestId])
   @@index([emiScheduleId])
   @@index([paidDate])
+  @@index([paymentReference])
+  @@index([loanId, paidDate])
   @@map("payments")
 }
 
@@ -260,7 +558,7 @@ model PaymentOrder {
   totalAmount       Float     // emiAmount + penalty
   
   // Status tracking
-  status            String    @default("CREATED") // CREATED, ATTEMPTED, PAID, FAILED, EXPIRED
+  status            PaymentOrderStatus @default(CREATED)
   attempts          Int       @default(0)
   lastAttemptAt     DateTime?
   
@@ -316,11 +614,8 @@ model Document {
   uploaderRole      String?   // "USER_SUBMITTED", "AGENT_SUBMITTED", "ADMIN_SUBMITTED" - categorizes who uploaded
   isPublic          Boolean   @default(false) // If true, no auth needed to access
   
-  // Verification & Status
-  isVerified        Boolean   @default(false)
-  verifiedBy        String?   // Admin/Agent ID who verified
-  verifiedAt        DateTime?
-  status            String    @default("ACTIVE") // "ACTIVE", "ARCHIVED", "DELETED"
+  // Status
+  status            DocumentStatus @default(ACTIVE)
   
   // Metadata
   description       String?   // Optional description/notes
@@ -363,30 +658,13 @@ model Comment {
   @@map("comments")
 }
 
-// Join table for associating users with multiple districts.
-// This is implemented as a separate model to avoid breaking existing
-// code that expects `User.districts` to be a single string.
-// UserDistrict was removed in favor of `User.districts: String[]`.
-// Kept a comment here for historical context; run `pnpm db:migrate` after
-// schema changes to apply to the database.
-
-// Simple audit trail for request lifecycle actions. Each entry records
-// who did what, optional JSON metadata, and when. This is intentionally
-// lightweight to keep queries fast and to decouple from Comment model.
-model RequestHistory {
-  id         String   @id @default(cuid())
-  requestId  String
-  actorId    String   // User who performed the action (could be system) - required for audit
-  action     String   // e.g. "ASSIGNED_AGENT", "OFFER_CREATED", "STATUS_UPDATED"
-  metadata   Json?
-  createdAt  DateTime @default(now())
-
-  request    Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  @@index([requestId])
-  @@index([actorId])
-  @@map("request_history")
-}
+// NOTE: RequestHistory model has been removed in favor of the unified AuditLog system.
+// All audit trail entries are now tracked in the AuditLog model which provides:
+// - Unified logging across all entity types (requests, loans, payments, documents, users)
+// - Better querying capabilities with entityType and entityId
+// - Richer metadata support with oldData and newData fields
+// - IP address tracking for security
+// Run `pnpm db:migrate` to apply this change to the database.
 
 
 // Inspection model
@@ -396,7 +674,7 @@ model Inspection {
   agentId          String?
   scheduledDate    DateTime?
   completedDate    DateTime?
-  status           String   @default("PENDING")
+  status           InspectionStatus @default(PENDING)
   assetCondition   String?
   estimatedValue   Float?
   notes            String?
@@ -485,3 +763,282 @@ model SerialCounter {
 
   @@map("serial_counters")
 }
+
+// ============================================
+// NOTIFICATION SYSTEM (V2 - Industry Standard)
+// ============================================
+
+// Notification delivery channels
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  PUSH
+  IN_APP
+}
+
+// Notification delivery status
+enum NotificationDeliveryStatus {
+  PENDING           // Created, waiting to be processed
+  PROCESSING        // Currently being sent
+  SENT              // Delivered to provider
+  DELIVERED         // Confirmed delivered to recipient
+  READ              // Recipient opened/read
+  FAILED            // Delivery failed, may retry
+  PERMANENTLY_FAILED // All retries exhausted
+  CANCELLED         // Cancelled before delivery
+  SCHEDULED         // Scheduled for future
+}
+
+// Notification priority levels (1=highest)
+enum NotificationPriorityLevel {
+  CRITICAL  // OTPs, security alerts - immediate
+  HIGH      // Important transactional
+  NORMAL    // Regular transactional
+  LOW       // Reminders
+  BULK      // Marketing, can be batched
+}
+
+// Notification categories
+enum NotificationCategoryType {
+  SECURITY        // OTPs, login alerts, password changes
+  TRANSACTIONAL   // Request updates, payment confirmations
+  REMINDER        // EMI due, inspection scheduled
+  MARKETING       // Promotions, offers
+  SYSTEM          // Maintenance, updates
+}
+
+// Delivery mode for multi-channel notifications
+enum DeliveryModeType {
+  BROADCAST   // Same content to all channels
+  INDEPENDENT // Different content per channel (e.g., different OTPs)
+  FALLBACK    // Try channels in order until success
+  SINGLE      // Single channel only
+}
+
+// Backoff strategy for retries
+enum BackoffStrategyType {
+  FIXED
+  EXPONENTIAL
+  LINEAR
+}
+
+// ============================================
+// NOTIFICATION LOG - Tracks all notification delivery attempts
+// ============================================
+model NotificationLog {
+  id                String                    @id @default(cuid())
+  correlationId     String                    // Groups related notifications (same request across channels)
+  
+  // Recipient information
+  userId            String?                   // User ID if registered user
+  recipientEmail    String?                   // Email address
+  recipientPhone    String?                   // Phone number
+  recipientName     String?                   // Display name for personalization
+  
+  // Template and content
+  templateName      String                    // Template used
+  variables         Json                      // Template variables snapshot
+  renderedContent   Json?                     // Cached rendered content
+  
+  // Delivery configuration
+  channel           NotificationChannel
+  deliveryMode      DeliveryModeType          @default(BROADCAST)
+  priority          NotificationPriorityLevel @default(NORMAL)
+  category          NotificationCategoryType  @default(TRANSACTIONAL)
+  
+  // Channel-specific options (JSON for flexibility)
+  channelOptions    Json?                     // Email subject, WhatsApp media, etc.
+  
+  // Status and retry tracking
+  status            NotificationDeliveryStatus @default(PENDING)
+  attempts          Int                       @default(0)
+  maxAttempts       Int                       @default(3)
+  
+  // Retry configuration
+  backoffStrategy   BackoffStrategyType       @default(EXPONENTIAL)
+  initialDelay      Int                       @default(1000)   // milliseconds
+  maxDelay          Int                       @default(300000) // 5 minutes
+  backoffMultiplier Float                     @default(2)
+  
+  // Provider information
+  providerMessageId String?                   // ID from email/SMS/WhatsApp provider
+  providerResponse  Json?                     // Full provider response for debugging
+  
+  // Error tracking
+  lastError         String?                   // Last error message
+  lastErrorCode     String?                   // Error code for categorization
+  errorHistory      Json?                     // Array of all errors for debugging
+  
+  // Timing
+  lastAttemptAt     DateTime?                 // When last attempt was made
+  nextRetryAt       DateTime?                 // When next retry is scheduled
+  scheduledAt       DateTime?                 // For scheduled notifications
+  expiresAt         DateTime?                 // Don't deliver after this time
+  
+  // Delivery timestamps
+  sentAt            DateTime?                 // When successfully sent to provider
+  deliveredAt       DateTime?                 // When confirmed delivered
+  readAt            DateTime?                 // When recipient read (if trackable)
+  
+  // Idempotency and metadata
+  idempotencyKey    String?                   // Prevents duplicate sends
+  metadata          Json?                     // Additional context (requestId, loanId, etc.)
+  
+  // Related entities for linking
+  requestId         String?
+  loanId            String?
+  
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  
+  @@unique([idempotencyKey])
+  @@index([correlationId])
+  @@index([userId])
+  @@index([recipientEmail])
+  @@index([recipientPhone])
+  @@index([templateName])
+  @@index([channel])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([nextRetryAt])
+  @@index([scheduledAt])
+  @@index([createdAt])
+  @@index([requestId])
+  @@index([loanId])
+  @@map("notification_logs")
+}
+
+// ============================================
+// USER NOTIFICATION PREFERENCES
+// ============================================
+model NotificationPreference {
+  id              String                    @id @default(cuid())
+  userId          String
+  channel         NotificationChannel
+  category        NotificationCategoryType
+  
+  // Preference settings
+  enabled         Boolean                   @default(true)
+  
+  // Quiet hours (don't disturb)
+  quietHoursStart String?                   // HH:mm format (e.g., "22:00")
+  quietHoursEnd   String?                   // HH:mm format (e.g., "08:00")
+  
+  // Frequency control
+  frequencyLimit  Int?                      // Max notifications per hour (null = unlimited)
+  
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  
+  // Relations
+  user            User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, channel, category])
+  @@index([userId])
+  @@index([channel])
+  @@index([category])
+  @@map("notification_preferences")
+}
+
+// ============================================
+// IN-APP NOTIFICATIONS (User notification center)
+// ============================================
+model InAppNotification {
+  id              String                    @id @default(cuid())
+  userId          String
+  
+  // Content
+  title           String
+  message         String
+  actionUrl       String?                   // URL to navigate when clicked
+  icon            String?                   // Icon name or URL
+  
+  // Categorization
+  category        NotificationCategoryType  @default(TRANSACTIONAL)
+  priority        NotificationPriorityLevel @default(NORMAL)
+  
+  // State
+  isRead          Boolean                   @default(false)
+  readAt          DateTime?
+  isArchived      Boolean                   @default(false)
+  archivedAt      DateTime?
+  
+  // Related entities
+  requestId       String?
+  loanId          String?
+  emiScheduleId   String?
+  
+  // Link to notification log for audit
+  notificationLogId String?
+  
+  // Metadata
+  metadata        Json?
+  
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  
+  // Relations
+  user            User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request         Request?                  @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  loan            Loan?                     @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  emiSchedule     EMISchedule?              @relation(fields: [emiScheduleId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@index([category])
+  @@index([requestId])
+  @@index([loanId])
+  @@map("in_app_notifications")
+}
+
+// ============================================
+// AUDIT LOGGING SYSTEM
+// ============================================
+
+// Audit log for tracking all important system actions
+model AuditLog {
+  id              String    @id @default(cuid())
+  
+  // Who performed the action
+  actorId         String?   // User who performed action (null for system actions)
+  actorEmail      String?   // Snapshot of email at time of action
+  actorRoles      String[]  // Snapshot of roles at time of action
+  
+  // What action was performed
+  action          String    // e.g., "CREATE_REQUEST", "UPDATE_STATUS", "LOGIN"
+  entityType      String    // e.g., "Request", "User", "Loan"
+  entityId        String?   // ID of the affected entity
+  
+  // Context
+  description     String    // Human-readable description
+  ipAddress       String?   // IP address of the requester
+  userAgent       String?   // Browser/client info
+  
+  // Change tracking
+  previousValue   Json?     // State before change
+  newValue        Json?     // State after change
+  
+  // Additional metadata
+  metadata        Json?     // Any additional context
+  
+  // Result
+  status          String    @default("SUCCESS") // SUCCESS, FAILURE, PENDING
+  errorMessage    String?   // Error details if status is FAILURE
+  
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  actor           User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  
+  @@index([actorId])
+  @@index([action])
+  @@index([entityType])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([status])
+  @@map("audit_logs")
+}
+

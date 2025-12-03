@@ -121,6 +121,7 @@ export default function PreviewModal({
             ) : (
               <div className="w-full h-full flex items-center justify-center min-h-0">
                 <div className="w-full overflow-auto flex items-center justify-center p-2 h-full" style={{ maxHeight: '100%' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- Dynamic zoom/transform requires native img */}
                   <img
                     src={source.url}
                     alt={source.title ?? 'preview'}

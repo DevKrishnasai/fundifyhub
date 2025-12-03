@@ -4,6 +4,24 @@ import type { Prisma, PrismaClient as GeneratedPrismaClient } from '@fundifyhub/
 // generated PrismaClient type ensures we have the correct delegate shape.
 type SerialDelegate = GeneratedPrismaClient['serialCounter']
 
+/** Type guard to check if error is a Prisma "not found" error */
+function isPrismaNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === 'PrismaClientKnownRequestError' &&
+    (error as Error & { code?: string }).code === 'P2025'
+  );
+}
+
+/** Type guard to check if error is a Prisma unique constraint error */
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === 'PrismaClientKnownRequestError' &&
+    (error as Error & { code?: string }).code === 'P2002'
+  );
+}
+
 /**
  * Generate a global incrementing serial for Request and Loan prefixed values.
  * Format: PREFIX + number (starting from 1000), e.g. REQ1000, LOAN1000.
@@ -24,16 +42,18 @@ async function incrementCounter(tx: Prisma.TransactionClient, id: string, startA
         select: { seq: true },
       })
       return updated.seq
-    } catch (err: any) {
-      // If not found (Prisma will throw), create a new row with seq = startAt
+    } catch (err: unknown) {
+      // If not found (Prisma will throw P2025), create a new row with seq = startAt
       // If creation fails due to unique constraint (race), retry the loop
+      if (!isPrismaNotFoundError(err)) throw err;
+      
       try {
-  await (tx as unknown as { serialCounter: SerialDelegate }).serialCounter.create({ data: { id, seq: startAt } })
+        await (tx as unknown as { serialCounter: SerialDelegate }).serialCounter.create({ data: { id, seq: startAt } })
         return startAt
-      } catch (createErr: any) {
-        // If creation failed because another tx created it, loop and try update again
-        if (attempt === maxAttempts) throw createErr
-        // small backoff not necessary inside tx - retry
+      } catch (createErr: unknown) {
+        // If creation failed because another tx created it (P2002), loop and try update again
+        if (attempt === maxAttempts || !isPrismaUniqueConstraintError(createErr)) throw createErr
+        // Continue to retry
       }
     }
   }

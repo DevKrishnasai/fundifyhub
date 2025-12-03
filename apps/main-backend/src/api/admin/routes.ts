@@ -2,6 +2,8 @@ import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
 import serviceRoutes from './service/routes';
 import agentsRoutes from './agents/routes';
+import analyticsRoutes from './analytics/routes';
+import auditLogsRoutes from './audit-logs/routes';
 import {
   getActiveLoansController,
   getPendingRequestsController
@@ -19,6 +21,12 @@ router.use('/users', usersRoutes);
 
 // Admin agent lookup (for assignment UI)
 router.use('/agents', agentsRoutes);
+
+// Admin analytics routes
+router.use('/analytics', analyticsRoutes);
+
+// Admin audit logs routes
+router.use('/audit-logs', auditLogsRoutes);
 
 /** GET /admin/getActiveLoans
  * Get all active loans

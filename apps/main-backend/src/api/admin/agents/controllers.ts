@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '@fundifyhub/prisma';
 import logger from '../../../utils/logger';
-import { APIResponseType } from '../../../types';
+import { APIResponseType, isAuthenticated } from '../../../types';
 import { hasDistrictAccess } from '../../../utils/rbac';
 import { ROLES } from '@fundifyhub/types';
 
@@ -23,13 +23,13 @@ export async function getAgentsByDistrictController(req: Request, res: Response)
 
     // Authorization: only SUPER_ADMIN or district admins for that district can list agents
     const user = req.user;
-    if (!user) {
+    if (!isAuthenticated(user)) {
       res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
       return;
     }
 
-    const isSuper = Array.isArray((user as any).roles) && (user as any).roles.includes(ROLES.SUPER_ADMIN);
-    if (!isSuper && !hasDistrictAccess(user as any, queryDistrict)) {
+    const isSuper = user.roles.includes(ROLES.SUPER_ADMIN);
+    if (!isSuper && !hasDistrictAccess(user, queryDistrict)) {
       res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
       return;
     }

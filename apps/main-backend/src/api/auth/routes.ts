@@ -6,7 +6,12 @@ import {
   register,
   login,
   logout,
+  changePassword,
+  forgotPassword,
+  resetPassword,
+  validateResetToken,
 } from './controllers';
+import { authMiddleware } from '../../utils/jwt';
 
 const router: ExpressRouter = Router();
 
@@ -27,5 +32,17 @@ router.post('/login', login);
 
 // Logout user and clear access token
 router.post('/logout', logout);
+
+// Change password (requires authentication)
+router.post('/change-password', authMiddleware, changePassword);
+
+// Request password reset (forgot password - sends email with reset link)
+router.post('/forgot-password', forgotPassword);
+
+// Reset password with token
+router.post('/reset-password', resetPassword);
+
+// Validate reset token (check if token is valid before showing form)
+router.get('/validate-reset-token', validateResetToken);
 
 export default router;

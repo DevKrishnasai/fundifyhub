@@ -9,6 +9,14 @@ import { BACKEND_API_CONFIG, FRONTEND_API_CONFIG, FrontendPublicRoutes } from '@
 import { get } from '@/lib/api-client';
 import logger from '@/lib/logger';
 
+// API response type for auth validation
+interface ValidateResponse {
+  user?: UserType;
+  data?: {
+    user?: UserType;
+  };
+}
+
 interface AuthContextType {
   user: UserType | null;
   isLoading: boolean;
@@ -102,11 +110,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const validateWithServer = async (): Promise<UserType | null> => {
       try {
-        const data = await get(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE);
+        const data = await get<ValidateResponse>(BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE);
         // Check both possible structures
         const user = data?.user || data?.data?.user;
         if (user) {
-          return user as UserType;
+          return user;
         }
         return null;
       } catch (error) {
@@ -137,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(userData);
     setLastTokenCheck(Date.now());
     redirectToDashboard();
-  }, [router]);
+  }, [redirectToDashboard]);
 
   // Handle logout
   const handleLogout = useCallback(async () => {
@@ -157,10 +165,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await initializeAuth();
   }, [initializeAuth]);
 
-  // Initialize on mount and pathname changes
+  // Initialize on mount only
   useEffect(() => {
     initializeAuth();
-  }, [initializeAuth, pathname]);
+  }, [initializeAuth]);
 
   // Handle route protection and redirects
   useEffect(() => {
@@ -168,7 +176,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const isLoggedIn = !!user;
       
       // Redirect logged-in users away from auth pages
-      if (isLoggedIn && (pathname.startsWith('/auth') || pathname === '/forgot-password')) {
+      const authPages = ['/login', '/register', '/reset-password'];
+      if (isLoggedIn && authPages.some(page => pathname === page)) {
         redirectToDashboard();
         return;
       }
@@ -179,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     }
-  }, [user, isLoading, pathname, router]);
+  }, [user, isLoading, pathname, router, redirectToDashboard]);
 
   // Set up periodic server validation (since we can't check token client-side with httpOnly cookies)
   useEffect(() => {

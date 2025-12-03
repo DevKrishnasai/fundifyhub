@@ -80,6 +80,12 @@ export const liveSocketsEnvSchema = z.object({
 
   // WebSocket server configuration
   WS_PORT: z.string().transform((val: string) => parseInt(val)).refine((val: number) => !isNaN(val) && val > 0 && val < 65536, 'WS_PORT must be a valid port number'),
+
+  // JWT for authentication (must match main backend)
+  JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
+
+  // CORS origins (comma-separated list)
+  CORS_ORIGINS: z.string().default('http://localhost:3000'),
 });
 
 // Job worker environment variables

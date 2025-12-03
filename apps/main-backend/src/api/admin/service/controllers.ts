@@ -1,38 +1,70 @@
 import { Request, Response } from 'express';
 import { prisma } from '@fundifyhub/prisma';
-import { SERVICE_NAMES, CONNECTION_STATUS, AddServiceControlJobType, SERVICE_CONTROL_ACTIONS } from '@fundifyhub/types';
+import { SERVICE_NAMES, CONNECTION_STATUS, SERVICE_CONTROL_ACTIONS } from '@fundifyhub/types';
+import { createEnqueueClient } from '@fundifyhub/utils/server';
 import logger from 'apps/main-backend/src/utils/logger';
-import queueClient from 'apps/main-backend/src/utils/queues';
 import { APIResponseType } from 'apps/main-backend/src/types';
+import { cache, CACHE_KEYS, CACHE_TTL } from 'apps/main-backend/src/utils/cache';
+import config from 'apps/main-backend/src/utils/config';
+
+// Create enqueue client for service control jobs
+const enqueueClient = createEnqueueClient({
+  host: config.redis.host,
+  port: config.redis.port,
+});
 
 
 /**
  * GET /admin/services
  * Get all service configurations (auto-create if missing)
+ * Uses Redis caching to reduce database load
+ * Pass ?fresh=true to skip cache (useful when polling for QR code updates)
  */
 
 export async function getAllServicesController(req: Request, res: Response): Promise<void> {
   try {
+    const skipCache = req.query.fresh === 'true';
+    
+    // Try to get from cache first (unless skipCache is true)
+    if (!skipCache) {
+      const cachedServices = await cache.get<Record<string, unknown>[]>(CACHE_KEYS.ALL_SERVICES());
+      if (cachedServices) {
+        res.status(200).json({
+          success: true,
+          message: 'Service configurations retrieved successfully',
+          data: cachedServices,
+          cached: true,
+        } as APIResponseType);
+        return;
+      }
+    }
+
     let configs = await prisma.serviceConfig.findMany({ orderBy: { serviceName: 'asc' } });
 
     const SUPPORTED_SERVICES = Object.values(SERVICE_NAMES);
     
+    // Create missing service configs - handle race conditions gracefully
     for (const serviceName of SUPPORTED_SERVICES) {
       if (!configs.find((cfg) => cfg.serviceName === serviceName)) {
-        await prisma.serviceConfig.upsert({
-          where: { serviceName },
-          update: {},
-          create: {
-            serviceName,
-            isEnabled: false,
-            isActive: false,
-            connectionStatus: CONNECTION_STATUS.DISCONNECTED,
-            config: {},
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            configuredBy: 'system',
+        try {
+          await prisma.serviceConfig.create({
+            data: {
+              serviceName,
+              isEnabled: false,
+              isActive: false,
+              connectionStatus: CONNECTION_STATUS.DISCONNECTED,
+              config: {},
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              configuredBy: 'system',
+            }
+          });
+        } catch (createError: any) {
+          // Ignore unique constraint errors - record was created by another concurrent request
+          if (createError?.code !== 'P2002') {
+            throw createError;
           }
-        });
+        }
       }
     }
     
@@ -64,6 +96,9 @@ export async function getAllServicesController(req: Request, res: Response): Pro
       };
     });
     
+    // Cache the results (5 minutes TTL)
+    await cache.set(CACHE_KEYS.ALL_SERVICES(), serviceStatuses, CACHE_TTL.MEDIUM);
+    
     res.status(200).json({
       success: true,
       message: 'Service configurations retrieved successfully',
@@ -82,21 +117,28 @@ export async function getAllServicesController(req: Request, res: Response): Pro
 /**
  * POST /admin/service/:serviceName/enable
  * Enable a service (set isEnabled=true)
- * Worker should pick up and initialize connection
- * Auto-create config if missing
+ * Queues an immediate service control job to start the service
  */
 export async function enableServiceController(req: Request, res: Response): Promise<void> {
   try {
     const { serviceName } = req.params;
-    let config = await prisma.serviceConfig.findUnique({ where: { serviceName: serviceName.toUpperCase() } });
+    const upperServiceName = serviceName.toUpperCase() as SERVICE_NAMES;
     
-    if (!config) {
-      config = await prisma.serviceConfig.create({
+    // Validate service name
+    if (!Object.values(SERVICE_NAMES).includes(upperServiceName)) {
+      res.status(400).json({ success: false, message: `Invalid service name: ${serviceName}` } as APIResponseType);
+      return;
+    }
+    
+    let serviceConfig = await prisma.serviceConfig.findUnique({ where: { serviceName: upperServiceName } });
+    
+    if (!serviceConfig) {
+      serviceConfig = await prisma.serviceConfig.create({
         data: {
-          serviceName: serviceName.toUpperCase(),
+          serviceName: upperServiceName,
           isEnabled: true,
           isActive: false,
-          connectionStatus: CONNECTION_STATUS.DISCONNECTED,
+          connectionStatus: CONNECTION_STATUS.INITIALIZING,
           config: {},
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -104,26 +146,36 @@ export async function enableServiceController(req: Request, res: Response): Prom
         }
       });
     } else {
-      config = await prisma.serviceConfig.update({
-        where: { serviceName: serviceName.toUpperCase() },
-        data: { isEnabled: true, updatedAt: new Date() },
+      serviceConfig = await prisma.serviceConfig.update({
+        where: { serviceName: upperServiceName },
+        data: { 
+          isEnabled: true, 
+          connectionStatus: CONNECTION_STATUS.INITIALIZING,
+          updatedAt: new Date() 
+        },
       });
     }
     
-    const adminUser = (req as any).user?.firstName || 'unknown-admin';
-    const jobData: AddServiceControlJobType = {
-      action: SERVICE_CONTROL_ACTIONS.START,
-      serviceName: serviceName.toUpperCase() as SERVICE_NAMES,
-      triggeredBy: adminUser,
-    };
-    const result = await queueClient.addAServiceControlJob(jobData);
+    // Invalidate service config cache
+    await cache.invalidateServiceConfig(upperServiceName);
     
-    if (result?.error) {
-      const contextLogger = logger.child('[enable-service]');
-      contextLogger.error(`Failed to enqueue: ${result.error}`);
+    // Queue immediate service control job to start the service
+    const result = await enqueueClient.addServiceControlJob({
+      serviceName: upperServiceName,
+      action: SERVICE_CONTROL_ACTIONS.START,
+    });
+    
+    if (result.error) {
+      logger.child('[enable-service]').warn(`Failed to queue service control job: ${result.error}`);
+    } else {
+      logger.child('[enable-service]').info(`Queued service start job: ${result.jobId}`);
     }
     
-    res.status(200).json({ success: true, message: `${serviceName} enabled`, data: config } as APIResponseType);
+    res.status(200).json({ 
+      success: true, 
+      message: `${serviceName} enabled - service is starting`,
+      data: serviceConfig 
+    } as APIResponseType);
   } catch (error) {
     const contextLogger = logger.child('[enable-service]');
     contextLogger.error('Failed to enable service:', error as Error);
@@ -133,39 +185,70 @@ export async function enableServiceController(req: Request, res: Response): Prom
 
 /**
  * POST /admin/service/:serviceName/disable
- * Disable a service and DELETE all data
- * Worker should disconnect, cleanup, and delete from database
+ * Disable a service (set isEnabled=false)
+ * Queues an immediate service control job to stop the service
  */
 export async function disableServiceController(req: Request, res: Response): Promise<void> {
   try {
     const { serviceName } = req.params;
-    const config = await prisma.serviceConfig.findUnique({ where: { serviceName: serviceName.toUpperCase() } });
+    const upperServiceName = serviceName.toUpperCase() as SERVICE_NAMES;
     
-    if (!config) {
-      res.status(404).json({ success: false, message: `${serviceName} not found` } as APIResponseType);
+    // Validate service name
+    if (!Object.values(SERVICE_NAMES).includes(upperServiceName)) {
+      res.status(400).json({ success: false, message: `Invalid service name: ${serviceName}` } as APIResponseType);
       return;
     }
     
-    const adminUser = (req as any).user?.firstName || 'unknown-admin';
-    const jobData: AddServiceControlJobType = {
-      action: SERVICE_CONTROL_ACTIONS.STOP,
-      serviceName: serviceName.toUpperCase() as SERVICE_NAMES,
-      triggeredBy: adminUser,
-    };
-    const result = await queueClient.addAServiceControlJob(jobData);
-
-    if (result?.error) {
-      logger.error(`Failed to enqueue service control: ${result.error}`);
+    let serviceConfig = await prisma.serviceConfig.findUnique({ where: { serviceName: upperServiceName } });
+    
+    if (!serviceConfig) {
+      // Create it in disabled state if it doesn't exist
+      serviceConfig = await prisma.serviceConfig.create({
+        data: {
+          serviceName: upperServiceName,
+          isEnabled: false,
+          isActive: false,
+          connectionStatus: CONNECTION_STATUS.DISCONNECTED,
+          config: {},
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          configuredBy: 'system',
+        }
+      });
+    } else {
+      // Queue immediate service control job to stop the service first
+      const result = await enqueueClient.addServiceControlJob({
+        serviceName: upperServiceName,
+        action: SERVICE_CONTROL_ACTIONS.STOP,
+      });
+      
+      if (result.error) {
+        logger.child('[disable-service]').warn(`Failed to queue service control job: ${result.error}`);
+      } else {
+        logger.child('[disable-service]').info(`Queued service stop job: ${result.jobId}`);
+      }
+      
+      // Update the service config to disabled state (don't delete)
+      serviceConfig = await prisma.serviceConfig.update({
+        where: { serviceName: upperServiceName },
+        data: { 
+          isEnabled: false,
+          isActive: false,
+          connectionStatus: CONNECTION_STATUS.DISCONNECTED,
+          qrCode: null,
+          lastError: null,
+          updatedAt: new Date(),
+        }
+      });
     }
     
-    // Delete the service config from database
-    await prisma.serviceConfig.delete({
-      where: { serviceName: serviceName.toUpperCase() }
-    });
+    // Invalidate service config cache
+    await cache.invalidateServiceConfig(upperServiceName);
     
     res.status(200).json({ 
       success: true, 
-      message: `${serviceName} disabled and deleted successfully` 
+      message: `${serviceName} disabled successfully`,
+      data: serviceConfig
     } as APIResponseType);
   } catch (error) {
     logger.error('Error disabling service:', error as Error);
@@ -176,7 +259,7 @@ export async function disableServiceController(req: Request, res: Response): Pro
 /**
  * POST /admin/service/:serviceName/disconnect
  * Disconnect a service permanently (delete record)
- * Worker should cleanup and remove session/service data
+ * The notification worker's service manager will detect the missing config
  */
 export async function disconnectServiceController(req: Request, res: Response): Promise<void> {
   try {
@@ -187,20 +270,12 @@ export async function disconnectServiceController(req: Request, res: Response): 
       return;
     }
     
-    // Enqueue job for worker to disconnect and cleanup service
-    const adminUser = (req as any).user?.firstName || 'unknown-admin';
-    const jobData: AddServiceControlJobType = {
-      action: SERVICE_CONTROL_ACTIONS.DISCONNECT,
-      serviceName: serviceName.toUpperCase() as SERVICE_NAMES,
-      triggeredBy: adminUser,
-    };
-    const result = await queueClient.addAServiceControlJob(jobData);
-
-    if (result?.error) {
-      logger.error(`Failed to enqueue service control: ${result.error}`);
-    }
-    
+    // Delete the service config - the notification worker will detect this
+    // and the service manager will stop using this channel
     await prisma.serviceConfig.delete({ where: { serviceName: serviceName.toUpperCase() } });
+    
+    // Invalidate service config cache
+    await cache.invalidateServiceConfig(serviceName.toUpperCase());
     
     res.status(200).json({ success: true, message: `${serviceName} disconnected and cleaned up` } as APIResponseType);
   } catch (error) {
@@ -318,11 +393,143 @@ export async function configureServiceController(req: Request, res: Response): P
       message: `${serviceName} configuration updated`, 
       data: config 
     } as APIResponseType);
+    
+    // Invalidate service config cache after successful update
+    await cache.invalidateServiceConfig(upperServiceName);
+    
   } catch (error) {
     logger.error('Error configuring service:', error as Error);
     res.status(500).json({ 
       success: false, 
       message: `Failed to configure ${req.params.serviceName}` 
+    } as APIResponseType);
+  }
+}
+
+/**
+ * POST /admin/service/:serviceName/test
+ * Test a service by sending a test message
+ * For Email: sends a test email to the configured user
+ * For WhatsApp: sends a test message to a provided phone number
+ */
+export async function testServiceController(req: Request, res: Response): Promise<void> {
+  try {
+    const { serviceName } = req.params;
+    const { phoneNumber } = req.body; // For WhatsApp testing
+    const upperServiceName = serviceName.toUpperCase() as SERVICE_NAMES;
+    
+    // Validate service name
+    if (!Object.values(SERVICE_NAMES).includes(upperServiceName)) {
+      res.status(400).json({ success: false, message: `Invalid service name: ${serviceName}` } as APIResponseType);
+      return;
+    }
+    
+    const serviceConfig = await prisma.serviceConfig.findUnique({ where: { serviceName: upperServiceName } });
+    
+    if (!serviceConfig) {
+      res.status(404).json({ success: false, message: `${serviceName} is not configured` } as APIResponseType);
+      return;
+    }
+    
+    if (!serviceConfig.isEnabled) {
+      res.status(400).json({ success: false, message: `${serviceName} is not enabled` } as APIResponseType);
+      return;
+    }
+    
+    if (upperServiceName === SERVICE_NAMES.EMAIL) {
+      // Test email service
+      const emailConfig = serviceConfig.config as Record<string, unknown>;
+      
+      if (!emailConfig?.smtpHost || !emailConfig?.smtpUser) {
+        res.status(400).json({ success: false, message: 'Email service is not configured' } as APIResponseType);
+        return;
+      }
+      
+      const nodemailer = await import('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: String(emailConfig.smtpHost),
+        port: parseInt(String(emailConfig.smtpPort || 587)),
+        secure: emailConfig.smtpSecure === true,
+        auth: {
+          user: String(emailConfig.smtpUser),
+          pass: String(emailConfig.smtpPass),
+        },
+      });
+      
+      await transporter.verify();
+      await transporter.sendMail({
+        from: `"FundifyHub Test" <${emailConfig.smtpUser}>`,
+        to: String(emailConfig.smtpUser),
+        subject: '✅ FundifyHub Email Service Test',
+        text: 'This is a test email from FundifyHub. Your email service is working correctly!',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px;">
+            <h2 style="color: #10b981;">✅ Email Service Test Successful!</h2>
+            <p>This is a test email from FundifyHub.</p>
+            <p>Your email service is working correctly and can send notifications.</p>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+            <p style="color: #6b7280; font-size: 12px;">Sent at: ${new Date().toISOString()}</p>
+          </div>
+        `,
+      });
+      
+      res.status(200).json({ 
+        success: true, 
+        message: `Test email sent successfully to ${emailConfig.smtpUser}` 
+      } as APIResponseType);
+      return;
+    }
+    
+    if (upperServiceName === SERVICE_NAMES.WHATSAPP) {
+      // Test WhatsApp service - requires a phone number
+      if (!phoneNumber) {
+        res.status(400).json({ 
+          success: false, 
+          message: 'Phone number is required to test WhatsApp service' 
+        } as APIResponseType);
+        return;
+      }
+      
+      // Check if WhatsApp is connected
+      if (serviceConfig.connectionStatus !== CONNECTION_STATUS.CONNECTED && 
+          serviceConfig.connectionStatus !== CONNECTION_STATUS.AUTHENTICATED) {
+        res.status(400).json({ 
+          success: false, 
+          message: `WhatsApp is not connected. Current status: ${serviceConfig.connectionStatus}` 
+        } as APIResponseType);
+        return;
+      }
+      
+      // Queue a service test job to send WhatsApp message directly
+      const testResult = await enqueueClient.addServiceControlJob({
+        serviceName: upperServiceName,
+        action: SERVICE_CONTROL_ACTIONS.TEST,
+        config: { phoneNumber },
+      });
+      
+      if (testResult.error) {
+        res.status(500).json({ 
+          success: false, 
+          message: `Failed to queue test message: ${testResult.error}` 
+        } as APIResponseType);
+        return;
+      }
+      
+      res.status(200).json({ 
+        success: true, 
+        message: `Test WhatsApp message sent to ${phoneNumber}`,
+        data: { jobId: testResult.jobId }
+      } as APIResponseType);
+      return;
+    }
+    
+    res.status(400).json({ success: false, message: `Testing not supported for ${serviceName}` } as APIResponseType);
+  } catch (error) {
+    const contextLogger = logger.child('[test-service]');
+    contextLogger.error('Failed to test service:', error as Error);
+    res.status(500).json({ 
+      success: false, 
+      message: `Test failed: ${(error as Error).message}` 
     } as APIResponseType);
   }
 }

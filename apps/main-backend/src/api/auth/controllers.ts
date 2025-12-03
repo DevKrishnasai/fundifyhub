@@ -1,16 +1,21 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import redis from '../../utils/redis'
 import { createOtpSession, verifyOtpSession } from '../../utils/otpStore'
 import { prisma } from '@fundifyhub/prisma';
-import { LoginAlertPayloadType, OTPVerificationPayloadType, TEMPLATE_NAMES, WelcomePayloadType, SERVICE_NAMES, ROLES } from '@fundifyhub/types';
-import { loginSchema, registerSchema } from '@fundifyhub/types';
+import { ROLES } from '@fundifyhub/types';
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 import { APIResponseType } from '../../types';
-import queueClient from '../../utils/queues';
 import { generateAccessToken } from '../../utils/jwt';
 import config from '../../utils/config';
+import { auditAuth, auditUser } from '../../utils/audit';
+import {
+  sendOTPNotification,
+  sendWelcomeNotification,
+  sendLoginAlertNotification,
+  sendPasswordResetNotification,
+} from '../../utils/notifications';
 
 /**
  * Check if email/phone is available for registration
@@ -154,35 +159,17 @@ export async function sendOTP(
   const { sessionId } = await createOtpSession({ identifier, type: email ? 'EMAIL' : 'PHONE', otp, ttlSeconds: 10 * 60 })
 
     try {
-      const basePayload: OTPVerificationPayloadType = {
-        email: email || '',
-        phoneNumber: phone || '',
-        otpCode: otp,
-        expiresInMinutes: 10,
-        companyName: 'Dummy Hub',
-        supportUrl: 'https://support.fundifyhub.com',
-        verifyUrl: 'https://app.fundifyhub.com/verify-otp',
-        companyUrl: 'https://fundifyhub.com',
-        logoUrl: 'https://fundifyhub.com/logo.png',
-      };
-
-      // Enqueue per-service so template is executed only for the intended channel.
-      // If both email and phone are provided (e.g., registration), we enqueue two jobs
-      // with service-specific variables to avoid broadcasting to all supported services.
-      const enqueueResults: Promise<any>[] = []
-
-      if (email) {
-        const emailPayload = { ...basePayload, phoneNumber: '' } as OTPVerificationPayloadType
-        enqueueResults.push(queueClient.addAJob(TEMPLATE_NAMES.OTP_VERIFICATION, emailPayload, { services: [SERVICE_NAMES.EMAIL] }));
-      }
-
-      if (phone) {
-        const whatsappPayload = { ...basePayload, email: '' } as OTPVerificationPayloadType
-        // Use WHATSAPP as the channel for phone-based OTPs (template supports it)
-        enqueueResults.push(queueClient.addAJob(TEMPLATE_NAMES.OTP_VERIFICATION, whatsappPayload, { services: [SERVICE_NAMES.WHATSAPP] }));
-      }
-
-      await Promise.all(enqueueResults);
+      // Send OTP notification using the new notification system
+      await sendOTPNotification(
+        {
+          userId: '', // No user yet - this is pre-registration
+          email: email || undefined,
+          phoneNumber: phone || undefined,
+          name: undefined,
+        },
+        otp,
+        10
+      );
     } catch (err) {
       logger.error('OTP enqueue error:', err as Error);
     }
@@ -348,9 +335,8 @@ export async function register(
             roles: [ROLES.CUSTOMER],
             emailVerified: true,
             phoneVerified: true,
-            // Cast to any to satisfy transient type differences between generated Prisma client
-            // and local types during the migration. After regenerating clients this can be tightened.
-            district: district ? ([district] as any) : ([] as any)
+            // district is String[] in Prisma schema
+            district: district ? [district] : []
           },
         });
 
@@ -369,22 +355,26 @@ export async function register(
 
       if (email.toLowerCase()) {
         try {
-          const welcomePayload: WelcomePayloadType = {
+          await sendWelcomeNotification({
+            userId: user.id,
             email: email.toLowerCase(),
             phoneNumber: phoneNumber,
-            customerName: firstName,
-            supportUrl: 'https://support.fundifyhub.com',
-            logoUrl: 'https://fundifyhub.com/logo.png',
-            companyName: 'Dummy Hub',
-            companyUrl: 'https://fundifyhub.com'
-          };
-          await queueClient.addAJob(TEMPLATE_NAMES.WELCOME, welcomePayload);
+            name: firstName,
+          });
         } catch (err) {
           // TODO: Emit metric/alert for failed welcome email enqueue. Consider retries
           // and not blocking registration on welcome-email delivery.
           logger.error('Failed to enqueue welcome email:', err as Error);
         }
       }
+
+      // Audit user registration
+      auditUser.created(req, user.id, {
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        roles: user.roles,
+      }).catch(() => {});
 
       res.status(201).json({
         success: true,
@@ -459,6 +449,8 @@ export async function login(
       where: { email: email.toLowerCase() },
     });
     if (!user || !user.password) {
+      // Audit failed login attempt - user not found
+      auditAuth.login(req, '', email.toLowerCase(), false).catch(() => {});
       res.status(401).json({
         success: false,
         message: 'Invalid email or password',
@@ -468,6 +460,8 @@ export async function login(
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
+      // Audit failed login attempt - wrong password
+      auditAuth.login(req, user.id, user.email, false).catch(() => {});
       res.status(401).json({
         success: false,
         message: 'Invalid email or password',
@@ -486,7 +480,7 @@ export async function login(
       roles: user.roles,
       firstName: user.firstName,
       lastName: user.lastName,
-      districts: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
+      districts: user.district, // user.district is String[] in Prisma schema
       isActive: user.isActive,
     });
 
@@ -498,23 +492,37 @@ export async function login(
       path: '/',
     });
 
+    // Set a non-httpOnly token for socket authentication
+    // This is safe because it's the same token, just accessible to JS for WebSocket auth
+    res.cookie('socketToken', token, {
+      httpOnly: false,
+      secure: config.nodeEnv === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+
+    // Audit successful login
+    auditAuth.login(req, user.id, user.email, true).catch(() => {});
+
     (async () => {
       try {
         const ip =
           (req.headers['x-forwarded-for'] as string) || req.ip || req.socket?.remoteAddress || '';
         const userAgent = String(req.headers['user-agent'] || '');
-        const alertPayload: LoginAlertPayloadType = {
-          email: user.email,
-          phoneNumber: user.phoneNumber!,
-          customerName: user.firstName,
-          time: new Date().toISOString(),
-          location: ip,
-          device: userAgent,
-          supportUrl: 'https://support.fundifyhub.com',
-          resetPasswordUrl: 'https://app.fundifyhub.com/reset-password',
-          companyName: 'Dummy Hub',
-        };
-        await queueClient.addAJob(TEMPLATE_NAMES.LOGIN_ALERT, alertPayload);
+        await sendLoginAlertNotification(
+          {
+            userId: user.id,
+            email: user.email,
+            phoneNumber: user.phoneNumber || undefined,
+            name: user.firstName,
+          },
+          {
+            device: userAgent,
+            location: ip,
+            time: new Date().toISOString(),
+          }
+        );
       } catch (err) {
         logger.error('Failed preparing login alert payload:', err as Error);
       }
@@ -530,7 +538,7 @@ export async function login(
           firstName: user.firstName,
           lastName: user.lastName,
           roles: Array.isArray(user.roles) ? user.roles : [ROLES.CUSTOMER],
-          districts: Array.isArray(user.district) ? (user.district as any) : (user.district ? ([user.district] as any) : ([] as any)),
+          districts: user.district, // user.district is String[] in Prisma schema
           isActive: user.isActive ?? true,
         },
       },
@@ -554,10 +562,18 @@ export async function logout(
         where: { id: userId },
         data: { refreshToken: null },
       });
+      // Audit logout
+      auditAuth.logout(req).catch(() => {});
       logger.info(`User logged out: ${userId}`);
     }
     res.clearCookie('accessToken', {
       httpOnly: true,
+      secure: config.nodeEnv === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
+    res.clearCookie('socketToken', {
+      httpOnly: false,
       secure: config.nodeEnv === 'production',
       sameSite: 'lax',
       path: '/',
@@ -576,4 +592,386 @@ export async function logout(
   }
 }
 
+/**
+ * Change user password
+ *
+ * POST /api/v1/auth/change-password
+ * Body: { currentPassword: string, newPassword: string }
+ * Response: { success: boolean, message: string }
+ *
+ * Requires authentication. Validates current password before updating.
+ * Password must meet minimum requirements (8 characters).
+ */
+export async function changePassword(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+      return;
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required',
+      });
+      return;
+    }
+
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      res.status(400).json({
+        success: false,
+        message: 'New password must be at least 8 characters long',
+      });
+      return;
+    }
+
+    // Fetch user with password
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, password: true },
+    });
+
+    if (!user || !user.password) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+      return;
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
+      res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect',
+      });
+      return;
+    }
+
+    // Check if new password is same as current
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    if (isSamePassword) {
+      res.status(400).json({
+        success: false,
+        message: 'New password must be different from current password',
+      });
+      return;
+    }
+
+    // Hash new password
+    const saltRounds = Number(config.bcrypt.rounds);
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    // Audit password change
+    auditAuth.passwordChanged(req, userId).catch(() => {});
+
+    logger.info(`Password changed for user: ${userId}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password changed successfully',
+    });
+  } catch (error) {
+    logger.error('Change password error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change password',
+    });
+  }
+}
+
 // Wire up validation middleware and rate-limiters in the route definitions when ready.
+
+/**
+ * Request password reset (Forgot Password)
+ *
+ * POST /api/v1/auth/forgot-password
+ * Body: { email: string }
+ * Response: { success: boolean, message: string }
+ *
+ * Generates a password reset token and sends a reset link via email.
+ * Token expires after 1 hour. Always returns success to prevent email enumeration.
+ */
+export async function forgotPassword(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const parseResult = forgotPasswordSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const e of parseResult.error.errors) {
+        const key = e.path?.[0] ? String(e.path[0]) : 'form';
+        if (!fieldErrors[key]) fieldErrors[key] = e.message;
+      }
+      res.status(400).json({
+        success: false,
+        message: 'Invalid request',
+        fieldErrors,
+      });
+      return;
+    }
+
+    const { email } = parseResult.data;
+    const normalizedEmail = email.toLowerCase();
+
+    // Always respond with success to prevent email enumeration
+    const successResponse = () => {
+      res.status(200).json({
+        success: true,
+        message: 'If an account exists with this email, a password reset link has been sent.',
+      });
+    };
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true, email: true, firstName: true, phoneNumber: true, isActive: true },
+    });
+
+    // If user doesn't exist, still return success (prevent enumeration)
+    if (!user) {
+      logger.debug('[ForgotPassword] User not found, returning generic response', { email: normalizedEmail });
+      successResponse();
+      return;
+    }
+
+    // If user is inactive, still return success (prevent enumeration)
+    if (!user.isActive) {
+      logger.debug('[ForgotPassword] Inactive user attempted reset', { userId: user.id });
+      successResponse();
+      return;
+    }
+
+    // Generate secure reset token (32 bytes = 64 hex characters)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    // Hash the token before storing (so DB theft doesn't compromise tokens)
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    
+    // Token expires in 1 hour
+    const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000);
+
+    // Store hashed token in database
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetToken: hashedToken,
+        resetTokenExpiry,
+      },
+    });
+
+    // Build reset URL
+    const frontendUrl = config.server.frontendUrl || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(normalizedEmail)}`;
+
+    // Send password reset email
+    try {
+      await sendPasswordResetNotification(
+        {
+          userId: user.id,
+          email: user.email,
+          phoneNumber: user.phoneNumber || undefined,
+          name: user.firstName,
+        },
+        resetUrl,
+        60 // expires in 60 minutes
+      );
+      logger.info('[ForgotPassword] Reset email sent', { userId: user.id });
+    } catch (err) {
+      logger.error('[ForgotPassword] Failed to send reset email:', err as Error);
+      // Don't fail the request - user can try again
+    }
+
+    // Audit the reset request
+    auditAuth.passwordResetRequested(req, user.id).catch(() => {});
+
+    successResponse();
+  } catch (error) {
+    logger.error('[ForgotPassword] Error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process password reset request',
+    });
+  }
+}
+
+/**
+ * Reset password with token
+ *
+ * POST /api/v1/auth/reset-password
+ * Body: { token: string, email: string, newPassword: string }
+ * Response: { success: boolean, message: string }
+ *
+ * Validates the reset token and updates the user's password.
+ * Token is invalidated after successful use.
+ */
+export async function resetPassword(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const parseResult = resetPasswordSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const e of parseResult.error.errors) {
+        const key = e.path?.[0] ? String(e.path[0]) : 'form';
+        if (!fieldErrors[key]) fieldErrors[key] = e.message;
+      }
+      res.status(400).json({
+        success: false,
+        message: 'Invalid request',
+        fieldErrors,
+      });
+      return;
+    }
+
+    const { token, email, newPassword } = parseResult.data;
+    const normalizedEmail = email.toLowerCase();
+
+    // Hash the provided token to compare with stored hash
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with matching email and valid token
+    const user = await prisma.user.findFirst({
+      where: {
+        email: normalizedEmail,
+        resetToken: hashedToken,
+        resetTokenExpiry: {
+          gt: new Date(), // Token must not be expired
+        },
+      },
+      select: { id: true, email: true, password: true },
+    });
+
+    if (!user) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token. Please request a new password reset.',
+      });
+      return;
+    }
+
+    // Check if new password is same as current (optional but good UX)
+    if (user.password) {
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
+      if (isSamePassword) {
+        res.status(400).json({
+          success: false,
+          message: 'New password must be different from your current password',
+        });
+        return;
+      }
+    }
+
+    // Hash new password
+    const saltRounds = Number(config.bcrypt.rounds);
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update password and clear reset token (atomic transaction)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetToken: null,
+        resetTokenExpiry: null,
+      },
+    });
+
+    // Audit password reset
+    auditAuth.passwordReset(req, user.id).catch(() => {});
+
+    logger.info('[ResetPassword] Password reset successful', { userId: user.id });
+
+    res.status(200).json({
+      success: true,
+      message: 'Password has been reset successfully. You can now log in with your new password.',
+    });
+  } catch (error) {
+    logger.error('[ResetPassword] Error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset password',
+    });
+  }
+}
+
+/**
+ * Validate password reset token (check if token is valid)
+ *
+ * GET /api/v1/auth/validate-reset-token?token=...&email=...
+ * Response: { success: boolean, message: string, data?: { valid: boolean } }
+ *
+ * Allows frontend to check if a reset link is valid before showing the form.
+ */
+export async function validateResetToken(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const { token, email } = req.query;
+
+    if (!token || !email || typeof token !== 'string' || typeof email !== 'string') {
+      res.status(400).json({
+        success: false,
+        message: 'Token and email are required',
+        data: { valid: false },
+      });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase();
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Check if token exists and is not expired
+    const user = await prisma.user.findFirst({
+      where: {
+        email: normalizedEmail,
+        resetToken: hashedToken,
+        resetTokenExpiry: {
+          gt: new Date(),
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!user) {
+      res.status(200).json({
+        success: true,
+        message: 'Token is invalid or expired',
+        data: { valid: false },
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Token is valid',
+      data: { valid: true },
+    });
+  } catch (error) {
+    logger.error('[ValidateResetToken] Error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to validate token',
+      data: { valid: false },
+    });
+  }
+}

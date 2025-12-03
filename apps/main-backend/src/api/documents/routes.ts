@@ -10,7 +10,6 @@ import {
   getBulkSignedUrlsController,
   deleteDocumentController,
   deleteFilesByFileKeysController,
-  verifyDocumentController,
 } from "./controllers";
 
 const router: ExpressRouter = Router();
@@ -71,11 +70,5 @@ router.delete("/:id", deleteDocumentController);
  * Deletes files from UploadThing storage by their fileKeys (no DB record required)
  */
 router.post("/delete-by-filekeys", deleteFilesByFileKeysController);
-
-/**
- * PATCH /api/v1/documents/:id/verify
- * Mark document as verified
- */
-router.patch("/:id/verify", verifyDocumentController);
 
 export default router;

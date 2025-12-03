@@ -1,8 +1,8 @@
 import type { Request, Response } from 'express';
 import { prisma } from '@fundifyhub/prisma';
 import { calculateEmiBreakdown } from '@fundifyhub/utils';
-import { createEnqueueClient } from '@fundifyhub/utils/src/enqueue';
-import { TEMPLATE_NAMES, ROLES } from '@fundifyhub/types';
+import { ROLES } from '@fundifyhub/types';
+import { sendEMIReminderNotification } from '../../utils/notifications';
 
 /**
  * GET /api/v1/payments/loan/:loanId/total-due
@@ -190,24 +190,22 @@ export const payEmiController = async (req: Request, res: Response) => {
     });
 
     // Send payment confirmation notification
-    const enqueueClient = createEnqueueClient({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379')
-    });
-
-    await enqueueClient.addAJob(TEMPLATE_NAMES.EMI_REMINDER, {
-      customerName: emi.loan.request.customer.firstName + ' ' + emi.loan.request.customer.lastName,
-      email: emi.loan.request.customer.email,
-      phoneNumber: emi.loan.request.customer.phoneNumber || '',
-      loanNumber: emi.loan.loanNumber || '',
-      emiNumber: emi.emiNumber,
-      emiAmount: breakdown.totalDue,
-      dueDate: emi.dueDate.toISOString().split('T')[0],
-      daysUntilDue: 0, // Payment completed
-      totalOutstanding: 0, // Will be calculated if needed
-      paymentUrl: '', // Not needed for confirmation
-      companyName: 'FundifyHub'
-    });
+    await sendEMIReminderNotification(
+      {
+        userId: emi.loan.request.customer.id,
+        email: emi.loan.request.customer.email || undefined,
+        phoneNumber: emi.loan.request.customer.phoneNumber || undefined,
+        name: `${emi.loan.request.customer.firstName} ${emi.loan.request.customer.lastName}`,
+      },
+      {
+        loanNumber: emi.loan.loanNumber || '',
+        emiNumber: emi.emiNumber,
+        emiAmount: breakdown.totalDue,
+        dueDate: emi.dueDate.toISOString().split('T')[0],
+        daysUntilDue: 0, // Payment completed
+        totalOutstanding: 0,
+      }
+    );
 
     return res.json({
       success: true,

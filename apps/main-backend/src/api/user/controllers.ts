@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
-import { Prisma, prisma } from '@fundifyhub/prisma';
-import { ROLES } from '@fundifyhub/types';
-import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, AssetPledgePayloadType, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
+import { Prisma, prisma, RequestStatus } from '@fundifyhub/prisma';
+import { ROLES, ALLOWED_IMAGE_TYPES } from '@fundifyhub/types';
+import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 import { CLIENT_CONSTANTS } from '@fundifyhub/types';
 import { generateSignedUrl } from '../../utils/uploadthing';
 import { normalizeDistricts } from '../../utils/district';
+import { sendAssetPledgeNotification } from '../../utils/notifications';
+import { cache, CACHE_KEYS, CACHE_TTL } from '../../utils/cache';
+import { auditUser } from '../../utils/audit';
 
 /**
  * Adds new asset photos to the request (does not delete existing)
@@ -192,26 +195,24 @@ function buildRequestData(fields: {
   requestedAmount?: number;
   AdditionalDescription?: string;
   customerId: string;
-}): Prisma.RequestUncheckedCreateInput {
-  const requestData: Prisma.RequestUncheckedCreateInput = {
+}): Prisma.RequestCreateInput {
+  const requestData: Prisma.RequestCreateInput = {
     district: fields.district,
-    assetType: fields.assetType,
-    assetBrand: fields.assetBrand,
-    assetModel: fields.assetModel,
-    assetCondition: fields.assetCondition,
     requestedAmount: typeof fields.requestedAmount === 'number' ? fields.requestedAmount : 0,
-    customerId: fields.customerId,
+    customer: { connect: { id: fields.customerId } },
     requestNumber: `REQ${Date.now()}`, // Temporary request number
-    purchaseYear: fields.purchaseYear || new Date().getFullYear(), // Default to current year
+    asset: {
+      create: {
+        assetType: fields.assetType,
+        brand: fields.assetBrand,
+        model: fields.assetModel,
+        condition: fields.assetCondition,
+        purchaseYear: fields.purchaseYear || new Date().getFullYear(),
+        description: fields.AdditionalDescription || '',
+        estimatedValue: typeof fields.requestedAmount === 'number' ? fields.requestedAmount : null,
+      }
+    }
   };
-
-  if (typeof fields.purchaseYear === 'number') {
-    requestData.purchaseYear = fields.purchaseYear;
-  }
-
-  if (fields.AdditionalDescription) {
-    requestData.AdditionalDescription = fields.AdditionalDescription;
-  }
 
   return requestData;
 }
@@ -287,7 +288,7 @@ export async function addAssetController(req: Request, res: Response): Promise<v
       return;
     }
     const {
-      assetPhotos,
+      documents,
       assetType,
       assetBrand,
       assetModel,
@@ -309,30 +310,95 @@ export async function addAssetController(req: Request, res: Response): Promise<v
       return;
     }
 
-    // Step 3: Validate assetPhotos
-    if (!Array.isArray(assetPhotos) || assetPhotos.length < 2 || assetPhotos.length > 6) {
-      res.status(400).json({ success: false, message: 'Please upload between 2 and 6 asset photos.' });
-      logger.warn('Asset request validation failed: assetPhotos count invalid');
+    // Step 3: Validate documents array (strict requirements - no backward compatibility)
+    interface DocumentData {
+      fileKey: string;
+      fileName: string;
+      fileSize: number;
+      fileType: string;
+      documentType?: string;
+    }
+    
+    if (!documents || !Array.isArray(documents) || documents.length === 0) {
+      res.status(400).json({ success: false, message: 'Documents are required. Please upload all required documents.' });
+      logger.warn('Asset request validation failed: no documents provided');
       return;
     }
 
-    // Validate each photo has required metadata
-    const validPhotos = assetPhotos.filter((photo: AssetPhotoData) => {
-      return photo &&
-             typeof photo === 'object' &&
-             typeof photo.fileKey === 'string' &&
-             photo.fileKey.trim() !== '' &&
-             typeof photo.fileName === 'string' &&
-             photo.fileName.trim() !== '' &&
-             typeof photo.fileSize === 'number' &&
-             photo.fileSize > 0 &&
-             typeof photo.fileType === 'string' &&
-             photo.fileType.trim() !== '';
+    // Validate each document has required metadata
+    const validDocuments: DocumentData[] = documents.filter((doc: DocumentData) => {
+      return doc &&
+             typeof doc === 'object' &&
+             typeof doc.fileKey === 'string' &&
+             doc.fileKey.trim() !== '' &&
+             typeof doc.fileName === 'string' &&
+             doc.fileName.trim() !== '' &&
+             typeof doc.fileSize === 'number' &&
+             doc.fileSize > 0 &&
+             typeof doc.fileType === 'string' &&
+             doc.fileType.trim() !== '';
     });
 
-    if (validPhotos.length !== assetPhotos.length) {
-      res.status(400).json({ success: false, message: 'All asset photos must have valid metadata (fileKey, fileName, fileSize, fileType).' });
-      logger.warn('Asset request validation failed: invalid photo metadata');
+    if (validDocuments.length !== documents.length) {
+      res.status(400).json({ success: false, message: 'All documents must have valid metadata (fileKey, fileName, fileSize, fileType).' });
+      logger.warn('Asset request validation failed: invalid document metadata');
+      return;
+    }
+
+    // Strict document validation - all 4 categories required
+    const documentValidationErrors: string[] = [];
+
+    // 1. Asset Photos: min 2, max 6, images only
+    const assetPhotos = validDocuments.filter(d => 
+      d.documentType?.toUpperCase() === 'ASSET_PHOTO'
+    );
+    if (assetPhotos.length < 2) {
+      documentValidationErrors.push(`Asset Photos: minimum 2 required, you have ${assetPhotos.length}`);
+    }
+    if (assetPhotos.length > 6) {
+      documentValidationErrors.push(`Asset Photos: maximum 6 allowed, you have ${assetPhotos.length}`);
+    }
+    // Check asset photos are images only (not PDF)
+    const nonImageAssetPhotos = assetPhotos.filter(d => !ALLOWED_IMAGE_TYPES.includes(d.fileType));
+    if (nonImageAssetPhotos.length > 0) {
+      documentValidationErrors.push(`Asset Photos: only images allowed (JPEG, PNG, WebP). ${nonImageAssetPhotos.length} invalid file(s) found.`);
+    }
+
+    // 2. ID Proof: exactly 1
+    const idProofs = validDocuments.filter(d => 
+      d.documentType?.toUpperCase() === 'ID_PROOF'
+    );
+    if (idProofs.length !== 1) {
+      documentValidationErrors.push(`ID Proof: exactly 1 required, you have ${idProofs.length}`);
+    }
+
+    // 3. Address Proof: exactly 1
+    const addressProofs = validDocuments.filter(d => 
+      d.documentType?.toUpperCase() === 'ADDRESS_PROOF'
+    );
+    if (addressProofs.length !== 1) {
+      documentValidationErrors.push(`Address Proof: exactly 1 required, you have ${addressProofs.length}`);
+    }
+
+    // 4. Asset Documents: min 1, max 4
+    const assetDocs = validDocuments.filter(d => 
+      d.documentType?.toUpperCase() === 'ASSET_DOCUMENT'
+    );
+    if (assetDocs.length < 1) {
+      documentValidationErrors.push(`Asset Documents: minimum 1 required, you have ${assetDocs.length}`);
+    }
+    if (assetDocs.length > 4) {
+      documentValidationErrors.push(`Asset Documents: maximum 4 allowed, you have ${assetDocs.length}`);
+    }
+
+    // Return all validation errors at once
+    if (documentValidationErrors.length > 0) {
+      res.status(400).json({ 
+        success: false, 
+        message: 'Document validation failed',
+        errors: documentValidationErrors
+      });
+      logger.warn('Asset request validation failed: ' + documentValidationErrors.join('; '));
       return;
     }
 
@@ -367,23 +433,47 @@ export async function addAssetController(req: Request, res: Response): Promise<v
       const reqCreated = await tx.request.create({ data: requestData });
 
       // Prepare document objects for bulk creation with full metadata
-      const documentData = validPhotos.map((photo: AssetPhotoData, idx: number) => ({
+      // Map documentType to appropriate category
+      const getDocumentCategory = (docType: string): string => {
+        const typeUpper = docType?.toUpperCase() || 'OTHER';
+        switch (typeUpper) {
+          case 'ASSET_PHOTO':
+          case 'ASSET_DOCUMENT':
+          case 'PURCHASE_RECEIPT':
+            return DOCUMENT_CATEGORY.ASSET;
+          case 'ID_PROOF':
+          case 'ADDRESS_PROOF':
+            return DOCUMENT_CATEGORY.IDENTITY;
+          default:
+            return DOCUMENT_CATEGORY.OTHER;
+        }
+      };
+
+      const documentData = validDocuments.map((doc, idx: number) => ({
         requestId: reqCreated.id,
-        fileKey: photo.fileKey,
-        fileName: photo.fileName,
-        fileSize: photo.fileSize,
-        fileType: photo.fileType,
-        documentType: 'asset_photo',
-        documentCategory: DOCUMENT_CATEGORY.ASSET,
+        fileKey: doc.fileKey,
+        fileName: doc.fileName,
+        fileSize: doc.fileSize,
+        fileType: doc.fileType,
+        documentType: (doc.documentType || 'OTHER').toLowerCase(),
+        documentCategory: getDocumentCategory(doc.documentType || 'OTHER'),
         uploadedBy: customerId as string,
-        uploaderRole: 'USER_SUBMITTED', // Customer is uploading asset photos
+        uploaderRole: 'USER_SUBMITTED',
         displayOrder: idx + 1,
       }));
+      
       await tx.document.createMany({ data: documentData });
       return reqCreated;
     });
 
-    logger.info(`Asset request created: ${createdRequest.id} with ${validPhotos.length} photos`);
+    const assetPhotoCount = validDocuments.filter(d => 
+      d.documentType?.toUpperCase() === 'ASSET_PHOTO'
+    ).length;
+    const idProofCount = validDocuments.filter(d => d.documentType?.toUpperCase() === 'ID_PROOF').length;
+    const addressProofCount = validDocuments.filter(d => d.documentType?.toUpperCase() === 'ADDRESS_PROOF').length;
+    const assetDocCount = validDocuments.filter(d => d.documentType?.toUpperCase() === 'ASSET_DOCUMENT').length;
+    
+    logger.info(`Asset request created: ${createdRequest.id} with ${assetPhotoCount} asset photos, ${idProofCount} ID proof, ${addressProofCount} address proof, ${assetDocCount} asset documents`);
     res.status(201).json({
       success: true,
       message: 'Asset request created successfully',
@@ -393,22 +483,27 @@ export async function addAssetController(req: Request, res: Response): Promise<v
     // Step 6: Enqueue admin notification (non-blocking)
     (async () => {
       try {
-        const templateName = 'assetPledge';
         const customerName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim() || undefined;
         let recipientEmail: string | undefined = undefined;
+        let recipientUserId: string | undefined = undefined;
+        
         try {
           // Prisma filters for string[] can be awkward across generated types; query candidates
           // then filter in JS by district membership.
           const candidates = await prisma.user.findMany({
             where: { roles: { has: ROLES.DISTRICT_ADMIN } },
-            select: { email: true, district: true },
+            select: { id: true, email: true, district: true, phoneNumber: true, firstName: true },
           });
-          const districtAdmin = candidates.find((u) => Array.isArray((u as any).district) && (u as any).district.includes(district));
-          recipientEmail = districtAdmin?.email;
+          const districtAdmin = candidates.find((u) => Array.isArray(u.district) && u.district.includes(district));
+          if (districtAdmin) {
+            recipientUserId = districtAdmin.id;
+            recipientEmail = districtAdmin.email;
+          }
         } catch (e) {
           logger.warn('Failed to lookup district admin email, will fallback to global admin');
         }
-        if (!recipientEmail) {
+        
+        if (!recipientUserId) {
           // fallback: find any super admin or district admin (global admin presence)
           const anyAdmin = await prisma.user.findFirst({
             where: {
@@ -417,22 +512,31 @@ export async function addAssetController(req: Request, res: Response): Promise<v
                 { roles: { has: ROLES.DISTRICT_ADMIN } },
               ],
             },
-            select: { email: true },
+            select: { id: true, email: true, phoneNumber: true, firstName: true },
           });
-          recipientEmail = anyAdmin?.email;
+          if (anyAdmin) {
+            recipientUserId = anyAdmin.id;
+            recipientEmail = anyAdmin.email;
+          }
         }
-        // const jobPayload: AssetPledgePayloadType = {
-        //   customerName,
-        //   assetName: `${assetBrand || ''} ${assetModel || ''}`.trim(),
-        //   amount: requestedAmount ?? 0,
-        //   district,
-        //   requestId: createdRequest.id,
-        //   companyName: process.env.COMPANY_NAME || 'Fundify',
-        //   timestamp: new Date().toISOString(),
-        //   additionalDescription: AdditionalDescription,
-        //   recipient: recipientEmail,
-        // };
-        // await enqueue(templateName, jobPayload, { services: [ServiceName.EMAIL] });
+        
+        if (recipientUserId) {
+          await sendAssetPledgeNotification(
+            {
+              userId: recipientUserId,
+              email: recipientEmail || undefined,
+              name: undefined, // Admin name not needed
+            },
+            {
+              assetName: `${assetBrand || ''} ${assetModel || ''}`.trim(),
+              amount: requestedAmount ?? 0,
+              district,
+              requestId: createdRequest.id,
+              timestamp: new Date().toISOString(),
+              additionalDescription: AdditionalDescription,
+            }
+          );
+        }
       } catch (err) {
         logger.error('Failed to enqueue assetPledge job:', err as Error);
       }
@@ -508,7 +612,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
       return;
     }
 // Either User or Admin/Agent can only update the request
-    const isAdminOrAgent = userRoles.some(role => ADMIN_AGENT_ROLES.includes(role));
+    const isAdminOrAgent = userRoles.some(role => (ADMIN_AGENT_ROLES as readonly string[]).includes(role));
     if (customerId !== existing.customerId || !isAdminOrAgent) {
       res.status(403).json({ success: false, message: 'Not authorized to update this request' });
       return;
@@ -777,17 +881,18 @@ export async function getUserRequestsController(req: Request, res: Response): Pr
     if (rawStatus) {
       const s = rawStatus.toUpperCase();
       // Map common keywords to arrays where helpful
+      // Cast to Prisma RequestStatus enum for type safety
       if (s === 'PENDING') {
-        where.currentStatus = { in: PENDING_REQUEST_STATUSES as any } as any;
+        where.currentStatus = { in: PENDING_REQUEST_STATUSES as RequestStatus[] };
       } else if (s === 'REJECTED') {
-        where.currentStatus = { in: [REQUEST_STATUS.REJECTED, REQUEST_STATUS.OFFER_DECLINED] as any } as any;
+        where.currentStatus = { in: [RequestStatus.REJECTED, RequestStatus.OFFER_DECLINED] };
       } else if (s === 'CLOSED') {
-        where.currentStatus = { in: [REQUEST_STATUS.CANCELLED, REQUEST_STATUS.COMPLETED] as any } as any;
+        where.currentStatus = { in: [RequestStatus.CANCELLED, RequestStatus.COMPLETED] };
       } else if (s === 'ACTIVE') {
-        where.currentStatus = { in: [REQUEST_STATUS.APPROVED, REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.ACTIVE] as any } as any;
+        where.currentStatus = { in: [RequestStatus.APPROVED, RequestStatus.AMOUNT_DISBURSED, RequestStatus.ACTIVE] };
       } else {
         // Fallback: if a direct enum value passed, match exactly
-        where.currentStatus = rawStatus as any;
+        where.currentStatus = rawStatus as RequestStatus;
       }
     }
 
@@ -797,8 +902,8 @@ export async function getUserRequestsController(req: Request, res: Response): Pr
       where.OR = [
         { id: { contains: search } },
         { requestNumber: { contains: search, mode: 'insensitive' } },
-        { assetBrand: { contains: search, mode: 'insensitive' } },
-        { assetModel: { contains: search, mode: 'insensitive' } },
+        { asset: { brand: { contains: search, mode: 'insensitive' } } },
+        { asset: { model: { contains: search, mode: 'insensitive' } } },
       ];
     }
 
@@ -809,6 +914,7 @@ export async function getUserRequestsController(req: Request, res: Response): Pr
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
+          asset: true,
           assignedAgent: { select: { id: true, firstName: true, lastName: true, email: true } },
           loan: { select: { id: true, approvedAmount: true, status: true } },
           _count: { select: { documents: true, comments: true, inspections: true } },
@@ -820,7 +926,15 @@ export async function getUserRequestsController(req: Request, res: Response): Pr
     res.status(200).json({
       success: true,
       message: 'Requests fetched',
-      data: { items, total, page, pageSize },
+      data: {
+        requests: items,
+        pagination: {
+          page,
+          limit: pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize)
+        }
+      },
     });
   } catch (error) {
     logger.error('Get user requests error:', error as Error);
@@ -1012,6 +1126,7 @@ export async function getTotalBorrowStats(userId: string): Promise<{ totalBorrow
 /**
  * GET /user/dashboard-stats
  * Returns dashboard statistics based on user role (protected)
+ * Uses Redis caching to reduce database load
  */
 export async function getDashboardStatsController(req: Request, res: Response): Promise<void> {
   try {
@@ -1034,7 +1149,22 @@ export async function getDashboardStatsController(req: Request, res: Response): 
     const isAgent = userRoles.includes(ROLES.AGENT);
     const isCustomer = userRoles.includes(ROLES.CUSTOMER);
 
-    const stats: any = {
+    // Determine role for cache key
+    const role = isSuperAdmin ? 'super_admin' : isDistrictAdmin ? 'district_admin' : isAgent ? 'agent' : 'customer';
+    const cacheKey = CACHE_KEYS.DASHBOARD_STATS(userId, role);
+
+    // Try to get from cache first
+    const cachedStats = await cache.get<Record<string, number>>(cacheKey);
+    if (cachedStats) {
+      res.status(200).json({
+        success: true,
+        data: cachedStats,
+        cached: true,
+      });
+      return;
+    }
+
+    const stats: Record<string, number> = {
       totalRequests: 0,
       activeLoans: 0,
       totalDisbursed: 0,
@@ -1056,27 +1186,36 @@ export async function getDashboardStatsController(req: Request, res: Response): 
         where: { currentStatus: { in: PENDING_REQUEST_STATUSES } },
       });
     } else if (isDistrictAdmin && userDistricts.length > 0) {
-      // District admin sees only their district stats
+      // District admin sees stats for:
+      // 1. Requests assigned to them (regardless of district)
+      // 2. Requests in their districts
+      const districtAdminWhere = {
+        OR: [
+          { assignedAdminId: userId },
+          { district: { in: userDistricts } }
+        ]
+      };
+
       stats.totalRequests = await prisma.request.count({
-        where: { district: { in: userDistricts } },
+        where: districtAdminWhere,
       });
       stats.activeLoans = await prisma.loan.count({
         where: {
           status: LOAN_STATUS.ACTIVE,
-          request: { district: { in: userDistricts } },
+          request: districtAdminWhere,
         },
       });
       const disbursedResult = await prisma.loan.aggregate({
         where: {
           status: { in: [LOAN_STATUS.ACTIVE, LOAN_STATUS.COMPLETED, LOAN_STATUS.DEFAULTED] },
-          request: { district: { in: userDistricts } },
+          request: districtAdminWhere,
         },
         _sum: { approvedAmount: true },
       });
       stats.totalDisbursed = disbursedResult._sum.approvedAmount ?? 0;
       stats.pendingCount = await prisma.request.count({
         where: {
-          district: { in: userDistricts },
+          ...districtAdminWhere,
           currentStatus: { in: PENDING_REQUEST_STATUSES },
         },
       });
@@ -1151,6 +1290,9 @@ export async function getDashboardStatsController(req: Request, res: Response): 
       });
     }
 
+    // Cache the results for dashboard TTL (2 minutes)
+    await cache.set(cacheKey, stats, CACHE_TTL.MEDIUM);
+
     res.status(200).json({
       success: true,
       data: stats,
@@ -1160,6 +1302,160 @@ export async function getDashboardStatsController(req: Request, res: Response): 
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve dashboard statistics',
+    });
+  }
+}
+
+/**
+ * PUT /user/profile
+ * Update current user profile (protected)
+ * Body: { firstName?: string, lastName?: string, phoneNumber?: string }
+ */
+export async function updateProfileController(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'User not found in token',
+      });
+      return;
+    }
+
+    const userId = req.user.id;
+    const { firstName, lastName, phoneNumber } = req.body;
+
+    // Validate at least one field is provided
+    if (!firstName && !lastName && !phoneNumber) {
+      res.status(400).json({
+        success: false,
+        message: 'At least one field (firstName, lastName, or phoneNumber) is required',
+      });
+      return;
+    }
+
+    // Validate firstName if provided
+    if (firstName !== undefined) {
+      if (typeof firstName !== 'string' || firstName.trim().length < 2) {
+        res.status(400).json({
+          success: false,
+          message: 'First name must be at least 2 characters',
+        });
+        return;
+      }
+    }
+
+    // Validate lastName if provided
+    if (lastName !== undefined) {
+      if (typeof lastName !== 'string' || lastName.trim().length < 2) {
+        res.status(400).json({
+          success: false,
+          message: 'Last name must be at least 2 characters',
+        });
+        return;
+      }
+    }
+
+    // Validate phoneNumber if provided
+    if (phoneNumber !== undefined) {
+      const phoneRegex = /^\+?[1-9]\d{9,14}$/;
+      if (typeof phoneNumber !== 'string' || !phoneRegex.test(phoneNumber.replace(/\s/g, ''))) {
+        res.status(400).json({
+          success: false,
+          message: 'Invalid phone number format',
+        });
+        return;
+      }
+    }
+
+    // Fetch current user for audit comparison
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, phoneNumber: true },
+    });
+
+    if (!currentUser) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+      return;
+    }
+
+    // Build update data
+    const updateData: Prisma.UserUpdateInput = {};
+    const previousValues: Record<string, string | null> = {};
+    const changes: Record<string, string> = {};
+
+    if (firstName !== undefined && firstName.trim() !== currentUser.firstName) {
+      updateData.firstName = firstName.trim();
+      previousValues.firstName = currentUser.firstName;
+      changes.firstName = firstName.trim();
+    }
+
+    if (lastName !== undefined && lastName.trim() !== currentUser.lastName) {
+      updateData.lastName = lastName.trim();
+      previousValues.lastName = currentUser.lastName;
+      changes.lastName = lastName.trim();
+    }
+
+    if (phoneNumber !== undefined && phoneNumber.replace(/\s/g, '') !== currentUser.phoneNumber) {
+      updateData.phoneNumber = phoneNumber.replace(/\s/g, '');
+      previousValues.phoneNumber = currentUser.phoneNumber;
+      changes.phoneNumber = phoneNumber.replace(/\s/g, '');
+    }
+
+    // Check if any actual changes
+    if (Object.keys(updateData).length === 0) {
+      res.status(200).json({
+        success: true,
+        message: 'No changes detected',
+      });
+      return;
+    }
+
+    // Update user
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        roles: true,
+        emailVerified: true,
+        phoneVerified: true,
+        isActive: true,
+        district: true,
+        phoneNumber: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      data: updateData,
+    });
+
+    // Audit the profile update
+    auditUser.updated(req, userId, changes, previousValues).catch(() => {});
+
+    // Clear user cache
+    await cache.del(CACHE_KEYS.USER_PROFILE(userId));
+
+    const normalizedUser: UserType = {
+      ...updatedUser,
+      districts: normalizeDistricts(updatedUser.district),
+    };
+
+    logger.info(`Profile updated for user: ${userId}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: { user: normalizedUser },
+    });
+  } catch (error) {
+    logger.error('Update profile error:', error as Error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update profile',
     });
   }
 }

@@ -299,7 +299,6 @@ export function AssetUpload({
       onUploadComplete(newUploadedFileResults);
     },
     onUploadError: (error) => {
-      console.error("Upload error:", error);
       setErrorMsg("Upload failed. Please try again.");
       onUploadError?.(error);
     },
@@ -407,9 +406,8 @@ export function AssetUpload({
             onFilesChange?.(uploadedFileResults);
             trackEvent('document_signed_url_refreshed', { fileKey: f.fileKey });
           }
-        } catch (err) {
+        } catch {
           // non-fatal; keep showing placeholder
-          console.debug('Failed to refresh signed url for', f.fileKey, err);
         }
       }
     })();

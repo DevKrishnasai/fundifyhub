@@ -1,4 +1,35 @@
-import { CONNECTION_STATUS, SERVICE_CONTROL_ACTIONS, SERVICE_NAMES, TEMPLATE_NAMES } from "./constants";
+import { CONNECTION_STATUS, SERVICE_NAMES, TEMPLATE_NAMES } from "./constants";
+
+// ---------- JSON VALUE TYPE ---------------
+// Type-safe replacement for `any` when dealing with JSON data
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonArray = JsonValue[];
+export type JsonObject = { [key: string]: JsonValue };
+export type JsonValue = JsonPrimitive | JsonArray | JsonObject;
+
+// ---------- SERVICE CONFIGURATION TYPES ---------------
+
+export interface EmailConfigType {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  from: string;
+}
+
+export interface ServiceConfigType {
+  serviceName: SERVICE_NAMES;
+  status: string;
+  isEnabled: boolean;
+  isActive: boolean;
+  connectionStatus: CONNECTION_STATUS;
+  lastConnectedAt?: Date;
+  lastError?: string;
+  config?: EmailConfigType | Record<string, unknown>;
+  qrCode?: string;
+}
+
+// ---------- UTILS ENV CONFIG TYPE ---------------
 
 export interface UtilsEnvConfigType {
   redis: {
@@ -13,10 +44,15 @@ export interface UserType {
   email: string;
   firstName: string;
   lastName: string;
+  phoneNumber?: string;
   roles: string[];
   // Districts assigned to the user. Always an array.
   districts: string[];
   isActive: boolean;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface JWTPayloadType extends UserType {}
@@ -191,7 +227,11 @@ export interface HistoryEventDescription {
 // TODO [P-3]: Fix any type usage below
 export interface TemplateDefinitionType<T extends TEMPLATE_NAMES> {
   supportedServices: SERVICE_NAMES[];
-  defaults?: JobOptionsType;
+  defaults?: {
+    priority?: number;
+    delay?: number;
+    attempts?: number;
+  };
   getSubject?: (payload: TemplatePayloadMapType[T]) => string;
   renderEmail?: (payload: TemplatePayloadMapType[T]) => Promise<string> | string;
   renderWhatsApp?: (payload: TemplatePayloadMapType[T]) => Promise<string> | string;
@@ -229,6 +269,34 @@ export interface LoginAlertPayloadType {
   supportUrl: string;
   resetPasswordUrl: string;
   companyName: string;
+}
+
+export interface PasswordResetPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+  companyName: string;
+  supportUrl: string;
+  companyUrl?: string;
+  logoUrl?: string;
+}
+
+export interface AdminUserCreatedPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
+  tempPassword: string;
+  loginUrl: string;
+  resetPasswordUrl: string;
+  companyName: string;
+  supportUrl: string;
+  companyUrl?: string;
+  logoUrl?: string;
+  createdByAdmin: string;
+  assignedRoles: string[];
+  assignedDistricts: string[];
 }
 
 export interface RequestStatusNotificationsPayloadType {
@@ -362,6 +430,8 @@ export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.OTP_VERIFICATION]: OTPVerificationPayloadType;
   [TEMPLATE_NAMES.WELCOME]: WelcomePayloadType;
   [TEMPLATE_NAMES.LOGIN_ALERT]: LoginAlertPayloadType;
+  [TEMPLATE_NAMES.PASSWORD_RESET]: PasswordResetPayloadType;
+  [TEMPLATE_NAMES.ADMIN_USER_CREATED]: AdminUserCreatedPayloadType;
   [TEMPLATE_NAMES.ASSET_PLEDGE]: AssetPledgePayloadType;
   [TEMPLATE_NAMES.EMI_REMINDER]: EMIReminderPayloadType;
   [TEMPLATE_NAMES.EMI_OVERDUE]: EMIOverduePayloadType;
@@ -372,42 +442,8 @@ export type TemplatePayloadMapType = {
 // -----------TEMPLATE RELATED END-----------
 
 // ------- JOB RELATED --------------
-export interface JobOptionsType {
-  services?: SERVICE_NAMES[];
-  priority?: number;
-  delay?: number;
-  attempts?: number;
-  backoff?: {type: 'fixed' | 'exponential'; delay: number;};
-}
 
-export interface AddJobResultType {
-  jobId: string | number;
-  error?: string;
-}
-
-export interface AddJobType<T extends TEMPLATE_NAMES> {
-  templateName: T;
-  variables: TemplatePayloadMapType[T];
-  options?: JobOptionsType;
-}
-
-export interface AddServiceControlJobType {
-  action: SERVICE_CONTROL_ACTIONS;
-  serviceName: SERVICE_NAMES;
-  reason?: string;
-  triggeredBy?: string;
-}
-
-export interface AddServiceStatusJobResultType extends AddJobResultType {}
-
-export interface ServiceStatusJobDataType {
-  serviceName: SERVICE_NAMES;
-  isActive: boolean;
-  connectionStatus: CONNECTION_STATUS;
-  lastError?: string;
-  timestamp: Date;
-}
-
+// NOTE: Legacy job types removed. Use NotificationRequest from notification-types.ts instead.
 
 // ------- JOB RELATED END ----------
 
@@ -452,6 +488,7 @@ export interface RequestType {
   
   // Assignment
   assignedAgentId: string | null;
+  assignedAdminId: string | null;
   inspectionScheduledAt: Date | null;
   
   submittedDate: Date;
@@ -461,6 +498,7 @@ export interface RequestType {
   // Relations
   customer?: UserType;
   assignedAgent?: UserType | null;
+  assignedAdmin?: UserType | null;
   loan?: LoanType | null;
   documents?: DocumentType[];
   emisSchedule?: EMIScheduleType[];
@@ -472,6 +510,7 @@ export interface RequestType {
   // this is applicable (for example after rejection).
   commentsEnabled?: boolean | null;
   inspections?: InspectionType[];
+  requestHistory?: RequestHistoryItem[];
 }
 
 export interface LoanType {
@@ -627,7 +666,7 @@ export interface DocumentType {
   status: string;
   description: string | null;
   displayOrder: number | null;
-  metadata: any | null; // JSON
+  metadata: JsonValue | null;
   createdAt: Date;
   updatedAt: Date;
   // Optional signed URL (runtime) for direct access to the file. Not stored in DB.

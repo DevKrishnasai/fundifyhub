@@ -15,6 +15,9 @@ export const BACKEND_API_CONFIG = {
       VERIFY_OTP: '/api/v1/auth/verify-otp',
       RESEND_OTP: '/api/v1/auth/resend-otp',
       VALIDATE: '/api/v1/user/validate',
+      CHANGE_PASSWORD: '/api/v1/auth/change-password',
+      FORGOT_PASSWORD: '/api/v1/auth/forgot-password',
+      RESET_PASSWORD: '/api/v1/auth/reset-password',
     },
     ADMIN: {
       SERVICES: '/api/v1/admin/service',
@@ -24,13 +27,24 @@ export const BACKEND_API_CONFIG = {
       SERVICE_DISABLE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disable`,
       SERVICE_DISCONNECT: (serviceName: string) => `/api/v1/admin/service/${serviceName}/disconnect`,
       SERVICE_CONFIGURE: (serviceName: string) => `/api/v1/admin/service/${serviceName}/configure`,
-  GET_ACTIVE_LOANS: '/api/v1/admin/get-active-loans',
-  GET_PENDING_REQUESTS: '/api/v1/admin/get-pending-requests',
+      SERVICE_TEST: (serviceName: string) => `/api/v1/admin/service/${serviceName}/test`,
+      GET_ACTIVE_LOANS: '/api/v1/admin/get-active-loans',
+      GET_PENDING_REQUESTS: '/api/v1/admin/get-pending-requests',
       REQUESTS_LIST: '/api/v1/admin/requests',
+      // Analytics endpoints
+      ANALYTICS_SUMMARY: '/api/v1/admin/analytics/summary',
+      ANALYTICS_TRENDS: '/api/v1/admin/analytics/trends',
+      ANALYTICS_DISTRICT_BREAKDOWN: '/api/v1/admin/analytics/district-breakdown',
+      ANALYTICS_REQUEST_STATUS: '/api/v1/admin/analytics/request-status',
+      // Audit logs endpoints
+      AUDIT_LOGS: '/api/v1/admin/audit-logs',
+      AUDIT_LOGS_STATS: '/api/v1/admin/audit-logs/stats',
+      AUDIT_LOG_BY_ID: (id: string) => `/api/v1/admin/audit-logs/${id}`,
+      AUDIT_LOGS_ENTITY: (entityType: string, entityId: string) => `/api/v1/admin/audit-logs/entity/${entityType}/${entityId}`,
     },
     USER: {
       PROFILE: '/api/v1/user/profile',
-      UPDATE_PROFILE: '/api/v1/user/profile/update',
+      UPDATE_PROFILE: '/api/v1/user/profile',
       UPLOAD_ASSET: '/api/v1/user/add-asset',
       UPDATE_ASSET: '/api/v1/user/update-asset',
       LIST_REQUESTS: '/api/v1/user/requests',
@@ -59,6 +73,9 @@ export const BACKEND_API_CONFIG = {
       GET_BY_ID: (id: string) => `/api/v1/requests/${id}`,
       GET_AGENTS_BY_DISTRICT: (district: string) => `/api/v1/requests/agents/${district}`,
       ASSIGN_AGENT: (id: string) => `/api/v1/requests/${id}/assign`,
+      SELF_ASSIGN_ADMIN: (id: string) => `/api/v1/requests/${id}/self-assign`,
+      ASSIGN_ADMIN: (id: string) => `/api/v1/requests/${id}/assign-admin`,
+      GET_ADMINS_BY_DISTRICT: (district: string) => `/api/v1/requests/admins/${district}`,
       CREATE_OFFER: (id: string) => `/api/v1/requests/${id}/offer`,
       CURRENT_OFFER: (id: string) => `/api/v1/requests/${id}/current-offer`,
       UPDATE_STATUS: (id: string) => `/api/v1/requests/${id}/status`,
@@ -80,6 +97,14 @@ export const BACKEND_API_CONFIG = {
       EMI_BREAKDOWN: (emiId: string) => `/api/v1/payments/emi/${emiId}/breakdown`,
       EMI_HISTORY: (emiId: string) => `/api/v1/payments/emi/${emiId}/history`,
     },
+    NOTIFICATIONS: {
+      LIST: '/api/v1/notifications',
+      UNREAD_COUNT: '/api/v1/notifications/unread-count',
+      MARK_READ: (id: string) => `/api/v1/notifications/${id}/read`,
+      MARK_ALL_READ: '/api/v1/notifications/read-all',
+      ARCHIVE: (id: string) => `/api/v1/notifications/${id}/archive`,
+      DELETE: (id: string) => `/api/v1/notifications/${id}`,
+    },
   }
 }
 
@@ -87,8 +112,8 @@ export const FRONTEND_API_CONFIG = {
   BASE_URL: frontendConfig.public.apiUrl,
   ENDPOINTS: {
     AUTH: {
-      LOGIN: '/auth/login',
-      REGISTER: '/auth/register'
+      LOGIN: '/login',
+      REGISTER: '/register'
     },
     CUSTOMER: {
       DASHBOARD: '/dashboard',
@@ -107,7 +132,8 @@ export const FRONTEND_API_CONFIG = {
  */
 export const FrontendPublicRoutes = [
   '/',
-  '/auth/login',
-  '/auth/register',
-  '/forgot-password',
+  '/login',
+  '/register',
+  '/reset-password',
+  '/reset-password/confirm',
 ];

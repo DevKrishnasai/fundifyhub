@@ -1,14 +1,14 @@
 import { Request, Response } from "express";
-import { prisma } from "@fundifyhub/prisma";
+import { prisma, DocumentStatus } from "@fundifyhub/prisma";
 import {
   generateSignedUrl,
   generateSignedUrls,
   deleteUploadThingFiles,
 } from "../../utils/uploadthing";
 import { CLIENT_CONSTANTS } from "@fundifyhub/types";
-import { APIResponseType, CreateDocumentRequest } from "../../types";
+import { APIResponseType, CreateDocumentRequest, isAuthenticated } from "../../types";
 import logger from "../../utils/logger";
-import { createRequestHistory } from '../../utils/history';
+import { auditDocument } from "../../utils/audit";
 
 /**
  * POST /api/v1/documents
@@ -74,31 +74,8 @@ export async function createDocumentController(req: Request, res: Response): Pro
 
     logger.info(`Document created: ${document.id} by user: ${uploadedBy}`);
 
-    // Best-effort: create request history entry for document upload when linked to a request
-    try {
-      if (document.requestId) {
-        const reqSnap = await prisma.request.findUnique({ where: { id: document.requestId }, select: { currentStatus: true } });
-        await createRequestHistory({
-          requestId: document.requestId,
-          actorId: uploadedBy,
-          action: 'DOCUMENT_UPLOADED',
-          metadata: {
-            documentId: document.id,
-            fileKey: document.fileKey,
-            fileName: document.fileName,
-            fileSize: document.fileSize,
-            fileType: document.fileType,
-            documentType: document.documentType,
-            uploaderId: uploadedBy,
-            uploaderRole,
-            fromStatus: reqSnap?.currentStatus || null,
-            toStatus: reqSnap?.currentStatus || null,
-          }
-        });
-      }
-    } catch (err) {
-      logger.error('Failed to create request history for document upload', err as Error);
-    }
+    // Audit: Document uploaded
+    auditDocument.uploaded(req, document.id, documentType, requestId).catch(() => {});
 
     // Generate a short-lived signed URL for the newly created document so
     // frontends can use it immediately without an extra request.
@@ -207,62 +184,14 @@ export async function createBulkDocumentsController(req: Request, res: Response)
     });
 
     logger.info(`Bulk created ${createdDocuments.count} documents`);
-    // Best-effort: fetch created documents by fileKey and create request history entries
+
+    // Fetch created documents by fileKey for response
     let createdRows: any[] = [];
     try {
       const fileKeys = documents.map((d: any) => d.fileKey);
       createdRows = await prisma.document.findMany({ where: { fileKey: { in: fileKeys } } });
-      const requestIds = Array.from(new Set(createdRows.map((r) => r.requestId).filter(Boolean)));
-      if (requestIds.length > 0) {
-        // fetch current status for involved requests
-        const reqs = await prisma.request.findMany({ where: { id: { in: requestIds as string[] } }, select: { id: true, currentStatus: true } });
-        const statusMap: Record<string, string> = {};
-        for (const r of reqs) statusMap[r.id] = r.currentStatus;
-
-        // create a single aggregated history entry per request containing the list of created document IDs
-        const docsByRequest: Record<string, typeof createdRows> = {} as any;
-        for (const doc of createdRows) {
-          if (!doc.requestId) continue;
-          docsByRequest[doc.requestId] = docsByRequest[doc.requestId] || [];
-          docsByRequest[doc.requestId].push(doc as any);
-        }
-
-        await Promise.all(Object.entries(docsByRequest).map(async ([reqId, docs]) => {
-          try {
-            const documentIds = docs.map(d => d.id);
-            const fileKeys = docs.map(d => d.fileKey);
-            const fileNames = docs.map(d => d.fileName);
-            const documentTypes = Array.from(new Set(docs.map(d => d.documentType)));
-            const uploaderRoles = Array.from(new Set(docs.map(d => d.uploaderRole).filter(Boolean)));
-            const uploaderIds = Array.from(new Set(docs.map(d => d.uploadedBy).filter(Boolean)));
-
-            // Use the first uploader as actor if available, otherwise leave null
-            const actorId = uploaderIds.length === 1 ? uploaderIds[0] : null;
-
-            await createRequestHistory({
-              requestId: reqId,
-              actorId: actorId,
-              action: 'DOCUMENTS_UPLOADED',
-              metadata: {
-                documentIds,
-                fileKeys,
-                fileNames,
-                documentTypes,
-                uploaderRoles,
-                uploaderIds,
-                fromStatus: statusMap[reqId] || null,
-                toStatus: statusMap[reqId] || null,
-                internalOnly: true, // hint that this metadata is internal; frontend shows metadata only to admins
-              }
-            });
-          } catch (err) {
-            // Best-effort: log and continue
-            logger.error(`Failed to create aggregated request history for request ${reqId}`, err as Error);
-          }
-        }));
-      }
     } catch (err) {
-      logger.error('Failed to create request history for bulk document upload', err as Error);
+      logger.error('Failed to fetch created documents', err as Error);
     }
 
     // Include created document IDs in the response so callers can reference them immediately.
@@ -507,14 +436,14 @@ export async function listDocumentsController(req: Request, res: Response): Prom
       documentType?: string;
       documentCategory?: string;
       uploadedBy?: string;
-      status?: string;
+      status?: DocumentStatus;
     } = {};
     if (requestId) where.requestId = requestId as string;
     if (documentType) where.documentType = documentType as string;
     if (documentCategory) where.documentCategory = documentCategory as string;
     if (uploadedBy) where.uploadedBy = uploadedBy as string;
-    if (status) where.status = status as string;
-    else where.status = "ACTIVE"; // Default to active documents
+    if (status) where.status = status as DocumentStatus;
+    else where.status = DocumentStatus.ACTIVE; // Default to active documents
 
     // Get total count
     const total = await prisma.document.count({ where });
@@ -685,6 +614,9 @@ export async function deleteDocumentController(req: Request, res: Response): Pro
       await deleteUploadThingFiles([document.fileKey]);
       await prisma.document.delete({ where: { id } });
 
+      // Audit: Document permanently deleted
+      auditDocument.deleted(req, id).catch(() => {});
+
       logger.info(`Document permanently deleted: ${id}`);
 
       res.json({
@@ -699,6 +631,9 @@ export async function deleteDocumentController(req: Request, res: Response): Pro
           status: "DELETED",
         },
       });
+
+      // Audit: Document soft deleted
+      auditDocument.deleted(req, id).catch(() => {});
 
       logger.info(`Document soft deleted: ${id}`);
 
@@ -725,8 +660,8 @@ export async function deleteDocumentController(req: Request, res: Response): Pro
  */
 export async function deleteFilesByFileKeysController(req: Request, res: Response): Promise<void> {
   try {
-    const user = (req as any).user;
-    if (!user) {
+    const user = req.user;
+    if (!isAuthenticated(user)) {
       res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
       return;
     }
@@ -744,47 +679,5 @@ export async function deleteFilesByFileKeysController(req: Request, res: Respons
   } catch (error) {
     logger.error('deleteFilesByFileKeysController error', error as Error);
     res.status(500).json({ success: false, message: 'Failed to delete files' } as APIResponseType);
-  }
-}
-
-/**
- * PATCH /api/v1/documents/:id/verify
- * Mark document as verified
- */
-export async function verifyDocumentController(req: Request, res: Response): Promise<void> {
-  try {
-    const { id } = req.params;
-    const { verifiedBy, isVerified = true } = req.body;
-
-    if (!verifiedBy) {
-      res.status(400).json({
-        success: false,
-        message: "verifiedBy is required",
-      } as APIResponseType);
-      return;
-    }
-
-    const document = await prisma.document.update({
-      where: { id },
-      data: {
-        isVerified,
-        verifiedBy,
-        verifiedAt: isVerified ? new Date() : null,
-      },
-    });
-
-    logger.info(`Document ${isVerified ? "verified" : "unverified"}: ${id} by ${verifiedBy}`);
-
-    res.json({
-      success: true,
-      message: `Document ${isVerified ? "verified" : "unverified"} successfully`,
-      data: document,
-    } as APIResponseType);
-  } catch (error) {
-    logger.error("Error verifying document:", error as Error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to verify document",
-    } as APIResponseType);
   }
 }

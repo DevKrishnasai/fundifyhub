@@ -187,6 +187,7 @@ export function SignaturePad({
           <div className="space-y-4">
             <div className="border rounded-lg p-2 bg-white dark:bg-gray-900 overflow-hidden">
               {previewUrl && (
+                /* eslint-disable-next-line @next/next/no-img-element -- Base64 data URL not compatible with next/image */
                 <img
                   src={previewUrl}
                   alt="Signature preview"

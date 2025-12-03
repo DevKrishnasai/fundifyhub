@@ -26,7 +26,6 @@
     "db:status": "pnpm --filter @fundifyhub/prisma run db:status",
     "dev:frontend": "turbo run dev --filter=frontend",
     "dev:main": "turbo run dev --filter=main-backend",
-    "dev:sockets": "turbo run dev --filter=live-sockets",
     "dev:worker": "turbo run dev --filter=job-worker"
   },
   "keywords": [

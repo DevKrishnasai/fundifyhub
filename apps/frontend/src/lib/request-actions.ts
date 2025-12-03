@@ -5,13 +5,12 @@
  * Maps action IDs to their respective API calls.
  */
 
-import { REQUEST_STATUS } from '@fundifyhub/types';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+import { REQUEST_STATUS, WORKFLOW_EVENTS, RequestType } from '@fundifyhub/types';
+import { postWithResult, getWithResult } from './api-client';
 
 export interface ActionHandlerContext {
   requestId: string;
-  onSuccess?: (data: any) => void;
+  onSuccess?: (data: RequestType) => void;
   onError?: (error: string) => void;
 }
 
@@ -22,15 +21,20 @@ export interface ActionInput {
   interestRate?: number;
   penaltyPercentage?: number;
   lateFeePercentage?: number;
+  processingFee?: number;
   
   // For agent assignment
   agentId?: string;
   // date-only string in YYYY-MM-DD format
   inspectionDate?: string;
   
+  // For admin assignment
+  adminId?: string;
+  
   // For generic comments/notes
   notes?: string;
   reason?: string;
+  isInternal?: boolean;
   
   // For bank details
   upiId?: string;
@@ -59,18 +63,33 @@ export async function executeRequestAction(
       // ADMIN ACTIONS
       // ==========================================
       
-      case 'start-review':
+      case WORKFLOW_EVENTS.ADD_COMMENT:
+        if (!input?.notes) {
+          onError?.('Comment cannot be empty');
+          return false;
+        }
+        return await addComment(requestId, input.notes, input.isInternal || false, onSuccess, onError);
+
+      case WORKFLOW_EVENTS.TOGGLE_COMMENTS:
+        return await updateRequestSettings(
+          requestId, 
+          { commentsEnabled: input?.notes === 'enable' }, 
+          onSuccess, 
+          onError
+        );
+
+      case WORKFLOW_EVENTS.START_REVIEW:
         return await updateStatus(requestId, REQUEST_STATUS.UNDER_REVIEW, onSuccess, onError);
       
-      case 'make-offer':
-      case 'revise-offer':
+      case WORKFLOW_EVENTS.MAKE_OFFER:
+      case WORKFLOW_EVENTS.REVISE_OFFER:
         if (!input?.amount || !input?.tenureMonths || !input?.interestRate) {
           onError?.('Missing offer details');
           return false;
         }
         return await createOffer(requestId, input, onSuccess, onError);
       
-      case 'request-more-info':
+      case WORKFLOW_EVENTS.REQUEST_MORE_INFO:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.MORE_INFO_REQUIRED, 
@@ -79,21 +98,31 @@ export async function executeRequestAction(
           input?.notes
         );
       
-      case 'assign-agent':
+      case WORKFLOW_EVENTS.ASSIGN_AGENT:
         if (!input?.agentId) {
           onError?.('Please select an agent');
           return false;
         }
         return await assignAgent(requestId, input.agentId, input.inspectionDate, onSuccess, onError);
       
-      case 'reassign-agent':
+      case WORKFLOW_EVENTS.REASSIGN_AGENT:
         if (!input?.agentId) {
           onError?.('Please select an agent');
           return false;
         }
         return await assignAgent(requestId, input.agentId, input.inspectionDate, onSuccess, onError);
       
-      case 'reject':
+      case WORKFLOW_EVENTS.SELF_ASSIGN_ADMIN:
+        return await selfAssignAdmin(requestId, onSuccess, onError);
+      
+      case WORKFLOW_EVENTS.ASSIGN_ADMIN:
+        if (!input?.adminId) {
+          onError?.('Please select an admin');
+          return false;
+        }
+        return await assignAdmin(requestId, input.adminId, onSuccess, onError);
+      
+      case WORKFLOW_EVENTS.REJECT:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.REJECTED, 
@@ -102,13 +131,12 @@ export async function executeRequestAction(
           input?.reason || 'Request rejected by admin'
         );
       
-      case 'resume-review':
-      case 'resume':
+      case WORKFLOW_EVENTS.RESUME_REVIEW:
         return await updateStatus(requestId, REQUEST_STATUS.UNDER_REVIEW, onSuccess, onError);
       
-      case 'cancel':
-      case 'cancel-offer':
-      case 'close-request':
+      case WORKFLOW_EVENTS.CANCEL:
+      case WORKFLOW_EVENTS.CANCEL_OFFER:
+      case WORKFLOW_EVENTS.CLOSE_REQUEST:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.CANCELLED, 
@@ -117,21 +145,21 @@ export async function executeRequestAction(
           input?.reason
         );
       
-      case 'resend-offer':
+      case WORKFLOW_EVENTS.RESEND_OFFER:
         return await updateStatus(requestId, REQUEST_STATUS.OFFER_SENT, onSuccess, onError);
       
-      case 'make-new-offer':
+      case WORKFLOW_EVENTS.MAKE_NEW_OFFER:
         if (!input?.amount || !input?.tenureMonths || !input?.interestRate) {
           onError?.('Missing offer details');
           return false;
         }
         return await createOffer(requestId, input, onSuccess, onError);
       
-      case 'disburse-amount':
+      case WORKFLOW_EVENTS.DISBURSE:
         // Admin creates loan record and disburses amount in single step
         return await updateStatus(requestId, REQUEST_STATUS.AMOUNT_DISBURSED, onSuccess, onError);
       
-      case 'request-different-details':
+      case WORKFLOW_EVENTS.REQUEST_DIFFERENT_BANK_DETAILS:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.PENDING_BANK_DETAILS, 
@@ -140,7 +168,7 @@ export async function executeRequestAction(
           input?.notes
         );
       
-      case 'transfer-failed':
+      case WORKFLOW_EVENTS.TRANSFER_FAILED:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.TRANSFER_FAILED, 
@@ -149,50 +177,28 @@ export async function executeRequestAction(
           input?.reason
         );
       
-      case 'create-emi-schedule':
+      case WORKFLOW_EVENTS.CREATE_LOAN:
         // Step 1: Create Loan + EMI Schedule records
-        try {
-          console.log('🎯 Creating loan for request:', requestId);
-          
-          const createLoanRes = await fetch(`${API_BASE}/api/v1/requests/${requestId}/create-loan`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-          });
+        const createLoanRes = await postWithResult(`/api/v1/requests/${requestId}/create-loan`);
 
-          console.log('📡 Create loan response status:', createLoanRes.status);
-
-          if (!createLoanRes.ok) {
-            const errorData = await createLoanRes.json();
-            console.error('❌ Failed to create loan:', errorData);
-            if (onError) onError(errorData.message || 'Failed to create loan');
-            return false;
-          }
-
-          const loanData = await createLoanRes.json();
-          console.log('✅ Loan created successfully:', loanData);
-
-          // Step 2: Update status to ACTIVE
-          console.log('🔄 Updating status to ACTIVE...');
-          const result = await updateStatus(requestId, REQUEST_STATUS.ACTIVE, onSuccess, onError);
-          console.log('✅ Status update result:', result);
-          return result;
-        } catch (error) {
-          console.error('💥 Error in create-emi-schedule:', error);
-          if (onError) onError('Failed to create loan and EMI schedule');
+        if (!createLoanRes.ok) {
+          onError?.(createLoanRes.error.message || 'Failed to create loan');
           return false;
         }
+
+        // Step 2: Update status to ACTIVE
+        return await updateStatus(requestId, REQUEST_STATUS.ACTIVE, onSuccess, onError);
       
-      case 'mark-overdue':
+      case WORKFLOW_EVENTS.MARK_OVERDUE:
         return await updateStatus(requestId, REQUEST_STATUS.PAYMENT_OVERDUE, onSuccess, onError);
       
-      case 'mark-completed':
+      case WORKFLOW_EVENTS.MARK_COMPLETED:
         return await updateStatus(requestId, REQUEST_STATUS.COMPLETED, onSuccess, onError);
       
-      case 'mark-paid':
+      case WORKFLOW_EVENTS.MARK_PAID:
         return await updateStatus(requestId, REQUEST_STATUS.ACTIVE, onSuccess, onError, input?.notes);
       
-      case 'mark-defaulted':
+      case WORKFLOW_EVENTS.MARK_DEFAULTED:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.DEFAULTED, 
@@ -201,20 +207,20 @@ export async function executeRequestAction(
           input?.reason
         );
       
-      case 'mark-settled':
+      case WORKFLOW_EVENTS.MARK_SETTLED:
         return await updateStatus(requestId, REQUEST_STATUS.COMPLETED, onSuccess, onError);
       
-      case 'reopen':
+      case WORKFLOW_EVENTS.REOPEN:
         return await updateStatus(requestId, REQUEST_STATUS.UNDER_REVIEW, onSuccess, onError);
       
       // ==========================================
       // CUSTOMER ACTIONS
       // ==========================================
       
-      case 'accept-offer':
+      case WORKFLOW_EVENTS.ACCEPT_OFFER:
         return await updateStatus(requestId, REQUEST_STATUS.OFFER_ACCEPTED, onSuccess, onError);
       
-      case 'decline-offer':
+      case WORKFLOW_EVENTS.DECLINE_OFFER:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.OFFER_DECLINED, 
@@ -223,7 +229,7 @@ export async function executeRequestAction(
           input?.reason
         );
       
-      case 'submit-info':
+      case WORKFLOW_EVENTS.SUBMIT_INFO:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.PENDING, 
@@ -232,9 +238,8 @@ export async function executeRequestAction(
           'Customer submitted additional information'
         );
       
-      case 'withdraw-request':
-      case 'withdraw':
-      case 'refuse-signature':
+      case WORKFLOW_EVENTS.WITHDRAW:
+      case WORKFLOW_EVENTS.REFUSE_SIGNATURE:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.CANCELLED, 
@@ -243,8 +248,7 @@ export async function executeRequestAction(
           input?.reason || 'Cancelled by customer'
         );
       
-      case 'request-reschedule':
-      case 'reschedule':
+      case WORKFLOW_EVENTS.REQUEST_RESCHEDULE:
         // Customer requests a reschedule: send date-only (YYYY-MM-DD) as requestedInspectionAt
         return await updateStatus(
           requestId,
@@ -254,7 +258,7 @@ export async function executeRequestAction(
           { requestedInspectionAt: input?.inspectionDate || null, note: input?.notes }
         );
       
-      case 'sign-agreement':
+      case WORKFLOW_EVENTS.SIGN_AGREEMENT:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.PENDING_BANK_DETAILS, 
@@ -263,7 +267,7 @@ export async function executeRequestAction(
           'Customer signed agreement'
         );
       
-      case 'submit-bank-details':
+      case WORKFLOW_EVENTS.SUBMIT_BANK_DETAILS:
         if (!input?.accountNumber || !input?.ifscCode || !input?.accountHolderName) {
           onError?.('Missing bank details');
           return false;
@@ -275,7 +279,7 @@ export async function executeRequestAction(
           upiId: input.upiId
         }, onSuccess, onError);
       
-      case 'update-bank-details':
+      case WORKFLOW_EVENTS.UPDATE_BANK_DETAILS:
         if (!input?.accountNumber || !input?.ifscCode || !input?.accountHolderName) {
           onError?.('Missing bank details');
           return false;
@@ -287,12 +291,15 @@ export async function executeRequestAction(
           upiId: input.upiId
         }, onSuccess, onError);
       
-      case 'provide-explanation':
-        // Just add a comment, don't change status
-        onError?.('Comment functionality not yet implemented');
-        return false;
+      case WORKFLOW_EVENTS.PROVIDE_EXPLANATION:
+        if (!input?.notes) {
+          onError?.('Explanation cannot be empty');
+          return false;
+        }
+        // Just add a comment as explanation, don't change status as customer might not have permission
+        return await addComment(requestId, input.notes, false, onSuccess, onError);
       
-      case 'request-resume':
+      case WORKFLOW_EVENTS.REQUEST_RESUME:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.UNDER_REVIEW, 
@@ -305,10 +312,10 @@ export async function executeRequestAction(
       // AGENT ACTIONS
       // ==========================================
       
-      case 'start-inspection':
+      case WORKFLOW_EVENTS.START_INSPECTION:
         return await updateStatus(requestId, REQUEST_STATUS.INSPECTION_IN_PROGRESS, onSuccess, onError);
       
-      case 'complete-inspection':
+      case WORKFLOW_EVENTS.COMPLETE_INSPECTION:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.INSPECTION_COMPLETED, 
@@ -317,7 +324,7 @@ export async function executeRequestAction(
           input?.notes
         );
       
-      case 'customer-not-available':
+      case WORKFLOW_EVENTS.CUSTOMER_NOT_AVAILABLE:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE, 
@@ -326,7 +333,7 @@ export async function executeRequestAction(
           input?.notes || 'Customer not available on scheduled date'
         );
       
-      case 'asset-mismatch':
+      case WORKFLOW_EVENTS.ASSET_MISMATCH:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.ASSET_MISMATCH, 
@@ -335,7 +342,7 @@ export async function executeRequestAction(
           input?.notes || 'Asset does not match description'
         );
       
-      case 'cancel-agent':
+      case WORKFLOW_EVENTS.CANCEL_AGENT:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.AGENT_NOT_AVAILABLE, 
@@ -344,7 +351,7 @@ export async function executeRequestAction(
           "Agent can't make the scheduled inspection"
         );
       
-      case 'approve':
+      case WORKFLOW_EVENTS.APPROVE_INSPECTION:
         return await updateStatus(
           requestId, 
           REQUEST_STATUS.APPROVED, 
@@ -353,7 +360,7 @@ export async function executeRequestAction(
           'Approved by agent after inspection'
         );
       
-      case 'reschedule-inspection':
+      case WORKFLOW_EVENTS.RESCHEDULE_INSPECTION:
         return await updateStatus(requestId, REQUEST_STATUS.INSPECTION_SCHEDULED, onSuccess, onError);
       
       default:
@@ -370,42 +377,42 @@ export async function executeRequestAction(
 // HELPER FUNCTIONS
 // ==========================================
 
+/** Response type for status update API */
+interface StatusUpdateResponse {
+  request?: RequestType;
+}
+
+/** Notes can be a simple string or an object with additional metadata */
+interface NotesPayload {
+  note?: string;
+  requestedInspectionAt?: string | null;
+  [key: string]: unknown;
+}
+
 async function updateStatus(
   requestId: string,
   status: REQUEST_STATUS,
-  onSuccess?: (data: any) => void,
+  onSuccess?: (data: RequestType) => void,
   onError?: (error: string) => void,
-  notes?: string | Record<string, any>
+  notes?: string | NotesPayload
 ): Promise<boolean> {
-  try {
-    // Build body allowing either a simple note string or an object with additional fields
-    const bodyData: Record<string, any> = { status };
-    if (typeof notes === 'string') {
-      bodyData.note = notes;
-    } else if (notes && typeof notes === 'object') {
-      Object.assign(bodyData, notes);
-    }
+  // Build body allowing either a simple note string or an object with additional fields
+  const bodyData: NotesPayload & { status: REQUEST_STATUS } = { status };
+  if (typeof notes === 'string') {
+    bodyData.note = notes;
+  } else if (notes && typeof notes === 'object') {
+    Object.assign(bodyData, notes);
+  }
 
-    const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}/status`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(bodyData),
-    });
-    
-    const data = await res.json();
-    
-    if (res.ok) {
-      // Fetch full request to get updated history
-      const fullRequest = await fetchFullRequest(requestId);
-      onSuccess?.(fullRequest || data.data?.request);
-      return true;
-    } else {
-      onError?.(data.message || 'Failed to update status');
-      return false;
-    }
-  } catch (error) {
-    onError?.(error instanceof Error ? error.message : 'Network error');
+  const result = await postWithResult<StatusUpdateResponse>(`/api/v1/requests/${requestId}/status`, bodyData);
+  
+  if (result.ok) {
+    // Fetch full request to get updated history
+    const fullRequest = await fetchFullRequest(requestId);
+    onSuccess?.(fullRequest || result.data?.request as RequestType);
+    return true;
+  } else {
+    onError?.(result.error.message || 'Failed to update status');
     return false;
   }
 }
@@ -413,36 +420,25 @@ async function updateStatus(
 async function createOffer(
   requestId: string,
   offer: ActionInput,
-  onSuccess?: (data: any) => void,
+  onSuccess?: (data: RequestType) => void,
   onError?: (error: string) => void
 ): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}/offer`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: offer.amount,
-        tenureMonths: offer.tenureMonths,
-        interestRate: offer.interestRate,
-        penaltyPercentage: offer.penaltyPercentage,
-        lateFeePercentage: offer.lateFeePercentage
-      })
-    });
-    
-    const data = await res.json();
-    
-    if (res.ok) {
-        // Fetch full request to ensure we pass the complete request including relations (history/comments)
-        const fullRequest = await fetchFullRequest(requestId);
-        onSuccess?.(fullRequest || data.data?.request);
-      return true;
-    } else {
-      onError?.(data.message || 'Failed to create offer');
-      return false;
-    }
-  } catch (error) {
-    onError?.(error instanceof Error ? error.message : 'Network error');
+  const result = await postWithResult<StatusUpdateResponse>(`/api/v1/requests/${requestId}/offer`, {
+    amount: offer.amount,
+    tenureMonths: offer.tenureMonths,
+    interestRate: offer.interestRate,
+    penaltyPercentage: offer.penaltyPercentage ?? 4,
+    lateFeePercentage: offer.lateFeePercentage ?? 0.01,
+    processingFee: offer.processingFee ?? 0
+  });
+  
+  if (result.ok) {
+      // Fetch full request to ensure we pass the complete request including relations (history/comments)
+      const fullRequest = await fetchFullRequest(requestId);
+      onSuccess?.(fullRequest || result.data?.request as RequestType);
+    return true;
+  } else {
+    onError?.(result.error.message || 'Failed to create offer');
     return false;
   }
 }
@@ -451,80 +447,125 @@ async function assignAgent(
   requestId: string,
   agentId: string,
   inspectionDate?: string,
-  onSuccess?: (data: any) => void,
+  onSuccess?: (data: RequestType) => void,
   onError?: (error: string) => void
 ): Promise<boolean> {
-  console.debug('assignAgent helper:', { requestId, agentId, inspectionDate });
-  try {
-    const body: any = { agentId };
-    if (inspectionDate) body.inspectionDate = inspectionDate; // date-only (YYYY-MM-DD)
+  const body: Record<string, string> = { agentId };
+  if (inspectionDate) body.inspectionDate = inspectionDate; // date-only (YYYY-MM-DD)
 
-    const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}/assign`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    
-    const data = await res.json();
-    
-    if (res.ok) {
-      onSuccess?.(data.data?.request);
-      return true;
-    } else {
-      onError?.(data.message || 'Failed to assign agent');
-      return false;
-    }
-  } catch (error) {
-    onError?.(error instanceof Error ? error.message : 'Network error');
+  const result = await postWithResult<StatusUpdateResponse>(`/api/v1/requests/${requestId}/assign`, body);
+  
+  if (result.ok) {
+    onSuccess?.(result.data?.request as RequestType);
+    return true;
+  } else {
+    onError?.(result.error.message || 'Failed to assign agent');
     return false;
   }
 }
 
-async function fetchFullRequest(requestId: string): Promise<any> {
-  try {
-    const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}`, {
-      credentials: 'include'
-    });
-    const data = await res.json();
-    return res.ok ? data.data?.request : null;
-  } catch {
-    return null;
+async function selfAssignAdmin(
+  requestId: string,
+  onSuccess?: (data: RequestType) => void,
+  onError?: (error: string) => void
+): Promise<boolean> {
+  const result = await postWithResult<StatusUpdateResponse>(`/api/v1/requests/${requestId}/self-assign`);
+  
+  if (result.ok) {
+    const fullRequest = await fetchFullRequest(requestId);
+    onSuccess?.(fullRequest || result.data?.request as RequestType);
+    return true;
+  } else {
+    onError?.(result.error.message || 'Failed to self-assign');
+    return false;
   }
+}
+
+async function assignAdmin(
+  requestId: string,
+  adminId: string,
+  onSuccess?: (data: RequestType) => void,
+  onError?: (error: string) => void
+): Promise<boolean> {
+  const result = await postWithResult<StatusUpdateResponse>(`/api/v1/requests/${requestId}/assign-admin`, { adminId });
+  
+  if (result.ok) {
+    const fullRequest = await fetchFullRequest(requestId);
+    onSuccess?.(fullRequest || result.data?.request as RequestType);
+    return true;
+  } else {
+    onError?.(result.error.message || 'Failed to assign admin');
+    return false;
+  }
+}
+
+/** Response type for fetching a single request */
+interface GetRequestResponse {
+  request?: RequestType;
+}
+
+async function fetchFullRequest(requestId: string): Promise<RequestType | null> {
+  const result = await getWithResult<GetRequestResponse>(`/api/v1/requests/${requestId}`);
+  return result.ok ? result.data?.request || null : null;
 }
 
 async function submitBankDetails(
   requestId: string,
   bankDetails: { accountNumber: string; ifscCode: string; accountName: string; upiId?: string },
-  onSuccess?: (data: any) => void,
+  onSuccess?: (data: RequestType) => void,
   onError?: (error: string) => void
 ): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/v1/requests/${requestId}/bank-details`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bankAccountNumber: bankDetails.accountNumber,
-        bankIfscCode: bankDetails.ifscCode,
-        bankAccountName: bankDetails.accountName,
-        upiId: bankDetails.upiId
-      })
-    });
-    
-    const data = await res.json();
-    
-    if (res.ok) {
-      // Fetch full request to get updated history
-      const fullRequest = await fetchFullRequest(requestId);
-      onSuccess?.(fullRequest || data.data?.request);
-      return true;
-    } else {
-      onError?.(data.message || 'Failed to submit bank details');
-      return false;
-    }
-  } catch (error) {
-    onError?.(error instanceof Error ? error.message : 'Network error');
+  const result = await postWithResult<StatusUpdateResponse>(`/api/v1/requests/${requestId}/bank-details`, {
+    bankAccountNumber: bankDetails.accountNumber,
+    bankIfscCode: bankDetails.ifscCode,
+    bankAccountName: bankDetails.accountName,
+    upiId: bankDetails.upiId
+  });
+  
+  if (result.ok) {
+    // Fetch full request to get updated history
+    const fullRequest = await fetchFullRequest(requestId);
+    onSuccess?.(fullRequest || result.data?.request as RequestType);
+    return true;
+  } else {
+    onError?.(result.error.message || 'Failed to submit bank details');
+    return false;
+  }
+}
+
+async function addComment(
+  requestId: string,
+  content: string,
+  isInternal: boolean,
+  onSuccess?: (data: RequestType) => void,
+  onError?: (error: string) => void
+): Promise<boolean> {
+  const result = await postWithResult<StatusUpdateResponse>(`/api/v1/requests/${requestId}/comments`, { content, isInternal });
+  
+  if (result.ok) {
+    const fullRequest = await fetchFullRequest(requestId);
+    onSuccess?.(fullRequest || result.data?.request as RequestType);
+    return true;
+  } else {
+    onError?.(result.error.message || 'Failed to add comment');
+    return false;
+  }
+}
+
+async function updateRequestSettings(
+  requestId: string,
+  settings: { commentsEnabled: boolean },
+  onSuccess?: (data: RequestType) => void,
+  onError?: (error: string) => void
+): Promise<boolean> {
+  const result = await postWithResult<StatusUpdateResponse>(`/api/v1/requests/${requestId}/comments-enabled`, { enabled: settings.commentsEnabled });
+  
+  if (result.ok) {
+    const fullRequest = await fetchFullRequest(requestId);
+    onSuccess?.(fullRequest || result.data?.request as RequestType);
+    return true;
+  } else {
+    onError?.(result.error.message || 'Failed to update settings');
     return false;
   }
 }

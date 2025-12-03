@@ -1,5 +1,10 @@
 import { Router, type Router as ExpressRouter } from 'express';
-import { getProfileController, validateController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController, getUserRequestsController, getUserRequestController, postCommentController, getDashboardStatsController } from './controllers';
+import { getProfileController, validateController, addAssetController, updateAssetController, activeLoansCountController, pendingLoansCountController, totalBorrowController, getUserRequestsController, getUserRequestController, postCommentController, getDashboardStatsController, updateProfileController } from './controllers';
+import { 
+  getSessionsController, 
+  revokeSessionController, 
+  revokeAllSessionsController 
+} from './sessions.controller';
 
 const router: ExpressRouter = Router();
 
@@ -10,10 +15,42 @@ const router: ExpressRouter = Router();
 router.get('/profile', getProfileController);
 
 /**
+ * PUT /user/profile
+ * Update current user profile (protected)
+ */
+router.put('/profile', updateProfileController);
+
+/**
  * GET /user/validate
  * Validate authentication status (protected)
  */
 router.get('/validate', validateController);
+
+// ============================================
+// SESSION MANAGEMENT ROUTES
+// ============================================
+
+/**
+ * GET /user/sessions
+ * Get all active sessions for the current user
+ */
+router.get('/sessions', getSessionsController);
+
+/**
+ * DELETE /user/sessions
+ * Revoke all sessions except current one
+ */
+router.delete('/sessions', revokeAllSessionsController);
+
+/**
+ * DELETE /user/sessions/:id
+ * Revoke a specific session by ID
+ */
+router.delete('/sessions/:id', revokeSessionController);
+
+// ============================================
+// ASSET/REQUEST ROUTES
+// ============================================
 
 /**
  * POST /user/add-asset

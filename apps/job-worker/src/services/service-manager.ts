@@ -2,9 +2,14 @@ import { Client } from 'whatsapp-web.js';
 import type { Transporter } from 'nodemailer';
 import nodemailer from 'nodemailer';
 import { prisma } from '@fundifyhub/prisma';
-import { SimpleLogger } from '@fundifyhub/logger';
+import type { Logger } from '@fundifyhub/logger';
 import { CONNECTION_STATUS, SERVICE_NAMES } from '@fundifyhub/types';
 import EventEmitter from 'events';
+
+/** Convert unknown error to Error instance */
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
 
 interface ServiceState {
   whatsappClient: Client | null;
@@ -30,13 +35,32 @@ class ServiceManager {
   };
   
   private checkInterval: NodeJS.Timeout | null = null;
-  private logger: any;
+  private _logger: Logger | null = null;
   private lastWhatsAppState: boolean | null = null;
   private emitter = new EventEmitter();
   // cached availability per service name
   private statusMap: Record<string, boolean | null> = {};
 
   private constructor() {}
+
+  /** Get logger or a no-op logger if not initialized */
+  private get logger(): Logger {
+    if (!this._logger) {
+      // Return a no-op logger if not initialized
+      const noop = () => {};
+      return {
+        error: noop,
+        warn: noop,
+        info: noop,
+        http: noop,
+        debug: noop,
+        child: () => this.logger,
+        setContext: noop,
+        clearContext: noop,
+      };
+    }
+    return this._logger;
+  }
 
   // Get singleton instance
   public static getInstance(): ServiceManager {
@@ -50,8 +74,8 @@ class ServiceManager {
    * Initialize service manager with logger
    * Starts periodic checking of service status
    */
-  public initialize(logger: SimpleLogger) {
-    this.logger = logger;
+  public initialize(logger: Logger) {
+    this._logger = logger;
     const contextLogger = this.logger.child('[service-manager]');
     contextLogger.info('Initialized');
     
@@ -107,7 +131,7 @@ class ServiceManager {
       this.checkServices();
     } catch (error) {
       const contextLogger = this.logger.child('[service-manager]');
-      contextLogger.error('Failed to auto-start services:', error);
+      contextLogger.error('Failed to auto-start services', toError(error));
       this.checkServices();
     }
   }
@@ -153,7 +177,7 @@ class ServiceManager {
                   const { startEmailService } = await import('./email-service');
                   await startEmailService();
                 } catch (err) {
-                  contextLogger.error('Failed to start/update email service:', err);
+                  contextLogger.error('Failed to start/update email service', toError(err));
                 }
               } else {
                 // Verify existing transporter is still working
@@ -174,7 +198,7 @@ class ServiceManager {
               const { stopEmailService } = await import('./email-service');
               await stopEmailService();
             } catch (err) {
-              contextLogger.error('Error stopping email service:', err);
+              contextLogger.error('Error stopping email service', toError(err));
             }
           }
   }
@@ -190,7 +214,7 @@ class ServiceManager {
                 const { startWhatsAppService } = await import('./whatsapp-service');
                 await startWhatsAppService();
               } catch (err) {
-                contextLogger.error('Failed to start WhatsApp service:', err);
+                contextLogger.error('Failed to start WhatsApp service', toError(err));
               }
             } else {
               // Update state tracking
@@ -207,7 +231,7 @@ class ServiceManager {
               await stopWhatsAppService();
               this.lastWhatsAppState = false;
             } catch (err) {
-              contextLogger.error('Error stopping WhatsApp service:', err);
+              contextLogger.error('Error stopping WhatsApp service', toError(err));
             }
           } else if (!service.isActive && this.lastWhatsAppState !== false) {
             this.lastWhatsAppState = false;
@@ -225,13 +249,13 @@ class ServiceManager {
           }
         } catch (emitErr) {
           const statusLogger = this.logger.child('[service-manager]');
-          statusLogger.warn('Failed to compute/emit status for', service.serviceName, emitErr);
+          statusLogger.warn(`Failed to compute/emit status for ${service.serviceName}`, { error: String(emitErr) });
         }
         }
       }
     } catch (error) {
       const contextLogger = this.logger.child('[service-manager]');
-      contextLogger.error('Failed to check services:', error);
+      contextLogger.error('Failed to check services', toError(error));
     }
   }
 
@@ -310,7 +334,7 @@ class ServiceManager {
       const clientState = await this.state.whatsappClient.getState() as string;
       return clientState === CONNECTION_STATUS.CONNECTED;
     } catch (error) {
-      this.logger.error('Failed to check WhatsApp availability:', error);
+      this.logger.error('Failed to check WhatsApp availability', toError(error));
       return false;
     }
   }
@@ -341,7 +365,7 @@ class ServiceManager {
       // Consider email available only when it's enabled in DB and a transporter is registered
       return !!(service?.isEnabled && this.state.emailTransporter);
     } catch (error) {
-      this.logger.error('Failed to check Email availability:', error);
+      this.logger.error('Failed to check Email availability', toError(error));
       return false;
     }
   }

@@ -163,17 +163,35 @@ export async function getRequestsController(req: Request, res: Response): Promis
       where.district = String(district);
     }
 
-    // If district admin and not super, restrict to their districts
+    // If district admin and not super, restrict to their districts + assignment rules
     if (!isSuper && Array.isArray(user.roles) && user.roles.includes(ROLES.DISTRICT_ADMIN)) {
       // user.districts is string[]
-      if (!where.district) {
-        where.district = { in: user.districts || [] };
-      } else {
-        // ensure the requested district is within user's allowed districts
-        if (!hasDistrictAccess(user, String(where.district))) {
+      const userDistricts = user.districts || [];
+      
+      // District admins see:
+      // 1. Requests assigned to them (assignedAdminId = their id) - regardless of status
+      // 2. Unassigned requests in their districts in any pending status (assignedAdminId = null AND district in their districts AND currentStatus in PENDING_REQUEST_STATUSES)
+      // Once assigned, only the assigned admin, super admin, assigned agent, and customer can see it
+      where.OR = [
+        { assignedAdminId: user.id },
+        { 
+          assignedAdminId: null,
+          district: { in: userDistricts },
+          currentStatus: { in: PENDING_REQUEST_STATUSES }
+        }
+      ];
+      
+      // If specific district filter requested, validate access
+      if (district) {
+        if (!hasDistrictAccess(user, String(district))) {
           res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
           return;
         }
+        // Override the OR with specific district filter but keep assignment logic
+        where.OR = [
+          { assignedAdminId: user.id, district: String(district) },
+          { assignedAdminId: null, district: String(district), currentStatus: { in: PENDING_REQUEST_STATUSES } }
+        ];
       }
     }
 
@@ -185,30 +203,50 @@ export async function getRequestsController(req: Request, res: Response): Promis
       where,
       select: {
           assignedAgent: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } },
+          assignedAdmin: { select: { id: true, firstName: true, lastName: true, email: true } },
           _count: { select: { comments: true, inspections: true, documents: true } },
           inspectionScheduledAt: true,
           penaltyPercentage: true,
           lateFeePercentage: true,
           bankDetailsSubmittedAt: true,
-          bankAccountNumber: true,
-          bankIfscCode: true,
-          bankAccountName: true,
+          disbursementAccount: {
+            select: {
+              id: true,
+              accountNumber: true,
+              ifscCode: true,
+              accountName: true,
+              bankName: true,
+              upiId: true,
+              isVerified: true,
+            }
+          },
         id: true,
         requestNumber: true,
         requestedAmount: true,
         district: true,
         currentStatus: true,
         assignedAgentId: true,
+        assignedAdminId: true,
         adminOfferedAmount: true,
         adminInterestRate: true,
         adminTenureMonths: true,
         adminEmiSchedule: true,
         offerMadeDate: true,
         submittedDate: true,
-        assetBrand: true,
-        assetModel: true,
-        assetType: true,
-        assetCondition: true,
+        asset: {
+          select: {
+            id: true,
+            assetType: true,
+            brand: true,
+            model: true,
+            condition: true,
+            purchaseYear: true,
+            description: true,
+            estimatedValue: true,
+            inspectedValue: true,
+            status: true,
+          }
+        },
         customer: {
           select: {
             id: true,

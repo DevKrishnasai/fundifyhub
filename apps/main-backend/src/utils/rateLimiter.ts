@@ -7,6 +7,17 @@ type LimitResult = {
   reason?: 'minute' | 'hour'
 }
 
+// Redis eval can return various types - for our Lua scripts, we expect number arrays
+type RedisEvalResult = unknown;
+
+/** Helper to safely extract number from Redis eval result array */
+function getNumberFromResult(result: RedisEvalResult, index: number, defaultValue = 0): number {
+  if (Array.isArray(result) && typeof result[index] !== 'undefined') {
+    return Number(result[index]);
+  }
+  return defaultValue;
+}
+
 // In-process fallback map (conservative). Not shared between instances.
 type RLEntry = {
   minuteWindowStart: number
@@ -111,8 +122,8 @@ export async function checkAndIncrementOtpRate(identifier: string): Promise<Limi
     )
 
     // result is [minuteCount, hourCount]
-    const minuteCount = Number((result as any)[0])
-    const hourCount = Number((result as any)[1])
+    const minuteCount = getNumberFromResult(result, 0)
+    const hourCount = getNumberFromResult(result, 1)
 
     if (minuteCount > 3) return { ok: false, reason: 'minute' }
     if (hourCount > 10) return { ok: false, reason: 'hour' }
@@ -160,9 +171,9 @@ export async function checkAndIncrementAttempts(identifier: string, limit?: numb
     // Pass limit into the script; script will NOT add a new member when already over limit
     const result = await redis.eval(ATTEMPT_WINDOW_LUA, 1, key, now, window, expireSeconds, member, String(lim))
     // result is [count, minScore, addedFlag]
-    const count = Number((result as any)[0])
-    const minScore = Number((result as any)[1] ?? now)
-    // const added = Number((result as any)[2] ?? 0)
+    const count = getNumberFromResult(result, 0)
+    const minScore = getNumberFromResult(result, 1, now)
+    // const added = getNumberFromResult(result, 2, 0)
     if (count >= lim) {
       const elapsed = now - minScore
       const retryAfterMs = Math.max(0, window - elapsed)

@@ -58,7 +58,34 @@ const config = {
         return raw;
       }
     })(),
-    wsUrl: env.NEXT_PUBLIC_WS_URL,
+    // WebSocket URL - if not provided, derive from API URL (consolidated architecture)
+    // Same rewriting logic for mobile testing
+    wsUrl: ((): string | undefined => {
+      const raw = env.NEXT_PUBLIC_WS_URL as string | undefined;
+      const apiUrl = env.NEXT_PUBLIC_API_URL as string | undefined;
+      
+      // If no WS URL provided, derive from API URL
+      let wsUrl = raw;
+      if (!wsUrl && apiUrl) {
+        // Convert http:// to ws:// or https:// to wss://
+        wsUrl = apiUrl.replace(/^http/, 'ws');
+      }
+      
+      if (typeof window === 'undefined') return wsUrl;
+      if (!wsUrl) return wsUrl;
+      
+      try {
+        const u = new URL(wsUrl);
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+          // preserve protocol and port, replace host with the host serving the frontend
+          const wsProtocol = u.protocol === 'wss:' ? 'wss:' : 'ws:';
+          return `${wsProtocol}//${window.location.hostname}${u.port ? `:${u.port}` : ''}`;
+        }
+        return wsUrl;
+      } catch (e) {
+        return wsUrl;
+      }
+    })(),
     uploadthingToken: env.UPLOADTHING_TOKEN,
   },
   nodeEnv: env.NODE_ENV,

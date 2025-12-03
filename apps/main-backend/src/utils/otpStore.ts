@@ -31,8 +31,9 @@ export async function createOtpSession({ identifier, type, otp, ttlSeconds = 600
       // Throw a structured object so callers can access retryAfterMs
       throw { name: 'TooManyAttempts', retryAfterMs: attemptsRes.retryAfterMs }
     }
-  } catch (err) {
-    if (err && typeof err === 'object' && (err as any).name === 'TooManyAttempts') throw err
+  } catch (err: unknown) {
+    // Check if this is our TooManyAttempts error
+    if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'TooManyAttempts') throw err
     // If rate limiter failed unexpectedly, log and continue to avoid blocking legitimate flows
     logger.warn(`Attempt sliding-window check failed for ${identifier}: ${String(err)}`)
   }
@@ -201,7 +202,7 @@ export async function verifyOtpSession(sessionId: string, otp: string): Promise<
     const res = await redis.eval(VERIFY_LUA, 1, sessionKey, submittedHash)
     // res is an array like ['2'] or ['1', '2'] depending on branch
     if (!res) return { status: 'expired' }
-    const first = Number((res as any)[0])
+    const first = Array.isArray(res) ? Number(res[0]) : 0
     if (first === 0) return { status: 'expired' }
     if (first === 4) return { status: 'already_used' }
     if (first === 2) {
@@ -217,7 +218,7 @@ export async function verifyOtpSession(sessionId: string, otp: string): Promise<
       return { status: 'verified' }
     }
     if (first === 1) {
-      const attempts = Number((res as any)[1] || 0)
+      const attempts = Array.isArray(res) ? Number(res[1] || 0) : 0
       // Persist the failed attempt to the audit row (prefer auditId stored on session)
       try {
         const auditId = await redis.hget(sessionKey, 'auditId')

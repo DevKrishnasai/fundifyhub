@@ -5,6 +5,7 @@ import {
   disableServiceController,
   disconnectServiceController,
   configureServiceController,
+  testServiceController,
 } from './controllers';
 
 const router: ExpressRouter = Router();
@@ -40,5 +41,11 @@ router.post('/:serviceName/disconnect', disconnectServiceController);
  * Update service configuration (e.g., email SMTP settings)
  */
 router.post('/:serviceName/configure', configureServiceController);
+
+/**
+ * POST /admin/:serviceName/test
+ * Test a service by sending a test message
+ */
+router.post('/:serviceName/test', testServiceController);
 
 export default router;
