@@ -7,7 +7,7 @@ import {
   LOAN_STATUS,
   QUEUE_NAMES, 
   OVERDUE_GRACE_PERIOD_DAYS, 
-  REQUEST_STATUS,
+  REQUEST_STAGE,
   DEFAULT_PENALTY_PERCENTAGE,
   DEFAULT_LATE_FEE_PERCENTAGE,
 } from '@fundifyhub/types';
@@ -192,7 +192,13 @@ export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
 
             await tx.request.update({
               where: { id: loan.requestId },
-              data: { currentStatus: REQUEST_STATUS.DEFAULTED }
+              data: { 
+                stage: REQUEST_STAGE.ACTIVE,
+                subStatus: 'DEFAULTED',
+                isBlocked: true,
+                failureReason: `Loan defaulted due to ${overdueCount} consecutive overdue EMIs`,
+                failureType: 'PAYMENT',
+              }
             });
 
             await tx.auditLog.create({

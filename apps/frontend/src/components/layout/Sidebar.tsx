@@ -27,6 +27,7 @@ import {
   Upload,
   MapPin,
   Package,
+  Gavel,
 } from "lucide-react"
 
 // Icon mapping from string to component
@@ -41,6 +42,7 @@ const iconMap: Record<string, React.ElementType> = {
   Upload,
   MapPin,
   Package,
+  Gavel,
 }
 
 interface SidebarProps {

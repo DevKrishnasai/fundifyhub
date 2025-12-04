@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { Prisma, prisma, RequestStatus, AssetCondition } from '@fundifyhub/prisma';
-import { ROLES, ALLOWED_IMAGE_TYPES } from '@fundifyhub/types';
-import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
+import { Prisma, prisma, RequestStage, AssetCondition } from '@fundifyhub/prisma';
+import { ROLES, ALLOWED_IMAGE_TYPES, stageToLegacyStatus } from '@fundifyhub/types';
+import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STAGE, SUB_STATUS, UserType, AssetPhotoData, ADMIN_AGENT_ROLES, PENDING_STAGES, ALLOWED_UPDATE_STAGES, AGENT_WORK_STAGES } from '@fundifyhub/types';
 import logger from '../../utils/logger';
 import { CLIENT_CONSTANTS } from '@fundifyhub/types';
 import { generateSignedUrl } from '../../utils/uploadthing';
@@ -9,6 +9,18 @@ import { normalizeDistricts } from '../../utils/district';
 import { sendAssetPledgeNotification } from '../../utils/notifications';
 import { cache, CACHE_KEYS, CACHE_TTL } from '../../utils/cache';
 import { auditUser } from '../../utils/audit';
+
+/**
+ * Enrich request with computed currentStatus for backward compatibility with frontend
+ */
+function enrichRequestWithLegacyStatus<T extends { stage?: string; subStatus?: string | null }>(
+  request: T
+): T & { currentStatus: string } {
+  const stage = (request.stage as REQUEST_STAGE) || REQUEST_STAGE.REVIEW;
+  const subStatus = request.subStatus || null;
+  const currentStatus = stageToLegacyStatus(stage, subStatus);
+  return { ...request, currentStatus };
+}
 
 /**
  * Adds new asset photos to the request (does not delete existing)
@@ -199,6 +211,13 @@ function buildRequestData(fields: {
     requestedAmount: typeof fields.requestedAmount === 'number' ? fields.requestedAmount : 0,
     customer: { connect: { id: fields.customerId } },
     requestNumber: `REQ${Date.now()}`, // Temporary request number
+    // Stage-based status
+    stage: REQUEST_STAGE.REVIEW,
+    subStatus: SUB_STATUS.REVIEW.PENDING,
+    // Action flags for filtering
+    requiresAdminAction: true,
+    requiresCustomerAction: false,
+    requiresAgentAction: false,
     asset: {
       create: {
         assetType: fields.assetType,
@@ -614,7 +633,7 @@ export async function updateAssetController(req: Request, res: Response): Promis
 
     const existing = await prisma.request.findUnique({
       where: { id: requestId },
-      select: { id: true, customerId: true, currentStatus: true }
+      select: { id: true, customerId: true, stage: true, subStatus: true }
     });
     if (!existing) {
       res.status(404).json({ success: false, message: 'Request not found' });
@@ -627,8 +646,9 @@ export async function updateAssetController(req: Request, res: Response): Promis
       return;
     }
 
-    const allowedUpdateStatuses = ALLOWED_UPDATE_STATUSES;
-    if (!allowedUpdateStatuses.includes(existing.currentStatus as REQUEST_STATUS)) {
+    // Check if stage allows updates
+    const allowedUpdateStages = ALLOWED_UPDATE_STAGES;
+    if (!allowedUpdateStages.includes(existing.stage as REQUEST_STAGE)) {
       res.status(400).json({
         success: false,
         message: 'This request cannot be updated as it has already been processed or is in a locked state.'
@@ -636,8 +656,9 @@ export async function updateAssetController(req: Request, res: Response): Promis
       return;
     }
 
-    // Always set status to PENDING on update
-    updateData.currentStatus = REQUEST_STATUS.PENDING;
+    // Always set status to REVIEW:PENDING on update
+    updateData.stage = REQUEST_STAGE.REVIEW;
+    updateData.subStatus = SUB_STATUS.REVIEW.PENDING;
 
     // Update request and asset photos in transaction
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -856,7 +877,7 @@ export async function countPendingLoans(userId: string): Promise<number> {
   try {
     return await prisma.request.count({
       where: {
-        currentStatus: REQUEST_STATUS.PENDING,
+        stage: { in: PENDING_STAGES },
         customerId: userId,
       },
     });
@@ -903,19 +924,18 @@ export async function getUserRequestsController(req: Request, res: Response): Pr
     const rawStatus = typeof req.query.status === 'string' ? req.query.status.trim() : undefined;
     if (rawStatus) {
       const s = rawStatus.toUpperCase();
-      // Map common keywords to arrays where helpful
-      // Cast to Prisma RequestStatus enum for type safety
+      // Map common keywords to stage-based filtering
       if (s === 'PENDING') {
-        where.currentStatus = { in: PENDING_REQUEST_STATUSES as RequestStatus[] };
+        where.stage = { in: PENDING_STAGES };
       } else if (s === 'REJECTED') {
-        where.currentStatus = { in: [RequestStatus.REJECTED, RequestStatus.OFFER_DECLINED] };
+        where.stage = REQUEST_STAGE.REJECTED;
       } else if (s === 'CLOSED') {
-        where.currentStatus = { in: [RequestStatus.CANCELLED, RequestStatus.COMPLETED] };
+        where.stage = { in: [REQUEST_STAGE.CANCELLED, REQUEST_STAGE.COMPLETED] };
       } else if (s === 'ACTIVE') {
-        where.currentStatus = { in: [RequestStatus.APPROVED, RequestStatus.AMOUNT_DISBURSED, RequestStatus.ACTIVE] };
+        where.stage = REQUEST_STAGE.ACTIVE;
       } else {
-        // Fallback: if a direct enum value passed, match exactly
-        where.currentStatus = rawStatus as RequestStatus;
+        // Fallback: if a direct stage value passed, match exactly
+        where.stage = rawStatus as RequestStage;
       }
     }
 
@@ -946,11 +966,14 @@ export async function getUserRequestsController(req: Request, res: Response): Pr
       prisma.request.count({ where }),
     ]);
 
+    // Add currentStatus for backward compatibility
+    const requestsWithLegacyStatus = items.map(enrichRequestWithLegacyStatus);
+
     res.status(200).json({
       success: true,
       message: 'Requests fetched',
       data: {
-        requests: items,
+        requests: requestsWithLegacyStatus,
         pagination: {
           page,
           limit: pageSize,
@@ -1017,12 +1040,12 @@ export async function getUserRequestController(req: Request, res: Response): Pro
         })
       );
 
-      const responsePayload = { ...request, documents: docsWithUrls };
+      const responsePayload = enrichRequestWithLegacyStatus({ ...request, documents: docsWithUrls });
       res.json({ success: true, data: responsePayload });
       return;
     } catch (e) {
       logger.warn('Failed to generate signed URLs for documents: ' + String(e));
-      res.json({ success: true, data: request });
+      res.json({ success: true, data: enrichRequestWithLegacyStatus(request) });
       return;
     }
   } catch (error) {
@@ -1206,7 +1229,7 @@ export async function getDashboardStatsController(req: Request, res: Response): 
       });
       stats.totalDisbursed = disbursedResult._sum.approvedAmount ?? 0;
       stats.pendingCount = await prisma.request.count({
-        where: { currentStatus: { in: PENDING_REQUEST_STATUSES } },
+        where: { stage: { in: PENDING_STAGES } },
       });
     } else if (isDistrictAdmin && userDistricts.length > 0) {
       // District admin sees stats for:
@@ -1239,7 +1262,7 @@ export async function getDashboardStatsController(req: Request, res: Response): 
       stats.pendingCount = await prisma.request.count({
         where: {
           ...districtAdminWhere,
-          currentStatus: { in: PENDING_REQUEST_STATUSES },
+          stage: { in: PENDING_STAGES },
         },
       });
     } else if (isAgent) {
@@ -1264,15 +1287,16 @@ export async function getDashboardStatsController(req: Request, res: Response): 
       stats.pendingCount = await prisma.request.count({
         where: {
           assignedAgentId: userId,
-          currentStatus: { in: PENDING_REQUEST_STATUSES },
+          stage: { in: PENDING_STAGES },
         },
       });
       
-      // Agent specific stats
+      // Agent specific stats - count inspection stage requests
       stats.pendingInspections = await prisma.request.count({
         where: {
           assignedAgentId: userId,
-          currentStatus: { in: [REQUEST_STATUS.INSPECTION_SCHEDULED, REQUEST_STATUS.INSPECTION_IN_PROGRESS] },
+          stage: REQUEST_STAGE.INSPECTION,
+          subStatus: { in: [SUB_STATUS.INSPECTION.SCHEDULED, SUB_STATUS.INSPECTION.IN_PROGRESS] },
         },
       });
 
@@ -1281,7 +1305,8 @@ export async function getDashboardStatsController(req: Request, res: Response): 
       stats.completedInspections = await prisma.request.count({
         where: {
           assignedAgentId: userId,
-          currentStatus: REQUEST_STATUS.INSPECTION_COMPLETED,
+          stage: REQUEST_STAGE.INSPECTION,
+          subStatus: SUB_STATUS.INSPECTION.COMPLETED,
           updatedAt: { gte: today },
         },
       });
@@ -1308,7 +1333,7 @@ export async function getDashboardStatsController(req: Request, res: Response): 
       stats.pendingCount = await prisma.request.count({
         where: {
           customerId: userId,
-          currentStatus: { in: PENDING_REQUEST_STATUSES },
+          stage: { in: PENDING_STAGES },
         },
       });
     }

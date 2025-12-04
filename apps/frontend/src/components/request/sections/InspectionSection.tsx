@@ -35,7 +35,7 @@ import { InspectionPhotoUpload } from './InspectionPhotoUpload';
 
 interface InspectionSectionProps {
   request: RequestType;
-  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
+  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
   currentUserId?: string;
   isLoading?: boolean;
   onStartInspection?: () => void;
@@ -225,7 +225,7 @@ export function InspectionSection({
         />
         <SectionRow
           label="District"
-          value={request.district}
+          value={(request.district as any)?.name || 'N/A'}
         />
       </SectionGrid>
 

@@ -34,7 +34,7 @@ import { formatDistanceToNow } from 'date-fns';
 
 interface OfferSectionProps {
   request: RequestType;
-  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
+  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
   isLoading?: boolean;
   onAcceptOffer?: () => void;
   onDeclineOffer?: () => void;

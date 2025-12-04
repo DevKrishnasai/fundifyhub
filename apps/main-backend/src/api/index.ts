@@ -10,6 +10,7 @@ import notificationsRoutes from './notifications/routes';
 import geographyRoutes from './geography/routes';
 import assetRoutes from './assets/routes';
 import auctionRoutes from './auctions/routes';
+import healthRoutes from './health/routes';
 import { authMiddleware } from '../utils/jwt';
 
 const router: ExpressRouter = Router();
@@ -24,15 +25,6 @@ router.use('/notifications', authMiddleware, notificationsRoutes);
 router.use('/geography', authMiddleware, geographyRoutes);
 router.use('/assets', assetRoutes);
 router.use('/auctions', auctionRoutes);
-
-// Health check
-router.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'API is healthy',
-    version: '1.0.0',
-    timestamp: new Date().toISOString()
-  });
-});
+router.use('/health', healthRoutes);
 
 export default router;

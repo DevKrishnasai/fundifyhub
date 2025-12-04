@@ -19,6 +19,9 @@ import {
   type RequestStatusChangedPayload,
   type CommentAddedPayload,
   type DocumentUploadedPayload,
+  type AuctionBidPayload,
+  type AuctionEndedPayload,
+  type AuctionOutbidPayload,
 } from '@fundifyhub/types';
 import logger from '../utils/logger';
 
@@ -231,6 +234,34 @@ export function registerSocketHandlers(
   });
 
   /**
+   * Join an auction room to receive real-time bid updates
+   */
+  socket.on(ClientEvent.JOIN_AUCTION, (auctionId: string) => {
+    if (!auctionId || typeof auctionId !== 'string') {
+      socket.emit(ServerEvent.ERROR, {
+        code: 'INVALID_AUCTION_ID',
+        message: 'Invalid auction ID provided',
+      });
+      return;
+    }
+
+    const auctionRoom = getRoomName(RoomType.AUCTION, auctionId);
+    socket.join(auctionRoom);
+    contextLogger.debug('Joined auction room', { auctionId, room: auctionRoom });
+  });
+
+  /**
+   * Leave an auction room
+   */
+  socket.on(ClientEvent.LEAVE_AUCTION, (auctionId: string) => {
+    if (!auctionId || typeof auctionId !== 'string') return;
+
+    const auctionRoom = getRoomName(RoomType.AUCTION, auctionId);
+    socket.leave(auctionRoom);
+    contextLogger.debug('Left auction room', { auctionId, room: auctionRoom });
+  });
+
+  /**
    * Ping handler for keepalive
    */
   socket.on(ClientEvent.PING, () => {
@@ -415,4 +446,84 @@ export function broadcast(event: string, data: unknown): void {
 
   ioInstance.emit(event, data);
   logger.debug('[Socket] Broadcasted event', { event });
+}
+
+// ============================================
+// AUCTION EMIT HELPERS
+// ============================================
+
+/**
+ * Emit new bid to all auction watchers
+ */
+export function emitAuctionBid(payload: AuctionBidPayload): void {
+  if (!ioInstance) {
+    logger.warn('[Socket] IO instance not initialized, skipping emit');
+    return;
+  }
+
+  const auctionRoom = getRoomName(RoomType.AUCTION, payload.auctionId);
+  ioInstance.to(auctionRoom).emit(ServerEvent.AUCTION_BID_PLACED, payload);
+
+  logger.debug('[Socket] Emitted auction_bid', {
+    auctionId: payload.auctionId,
+    bidAmount: payload.bid.amount,
+    room: auctionRoom,
+  });
+}
+
+/**
+ * Notify a user they've been outbid
+ */
+export function emitAuctionOutbid(userId: string, payload: AuctionOutbidPayload): void {
+  if (!ioInstance) {
+    logger.warn('[Socket] IO instance not initialized, skipping emit');
+    return;
+  }
+
+  const userRoom = getRoomName(RoomType.USER, userId);
+  ioInstance.to(userRoom).emit(ServerEvent.AUCTION_OUTBID, payload);
+
+  logger.debug('[Socket] Emitted auction_outbid', {
+    userId,
+    auctionId: payload.auctionId,
+    room: userRoom,
+  });
+}
+
+/**
+ * Emit auction ended to all watchers
+ */
+export function emitAuctionEnded(payload: AuctionEndedPayload): void {
+  if (!ioInstance) {
+    logger.warn('[Socket] IO instance not initialized, skipping emit');
+    return;
+  }
+
+  const auctionRoom = getRoomName(RoomType.AUCTION, payload.auctionId);
+  ioInstance.to(auctionRoom).emit(ServerEvent.AUCTION_ENDED, payload);
+
+  logger.debug('[Socket] Emitted auction_ended', {
+    auctionId: payload.auctionId,
+    status: payload.status,
+    room: auctionRoom,
+  });
+}
+
+/**
+ * Notify auction winner
+ */
+export function emitAuctionWon(userId: string, payload: { auctionId: string; auctionTitle: string; assetId: string; winningBid: number; nextSteps: string }): void {
+  if (!ioInstance) {
+    logger.warn('[Socket] IO instance not initialized, skipping emit');
+    return;
+  }
+
+  const userRoom = getRoomName(RoomType.USER, userId);
+  ioInstance.to(userRoom).emit(ServerEvent.AUCTION_WON, payload);
+
+  logger.debug('[Socket] Emitted auction_won', {
+    userId,
+    auctionId: payload.auctionId,
+    room: userRoom,
+  });
 }

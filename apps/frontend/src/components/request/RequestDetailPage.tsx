@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,6 +17,9 @@ import {
   Settings,
   AlertCircle,
 } from 'lucide-react';
+import { useRazorpay } from '@/hooks/use-razorpay';
+import { useToast } from '@/hooks/use-toast';
+import type { EMIScheduleType } from '@fundifyhub/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -92,9 +95,24 @@ export function RequestDetailPage() {
   const { user } = useAuth();
   const { request, isLoading, error, refresh } = useRequest();
   const { availableActions, isActionLoading, openAction, executeAction } = useRequestActions();
+  const { toast, error: toastError } = useToast();
   
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [commentsEnabled, setCommentsEnabled] = useState(true);
+  
+  // Razorpay payment hook
+  const { initiatePayment, isProcessing: isPaymentProcessing } = useRazorpay({
+    onSuccess: () => {
+      toast('Payment successful! EMI has been marked as paid.');
+      refresh();
+    },
+    onError: (errorMsg) => {
+      toastError(errorMsg || 'Payment failed. Please try again.');
+    },
+    onCancel: () => {
+      toast('Payment cancelled.');
+    },
+  });
   
   // Document Modal State
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -116,6 +134,20 @@ export function RequestDetailPage() {
     setUploadModalOpen(false);
     await refresh();
   };
+
+  // Handle EMI Payment via Razorpay
+  const handlePayEmi = useCallback(async (emi: EMIScheduleType) => {
+    if (!request?.loan?.id) {
+      toastError('Loan information not found');
+      return;
+    }
+    
+    await initiatePayment({
+      loanId: request.loan.id,
+      emiId: emi.id,
+      emiNumber: emi.emiNumber,
+    });
+  }, [request?.loan?.id, initiatePayment, toastError]);
 
   // Sync local state with request data
   React.useEffect(() => {
@@ -475,8 +507,8 @@ export function RequestDetailPage() {
                 <LoanSection
                   request={request}
                   userRole={userRole}
-                  onPayEmi={(emi) => console.log('Pay EMI', emi)}
-                  isActionLoading={isActionLoading}
+                  onPayEmi={handlePayEmi}
+                  isActionLoading={isActionLoading || isPaymentProcessing}
                 />
               </SectionErrorBoundary>
             )}

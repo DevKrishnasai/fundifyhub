@@ -35,7 +35,7 @@ import { cn } from '@/lib/utils';
 
 interface LoanSectionProps {
   request: RequestType;
-  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
+  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
   isLoading?: boolean;
   onPayEmi?: (emi: EMIScheduleType) => void;
   onViewEmiDetails?: (emi: EMIScheduleType) => void;

@@ -63,47 +63,24 @@ enum MovementType {
   DISPOSAL // Asset disposed/scrapped
 }
 
-// Request lifecycle states (28 total)
-enum RequestStatus {
-  // PHASE 1: SUBMISSION & REVIEW
-  PENDING
-  UNDER_REVIEW
-  MORE_INFO_REQUIRED
+// ============================================
+// REQUEST STAGE - Simplified status system (10 stages)
+// ============================================
+// Each stage represents a major phase in the loan lifecycle.
+// Sub-status (string field) provides granular detail within each stage.
+// This replaces the previous 28-status system for better maintainability.
 
-  // PHASE 2: OFFER & NEGOTIATION
-  OFFER_SENT
-  OFFER_ACCEPTED
-  OFFER_DECLINED
-  OFFER_EXPIRED
-
-  // PHASE 3: INSPECTION
-  INSPECTION_SCHEDULED
-  INSPECTION_RESCHEDULE_REQUESTED
-  INSPECTION_IN_PROGRESS
-  INSPECTION_COMPLETED
-  CUSTOMER_NOT_AVAILABLE
-  ASSET_MISMATCH
-  AGENT_NOT_AVAILABLE
-
-  // PHASE 4: APPROVAL & DOCUMENTATION
-  APPROVED
-  PENDING_SIGNATURE
-  PENDING_BANK_DETAILS
-
-  // PHASE 5: LOAN PROCESSING & DISBURSEMENT
-  BANK_DETAILS_SUBMITTED
-  TRANSFER_FAILED
-  AMOUNT_DISBURSED
-
-  // PHASE 6: ACTIVE LOAN
-  ACTIVE
-  PAYMENT_OVERDUE
-  DEFAULTED
-  COMPLETED
-
-  // TERMINAL STATES
-  REJECTED
-  CANCELLED
+enum RequestStage {
+  DRAFT          // Customer creating request (future: multi-step form)
+  REVIEW         // Admin reviewing request
+  OFFER          // Offer negotiation phase
+  INSPECTION     // Asset verification by agent
+  DOCUMENTATION  // Signatures & bank details
+  DISBURSEMENT   // Money transfer to customer
+  ACTIVE         // Loan running, EMI payments
+  COMPLETED      // Loan fully repaid ✓
+  REJECTED       // Request declined ✗
+  CANCELLED      // Request cancelled ✗
 }
 
 // Loan lifecycle states
@@ -779,11 +756,25 @@ model Request {
   // Geography - FK to District (replaces string district)
   districtId String
 
-  // Workflow state tracking
-  currentStatus   RequestStatus  @default(PENDING)
-  previousStatus  RequestStatus? // For rollback/audit - tracks last status before current
-  statusChangedAt DateTime? // When status was last changed
-  statusChangedBy String? // User ID who changed the status
+  // ============================================
+  // NEW: Stage-based workflow tracking
+  // ============================================
+  stage           RequestStage @default(REVIEW)  // Main stage (10 values)
+  subStatus       String?                         // Contextual detail within stage
+  
+  // Action flags - denormalized for fast filtering queries
+  requiresCustomerAction Boolean @default(false)  // Customer needs to act
+  requiresAdminAction    Boolean @default(true)   // Admin needs to act
+  requiresAgentAction    Boolean @default(false)  // Agent needs to act
+  isBlocked              Boolean @default(false)  // Request is blocked (needs resolution)
+  
+  // Failure tracking (replaces TRANSFER_FAILED, ASSET_MISMATCH as statuses)
+  failureReason   String?  // Human-readable failure message
+  failureType     String?  // Category: TRANSFER | INSPECTION | VERIFICATION | DOCUMENTATION
+  
+  // Stage transition tracking
+  stageChangedAt  DateTime? // When stage was last changed
+  stageChangedBy  String?   // User ID who changed the stage
 
   // Asset relation (replaces inline fields)
   asset Asset?
@@ -791,19 +782,18 @@ model Request {
   // Current active offer reference (for quick access to accepted/pending offer)
   activeOfferId String? // Reference to the current active AdminOffer
 
-  // Legacy Admin Offer Details - kept for backward compatibility during migration
-  // These will be removed once all offers are migrated to AdminOffer model
+  // Admin Offer Details (snapshot for quick access - source of truth is AdminOffer model)
   adminOfferedAmount Float? // Amount offered by admin
-  adminTenureMonths  Int? // Tenure offered by admin
+  adminTenureMonths  Int?   // Tenure offered by admin
   adminInterestRate  Float? // Interest rate offered by admin
-  adminEmiSchedule   Json? // JSON snapshot of EMI schedule/admin offer (immutable snapshot)
-  adminProcessingFee Float     @default(0)
+  adminEmiSchedule   Json?  // JSON snapshot of EMI schedule (immutable)
+  adminProcessingFee Float  @default(0)
   offerMadeDate      DateTime? // When admin made the offer
   offerResponseDate  DateTime? // When customer responded
-  penaltyPercentage  Float     @default(4) // Penalty percentage for late payment (default 4%)
-  lateFeePercentage  Float     @default(0.01) // Late fee percentage for overdue payments (default 0.01%)
+  penaltyPercentage  Float  @default(4)    // Penalty % for late payment
+  lateFeePercentage  Float  @default(0.01) // Late fee % for overdue payments
 
-  // Admin requested information (when status is MORE_INFO_REQUIRED)
+  // Admin requested information (when subStatus is INFO_REQUIRED)
   adminRequestedInfo String? // What additional info/documents admin needs
 
   // Bank Details (for disbursement) - reference to user's bank account
@@ -843,18 +833,22 @@ model Request {
   inAppNotifications  InAppNotification[]
 
   @@index([customerId])
-  @@index([currentStatus])
+  @@index([stage])
+  @@index([stage, subStatus])
   @@index([districtId])
   @@index([assignedAgentId])
   @@index([assignedAdminId])
   @@index([requestNumber])
   @@index([disbursementAccountId])
   @@index([activeOfferId])
-  @@index([districtId, currentStatus])
-  @@index([customerId, currentStatus])
-  @@index([assignedAgentId, currentStatus])
+  @@index([districtId, stage])
+  @@index([customerId, stage])
+  @@index([assignedAgentId, stage])
+  @@index([requiresCustomerAction])
+  @@index([requiresAdminAction])
+  @@index([requiresAgentAction])
+  @@index([isBlocked])
   @@index([deletedAt])
-  @@index([previousStatus])
   @@map("requests")
 }
 

@@ -10,7 +10,7 @@
 
 import { 
   PrismaClient, 
-  RequestStatus, 
+  RequestStage, 
   LoanStatus, 
   EMIStatus,
   InspectionStatus,
@@ -345,7 +345,7 @@ async function main() {
   let requestSeq = 0
   let loanSeq = 0
 
-  // Request 1: Pending Request (just submitted)
+  // Request 1: Pending Request (just submitted) - in REVIEW stage, waiting for admin
   requestSeq++
   const request1 = await prisma.request.create({
     data: {
@@ -353,7 +353,9 @@ async function main() {
       customerId,
       requestedAmount: 50000,
       districtId: hyderabadId,
-      currentStatus: RequestStatus.PENDING,
+      stage: RequestStage.REVIEW,
+      subStatus: 'PENDING',
+      requiresAdminAction: true,
       asset: {
         create: {
           assetType: "Two Wheeler",
@@ -369,7 +371,7 @@ async function main() {
       }
     },
   })
-  console.log(`  ✅ Created request: ${request1.requestNumber} (PENDING)`)
+  console.log(`  ✅ Created request: ${request1.requestNumber} (REVIEW/PENDING)`)
 
   // Request 2: Offer Made - awaiting customer response
   requestSeq++
@@ -379,7 +381,10 @@ async function main() {
       customerId,
       requestedAmount: 150000,
       districtId: hyderabadId,
-      currentStatus: RequestStatus.OFFER_SENT,
+      stage: RequestStage.OFFER,
+      subStatus: 'PENDING_CUSTOMER_RESPONSE',
+      requiresCustomerAction: true,
+      requiresAdminAction: false,
       adminOfferedAmount: 120000,
       adminTenureMonths: 12,
       adminInterestRate: 18,
@@ -399,7 +404,7 @@ async function main() {
       }
     },
   })
-  console.log(`  ✅ Created request: ${request2.requestNumber} (OFFER_SENT)`)
+  console.log(`  ✅ Created request: ${request2.requestNumber} (OFFER/PENDING_CUSTOMER_RESPONSE)`)
 
   // Request 3: Agent Assigned - pending inspection
   requestSeq++
@@ -409,7 +414,10 @@ async function main() {
       customerId,
       requestedAmount: 80000,
       districtId: rangareddyId,
-      currentStatus: RequestStatus.INSPECTION_SCHEDULED,
+      stage: RequestStage.INSPECTION,
+      subStatus: 'SCHEDULED',
+      requiresAgentAction: true,
+      requiresAdminAction: false,
       adminOfferedAmount: 70000,
       adminTenureMonths: 6,
       adminInterestRate: 15,
@@ -432,7 +440,7 @@ async function main() {
       }
     },
   })
-  console.log(`  ✅ Created request: ${request3.requestNumber} (INSPECTION_SCHEDULED)`)
+  console.log(`  ✅ Created request: ${request3.requestNumber} (INSPECTION/SCHEDULED)`)
 
   // Create inspection for request3
   await prisma.inspection.create({
@@ -455,7 +463,10 @@ async function main() {
       customerId,
       requestedAmount: 200000,
       districtId: hyderabadId,
-      currentStatus: RequestStatus.AMOUNT_DISBURSED,
+      stage: RequestStage.ACTIVE,
+      subStatus: 'PAYING',
+      requiresCustomerAction: true, // Customer makes EMI payments
+      requiresAdminAction: false,
       adminOfferedAmount: 90000,
       adminTenureMonths: 6,
       adminInterestRate: 12,
@@ -481,7 +492,7 @@ async function main() {
       }
     },
   })
-  console.log(`  ✅ Created request: ${request4.requestNumber} (AMOUNT_DISBURSED)`)
+  console.log(`  ✅ Created request: ${request4.requestNumber} (ACTIVE/PAYING)`)
 
   // Create completed inspection for request4
   await prisma.inspection.create({
@@ -583,7 +594,10 @@ async function main() {
       customerId,
       requestedAmount: 30000,
       districtId: hyderabadId,
-      currentStatus: RequestStatus.COMPLETED,
+      stage: RequestStage.COMPLETED,
+      subStatus: null, // Terminal stage - no sub-status
+      requiresCustomerAction: false,
+      requiresAdminAction: false,
       adminOfferedAmount: 25000,
       adminTenureMonths: 3,
       adminInterestRate: 15,
@@ -709,7 +723,12 @@ async function main() {
       customerId,
       requestedAmount: 200000,
       districtId: warangalId,
-      currentStatus: RequestStatus.REJECTED,
+      stage: RequestStage.REJECTED,
+      subStatus: null, // Terminal stage
+      requiresCustomerAction: false,
+      requiresAdminAction: false,
+      failureReason: "Asset condition too poor for lending. Vehicle has significant rust and mechanical issues.",
+      failureType: "INSPECTION",
       asset: {
         create: {
           assetType: "Four Wheeler",

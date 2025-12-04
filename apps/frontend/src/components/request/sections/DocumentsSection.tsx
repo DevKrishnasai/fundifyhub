@@ -31,7 +31,7 @@ import { cn } from '@/lib/utils';
 
 interface DocumentsSectionProps {
   request: RequestType;
-  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
+  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
   isLoading?: boolean;
   onUpload?: (category: string) => void;
   onPreview?: (document: DocumentType) => void;

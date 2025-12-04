@@ -3,6 +3,10 @@ import { createServer } from 'http';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import mongoSanitize from 'express-mongo-sanitize';
+import xss from 'xss-clean';
+import hpp from 'hpp';
+import compression from 'compression';
 import config from './utils/config';
 import apiRoutes from './api';
 import { razorpayWebhookController } from './api/payments/razorpay';
@@ -10,6 +14,9 @@ import logger from './utils/logger';
 import { applyRateLimiting } from './utils/rate-limit';
 import { initializeSocketServer, shutdownSocketServer } from './socket';
 import { notFoundHandler, errorHandler } from './utils/error-handler';
+import { metricsHandler, trackHttpMetrics } from './utils/metrics';
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './utils/swagger';
 
 /*
  * server.ts
@@ -18,16 +25,48 @@ import { notFoundHandler, errorHandler } from './utils/error-handler';
  * wire the Express app. Keeping validation in `utils/config` centralizes
  * defaults and reduces duplicated validation logic across modules.
  */
-// App-level config validates env on import
-const env = config.env;
 logger.info('✅ Main-backend configuration loaded successfully');
 
 const app = express();
 
 // Security headers
 app.use(helmet({
-  contentSecurityPolicy: false, // Disabled for API server
+  contentSecurityPolicy: config.nodeEnv === 'production' ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+    },
+  } : false,
   crossOriginEmbedderPolicy: false,
+}));
+
+// Data sanitization against NoSQL query injection
+app.use(mongoSanitize({
+  replaceWith: '_',
+  onSanitize: ({ req, key }) => {
+    logger.warn(`NoSQL injection attempt detected from ${req.ip}`, { key, path: req.path });
+  },
+}));
+
+// Data sanitization against XSS
+app.use(xss());
+
+// Prevent HTTP Parameter Pollution
+app.use(hpp({
+  whitelist: ['sort', 'filter', 'page', 'limit'], // Allow arrays for these params
+}));
+
+// Gzip compression
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+  level: 6, // Balance between speed and compression ratio
 }));
 
 // Trust proxy for accurate IP detection behind reverse proxies
@@ -55,6 +94,20 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+// Prometheus metrics endpoint (before other middleware for accurate timing)
+app.get('/metrics', metricsHandler);
+
+// HTTP metrics tracking middleware
+app.use(trackHttpMetrics);
+
+// Serve Swagger UI
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.get('/api/docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
 // NOTE: For webhook verification, we MUST use the raw body exactly as Razorpay sends it.
 // Using `express.json()` will transform the body which breaks signature verification.
 // So we mount a raw body parser for the Razorpay webhook route and then still use
@@ -126,6 +179,8 @@ async function startServer(): Promise<void> {
     httpServer.listen(config.server.port, () => {
       logger.info(`🚀 Server started on port ${config.server.port}`);
       logger.info(`📡 WebSocket server running on ws://localhost:${config.server.port}`);
+      logger.info(`📊 Prometheus metrics available at http://localhost:${config.server.port}/metrics`);
+      logger.info(`📚 API Documentation available at http://localhost:${config.server.port}/api/docs`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error as Error);

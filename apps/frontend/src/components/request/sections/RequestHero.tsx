@@ -262,7 +262,7 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
             <p className="text-lg font-medium text-foreground">
                {userRole === ROLES.CUSTOMER 
                  ? (request.createdAt ? format(new Date(request.createdAt), 'MMM d, yyyy') : '—')
-                 : request.district
+                 : (request.district as any)?.name || 'N/A'
                }
             </p>
           </div>

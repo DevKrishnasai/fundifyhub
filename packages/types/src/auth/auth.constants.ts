@@ -5,23 +5,56 @@
 
 /**
  * User roles in the system
+ * Ordered by hierarchy (lowest to highest privilege)
  */
 export const ROLES = {
   CUSTOMER: 'CUSTOMER',
-  DISTRICT_ADMIN: 'DISTRICT_ADMIN',
-  SUPER_ADMIN: 'SUPER_ADMIN',
   AGENT: 'AGENT',
+  DISTRICT_ADMIN: 'DISTRICT_ADMIN',
+  STATE_ADMIN: 'STATE_ADMIN',
+  SUPER_ADMIN: 'SUPER_ADMIN',
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
+
+/**
+ * Role hierarchy levels (higher = more access)
+ */
+export const ROLE_HIERARCHY: Record<Role, number> = {
+  [ROLES.CUSTOMER]: 1,
+  [ROLES.AGENT]: 2,
+  [ROLES.DISTRICT_ADMIN]: 3,
+  [ROLES.STATE_ADMIN]: 4,
+  [ROLES.SUPER_ADMIN]: 5,
+};
 
 /**
  * Roles that have admin or agent privileges
  */
 export const ADMIN_AGENT_ROLES = [
   ROLES.SUPER_ADMIN,
+  ROLES.STATE_ADMIN,
   ROLES.DISTRICT_ADMIN,
   ROLES.AGENT,
+] as const;
+
+/**
+ * Admin-only roles (no AGENT or CUSTOMER)
+ */
+export const ADMIN_ROLES = [
+  ROLES.DISTRICT_ADMIN,
+  ROLES.STATE_ADMIN,
+  ROLES.SUPER_ADMIN,
+] as const;
+
+/**
+ * Roles that can manage requests
+ */
+export const REQUEST_MANAGER_ROLES = [
+  ROLES.AGENT,
+  ROLES.DISTRICT_ADMIN,
+  ROLES.STATE_ADMIN,
+  ROLES.SUPER_ADMIN,
 ] as const;
 
 /**

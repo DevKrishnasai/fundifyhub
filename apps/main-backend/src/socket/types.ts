@@ -31,6 +31,8 @@ export enum RoomType {
   ROLE = 'role',
   /** District-based room: district:{districtName} */
   DISTRICT = 'district',
+  /** Auction-specific room: auction:{auctionId} */
+  AUCTION = 'auction',
 }
 
 /**

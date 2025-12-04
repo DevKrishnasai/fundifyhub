@@ -20,6 +20,16 @@ export const CACHE_TTL = {
   MEDIUM: 300,         // 5 minutes - for dashboard stats
   LONG: 3600,          // 1 hour - for reference data
   VERY_LONG: 86400,    // 24 hours - for rarely changing data
+  
+  // Resource-specific TTLs
+  USER_PROFILE: 300,          // 5 minutes
+  DASHBOARD_STATS: 60,        // 1 minute
+  GEOGRAPHY_DATA: 3600,       // 1 hour - countries, states, districts
+  WAREHOUSE_DATA: 1800,       // 30 minutes
+  SERVICE_CONFIG: 300,        // 5 minutes
+  ASSET_DATA: 180,            // 3 minutes
+  AUCTION_DATA: 30,           // 30 seconds - frequently changing
+  REFERENCE_DATA: 7200,       // 2 hours - static reference data
 } as const;
 
 // Cache key patterns
@@ -31,6 +41,7 @@ export const CACHE_KEYS = {
   // User data
   USER_PROFILE: (userId: string) => `user:profile:${userId}`,
   USER_NOTIFICATIONS: (userId: string) => `user:notifications:${userId}`,
+  USER_PERMISSIONS: (userId: string) => `user:permissions:${userId}`,
   
   // Request data
   REQUEST_DETAIL: (requestId: string) => `request:detail:${requestId}`,
@@ -40,7 +51,31 @@ export const CACHE_KEYS = {
   LOAN_DETAIL: (loanId: string) => `loan:detail:${loanId}`,
   LOAN_EMI_SCHEDULE: (loanId: string) => `loan:emi:${loanId}`,
   
-  // Reference data
+  // Geography data (new)
+  COUNTRIES: () => 'geography:countries',
+  COUNTRY_BY_ID: (countryId: string) => `geography:country:${countryId}`,
+  STATES_ALL: () => 'geography:states',
+  STATES_BY_COUNTRY: (countryId: string) => `geography:states:country:${countryId}`,
+  STATE_BY_ID: (stateId: string) => `geography:state:${stateId}`,
+  DISTRICTS_ALL: () => 'geography:districts',
+  DISTRICTS_BY_STATE: (stateId: string) => `geography:districts:state:${stateId}`,
+  DISTRICT_BY_ID: (districtId: string) => `geography:district:${districtId}`,
+  WAREHOUSES_ALL: () => 'geography:warehouses',
+  WAREHOUSES_BY_DISTRICT: (districtId: string) => `geography:warehouses:district:${districtId}`,
+  WAREHOUSE_BY_ID: (warehouseId: string) => `geography:warehouse:${warehouseId}`,
+  
+  // Asset data (new)
+  ASSET_DETAIL: (assetId: string) => `asset:detail:${assetId}`,
+  ASSET_MOVEMENTS: (assetId: string) => `asset:movements:${assetId}`,
+  WAREHOUSE_INVENTORY: (warehouseId: string) => `warehouse:inventory:${warehouseId}`,
+  
+  // Auction data (new)
+  AUCTION_DETAIL: (auctionId: string) => `auction:detail:${auctionId}`,
+  AUCTION_BIDS: (auctionId: string) => `auction:bids:${auctionId}`,
+  ACTIVE_AUCTIONS: () => 'auction:active',
+  USER_BIDS: (userId: string) => `auction:user-bids:${userId}`,
+  
+  // Reference data (legacy - kept for backward compatibility)
   DISTRICTS: () => 'ref:districts',
   AGENTS_BY_DISTRICT: (district: string) => `ref:agents:${district}`,
   
@@ -231,6 +266,39 @@ class CacheClient {
     if (customerId) {
       await this.delPattern(`dashboard:stats:*:${customerId}`);
     }
+  }
+
+  /**
+   * Invalidate geography-related caches
+   */
+  async invalidateGeography(): Promise<void> {
+    await this.del(CACHE_KEYS.COUNTRIES());
+    await this.del(CACHE_KEYS.STATES_ALL());
+    await this.del(CACHE_KEYS.DISTRICTS_ALL());
+    await this.del(CACHE_KEYS.WAREHOUSES_ALL());
+    await this.delPattern('geography:*');
+  }
+
+  /**
+   * Invalidate asset-related caches
+   */
+  async invalidateAsset(assetId: string, warehouseId?: string): Promise<void> {
+    await this.del(CACHE_KEYS.ASSET_DETAIL(assetId));
+    await this.del(CACHE_KEYS.ASSET_MOVEMENTS(assetId));
+    if (warehouseId) {
+      await this.del(CACHE_KEYS.WAREHOUSE_INVENTORY(warehouseId));
+    }
+  }
+
+  /**
+   * Invalidate auction-related caches
+   */
+  async invalidateAuction(auctionId?: string): Promise<void> {
+    if (auctionId) {
+      await this.del(CACHE_KEYS.AUCTION_DETAIL(auctionId));
+      await this.del(CACHE_KEYS.AUCTION_BIDS(auctionId));
+    }
+    await this.del(CACHE_KEYS.ACTIVE_AUCTIONS());
   }
 
   /**

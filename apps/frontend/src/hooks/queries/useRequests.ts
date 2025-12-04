@@ -134,20 +134,17 @@ export function useRequest(
   })
 }
 
-/**
- * Fetch user's own requests (customer view)
- */
 export function useUserRequests(
   options?: Omit<UseQueryOptions<RequestType[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: requestKeys.userRequests(),
     queryFn: async () => {
-      const result = await getWithResult<RequestType[]>(USER.LIST_REQUESTS)
+      const result = await getWithResult<{requests: RequestType[], pagination: any}>(USER.LIST_REQUESTS)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch your requests')
       }
-      return result.data
+      return result.data.requests
     },
     staleTime: 30 * 1000,
     ...options,
@@ -163,11 +160,11 @@ export function useAssignedRequests(
   return useQuery({
     queryKey: requestKeys.assigned(),
     queryFn: async () => {
-      const result = await getWithResult<RequestType[]>(REQUESTS.ASSIGNED_REQUESTS)
+      const result = await getWithResult<{items: RequestType[], total: number, page: number, pageSize: number}>(REQUESTS.ASSIGNED_REQUESTS)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch assigned requests')
       }
-      return result.data
+      return result.data.items
     },
     staleTime: 30 * 1000,
     ...options,

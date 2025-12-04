@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma, EMIStatus, Prisma, RequestStatus } from '@fundifyhub/prisma';
+import { prisma, EMIStatus, Prisma, RequestStage } from '@fundifyhub/prisma';
 import baseLogger from '../../utils/logger';
 
 const logger = baseLogger.child('[RequestsController]');
@@ -31,22 +31,22 @@ import {
   DOCUMENT_TYPE_TO_CATEGORY,
   EMI_STATUS,
   OVERDUE_GRACE_PERIOD_DAYS,
-  REQUEST_STATUS, 
-  AGENT_ACCESS_DENY_STATUSES,
-  CUSTOMER_ALLOWED_STATUSES,
-  AGENT_ALLOWED_STATUSES,
-  LOAN_CREATION_ALLOWED_STATUSES,
+  REQUEST_STAGE,
+  SUB_STATUS,
   DEFAULT_PENALTY_PERCENTAGE,
   DEFAULT_LATE_FEE_PERCENTAGE,
   AUDIT_ENTITY_TYPE,
   AUDIT_ACTION,
   REQUEST_HISTORY_ACTION,
   canViewRequestDetail,
+  stageToLegacyStatus,
   type UserRole
 } from '@fundifyhub/types';
 import config from '../../utils/config';
 import { generateSignedUrl, generateSignedUrls } from '../../utils/uploadthing';
 import { CLIENT_CONSTANTS } from '@fundifyhub/types';
+
+
 
 /**
  * GET /requests/:id
@@ -276,7 +276,8 @@ export async function getRequestDetailController(req: Request, res: Response): P
         agentId: request.assignedAgentId,
         adminId: request.assignedAdminId
       },
-      request.currentStatus as REQUEST_STATUS
+      request.stage,
+      request.subStatus
     );
 
     if (!canView) {
@@ -324,6 +325,13 @@ export async function getRequestDetailController(req: Request, res: Response): P
 
     // Add request history
     finalResponse.requestHistory = requestHistory;
+    
+    // Add computed currentStatus for frontend compatibility
+    // This maps stage+subStatus to a legacy status string that the frontend expects
+    finalResponse.currentStatus = stageToLegacyStatus(
+      request.stage as REQUEST_STAGE,
+      request.subStatus
+    );
       
     res.status(200).json({ success: true, message: 'Request retrieved', data: { request: finalResponse } } as APIResponseType);
     return;
@@ -395,15 +403,20 @@ export async function assignAgentController(req: Request, res: Response): Promis
       return;
     }
 
-    const fromStatus = request.currentStatus;
-    const toStatus = REQUEST_STATUS.INSPECTION_SCHEDULED;
+    const fromStatus = request.stage;
+    const toStage = REQUEST_STAGE.INSPECTION;
+    const toSubStatus = SUB_STATUS.INSPECTION.SCHEDULED;
     
     // Use the actual DB id (not requestNumber) for updates
     const dbId = request.id;
 
     const updateData: Prisma.RequestUpdateInput = { 
       assignedAgent: { connect: { id: agentId } }, 
-      currentStatus: toStatus 
+      stage: toStage,
+      subStatus: toSubStatus,
+      requiresAgentAction: true,
+      requiresAdminAction: false,
+      requiresCustomerAction: false
     };
     
     // If date-only is passed, store as midnight UTC for that date.
@@ -441,7 +454,7 @@ export async function assignAgentController(req: Request, res: Response): Promis
         },
         {
           requestId: fullRequest.requestNumber || dbId,
-          currentStatus: toStatus,
+          currentStatus: `${toStage}:${toSubStatus}`,
           previousStatus: fromStatus,
           header: 'Inspection Scheduled',
           description: `Your loan request has been assigned to an agent. The inspection has been scheduled${inspectionDate ? ` for ${inspectionDate}` : ''}.`,
@@ -457,8 +470,8 @@ export async function assignAgentController(req: Request, res: Response): Promis
     // Use requestNumber for the room name since frontend joins using that
     emitRequestStatusChanged({
       requestId: fullRequest?.requestNumber || dbId,
-      previousStatus: fromStatus as REQUEST_STATUS,
-      newStatus: toStatus,
+      previousStatus: fromStatus,
+      newStatus: `${toStage}:${toSubStatus}`,
       changedBy: {
         id: user.id,
         name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Admin',
@@ -847,19 +860,32 @@ export async function updateRequestStatusController(req: Request, res: Response)
         }
       }
 
-      // Customer: must be owner and status must be in CUSTOMER_ALLOWED_STATUSES
+      // Customer: must be owner and can only make certain transitions
+      // Customer-allowed stages/actions: accept offer, decline offer, cancel, provide bank details, sign
+      const CUSTOMER_ALLOWED_STAGES = [
+        REQUEST_STAGE.OFFER, // accept/decline
+        REQUEST_STAGE.DOCUMENTATION, // sign, provide bank details
+        REQUEST_STAGE.INSPECTION, // request reschedule
+        REQUEST_STAGE.CANCELLED, // cancel
+      ];
       if (!permittedByAnyRole && roles.includes(ROLES.CUSTOMER)) {
         const isOwner = String(request.customerId) === String(user.id);
-        if (isOwner && CUSTOMER_ALLOWED_STATUSES.includes(status as REQUEST_STATUS)) {
+        // Parse the target stage from the status
+        const [targetStage] = status.includes(':') ? status.split(':') : [status];
+        if (isOwner && CUSTOMER_ALLOWED_STAGES.includes(targetStage as REQUEST_STAGE)) {
           permittedByAnyRole = true;
         }
       }
 
-      // Agent: must be assigned and the status must be allowed for agents
+      // Agent: must be assigned and can only update inspection-related statuses
+      const AGENT_ALLOWED_STAGES = [
+        REQUEST_STAGE.INSPECTION, // start, complete, report issues
+      ];
       // Only apply agent restrictions if user doesn't have higher privilege roles
       if (!permittedByAnyRole && roles.includes(ROLES.AGENT)) {
         const isAssigned = request.assignedAgentId === user.id;
-        if (isAssigned && AGENT_ALLOWED_STATUSES.includes(status as REQUEST_STATUS)) {
+        const [targetStage] = status.includes(':') ? status.split(':') : [status];
+        if (isAssigned && AGENT_ALLOWED_STAGES.includes(targetStage as REQUEST_STAGE)) {
           permittedByAnyRole = true;
         }
       }
@@ -885,20 +911,74 @@ export async function updateRequestStatusController(req: Request, res: Response)
       }
     }
 
-    const fromStatus = request.currentStatus;
-    const toStatus = status;
+    const fromStage = request.stage;
+    const fromSubStatus = request.subStatus;
+    
+    // Parse the incoming status - can be either:
+    // 1. New format: "STAGE:SUB_STATUS" (e.g., "REVIEW:INFO_REQUIRED")
+    // 2. Old format: "STATUS_NAME" (e.g., "MORE_INFO_REQUIRED") - we map to new format
+    let toStage: string;
+    let toSubStatus: string | null = null;
+    
+    if (status.includes(':')) {
+      // New format
+      const [stage, subStat] = status.split(':');
+      toStage = stage;
+      toSubStatus = subStat || null;
+    } else {
+      // Legacy status mapping - map old REQUEST_STATUS to new stage/subStatus
+      const legacyMapping: Record<string, { stage: string; subStatus: string | null }> = {
+        'PENDING': { stage: REQUEST_STAGE.REVIEW, subStatus: SUB_STATUS.REVIEW.PENDING },
+        'UNDER_REVIEW': { stage: REQUEST_STAGE.REVIEW, subStatus: SUB_STATUS.REVIEW.IN_REVIEW },
+        'MORE_INFO_REQUIRED': { stage: REQUEST_STAGE.REVIEW, subStatus: SUB_STATUS.REVIEW.INFO_REQUIRED },
+        'OFFER_SENT': { stage: REQUEST_STAGE.OFFER, subStatus: SUB_STATUS.OFFER.SENT },
+        'OFFER_ACCEPTED': { stage: REQUEST_STAGE.OFFER, subStatus: SUB_STATUS.OFFER.ACCEPTED },
+        'OFFER_DECLINED': { stage: REQUEST_STAGE.OFFER, subStatus: SUB_STATUS.OFFER.DECLINED },
+        'OFFER_EXPIRED': { stage: REQUEST_STAGE.OFFER, subStatus: SUB_STATUS.OFFER.EXPIRED },
+        'INSPECTION_SCHEDULED': { stage: REQUEST_STAGE.INSPECTION, subStatus: SUB_STATUS.INSPECTION.SCHEDULED },
+        'INSPECTION_RESCHEDULE_REQUESTED': { stage: REQUEST_STAGE.INSPECTION, subStatus: SUB_STATUS.INSPECTION.RESCHEDULE_REQUESTED },
+        'INSPECTION_IN_PROGRESS': { stage: REQUEST_STAGE.INSPECTION, subStatus: SUB_STATUS.INSPECTION.IN_PROGRESS },
+        'INSPECTION_COMPLETED': { stage: REQUEST_STAGE.INSPECTION, subStatus: SUB_STATUS.INSPECTION.COMPLETED },
+        'CUSTOMER_NOT_AVAILABLE': { stage: REQUEST_STAGE.INSPECTION, subStatus: SUB_STATUS.INSPECTION.CUSTOMER_UNAVAILABLE },
+        'AGENT_NOT_AVAILABLE': { stage: REQUEST_STAGE.INSPECTION, subStatus: SUB_STATUS.INSPECTION.AGENT_UNAVAILABLE },
+        'ASSET_MISMATCH': { stage: REQUEST_STAGE.INSPECTION, subStatus: SUB_STATUS.INSPECTION.ASSET_ISSUE },
+        'APPROVED': { stage: REQUEST_STAGE.INSPECTION, subStatus: SUB_STATUS.INSPECTION.APPROVED },
+        'PENDING_SIGNATURE': { stage: REQUEST_STAGE.DOCUMENTATION, subStatus: SUB_STATUS.DOCUMENTATION.PENDING_SIGNATURE },
+        'PENDING_BANK_DETAILS': { stage: REQUEST_STAGE.DOCUMENTATION, subStatus: SUB_STATUS.DOCUMENTATION.PENDING_BANK_DETAILS },
+        'BANK_DETAILS_SUBMITTED': { stage: REQUEST_STAGE.DOCUMENTATION, subStatus: SUB_STATUS.DOCUMENTATION.BANK_DETAILS_SUBMITTED },
+        'TRANSFER_FAILED': { stage: REQUEST_STAGE.DISBURSEMENT, subStatus: SUB_STATUS.DISBURSEMENT.FAILED },
+        'AMOUNT_DISBURSED': { stage: REQUEST_STAGE.DISBURSEMENT, subStatus: SUB_STATUS.DISBURSEMENT.COMPLETED },
+        'ACTIVE': { stage: REQUEST_STAGE.ACTIVE, subStatus: SUB_STATUS.ACTIVE.CURRENT },
+        'PAYMENT_OVERDUE': { stage: REQUEST_STAGE.ACTIVE, subStatus: SUB_STATUS.ACTIVE.OVERDUE },
+        'DEFAULTED': { stage: REQUEST_STAGE.ACTIVE, subStatus: SUB_STATUS.ACTIVE.DEFAULTED },
+        'COMPLETED': { stage: REQUEST_STAGE.COMPLETED, subStatus: null },
+        'REJECTED': { stage: REQUEST_STAGE.REJECTED, subStatus: null },
+        'CANCELLED': { stage: REQUEST_STAGE.CANCELLED, subStatus: null },
+      };
+      
+      const mapped = legacyMapping[status];
+      if (mapped) {
+        toStage = mapped.stage;
+        toSubStatus = mapped.subStatus;
+      } else {
+        // Fallback: treat as stage directly
+        toStage = status;
+        toSubStatus = null;
+      }
+    }
 
     // Enforce mandatory notes for certain transitions
-    const MANDATORY_NOTE_STATUSES = new Set([
-      REQUEST_STATUS.MORE_INFO_REQUIRED,
-      REQUEST_STATUS.REJECTED,
-      REQUEST_STATUS.AMOUNT_DISBURSED,
-      REQUEST_STATUS.PENDING_BANK_DETAILS,
-      REQUEST_STATUS.PENDING_SIGNATURE,
-      REQUEST_STATUS.OFFER_SENT,
+    const MANDATORY_NOTE_STAGES = new Set([
+      `${REQUEST_STAGE.REVIEW}:${SUB_STATUS.REVIEW.INFO_REQUIRED}`,
+      REQUEST_STAGE.REJECTED,
+      `${REQUEST_STAGE.DISBURSEMENT}:${SUB_STATUS.DISBURSEMENT.COMPLETED}`,
+      `${REQUEST_STAGE.DOCUMENTATION}:${SUB_STATUS.DOCUMENTATION.PENDING_BANK_DETAILS}`,
+      `${REQUEST_STAGE.DOCUMENTATION}:${SUB_STATUS.DOCUMENTATION.PENDING_SIGNATURE}`,
+      `${REQUEST_STAGE.OFFER}:${SUB_STATUS.OFFER.SENT}`,
     ]);
 
-    if (MANDATORY_NOTE_STATUSES.has(toStatus as REQUEST_STATUS)) {
+    const statusKey = toSubStatus ? `${toStage}:${toSubStatus}` : toStage;
+    if (MANDATORY_NOTE_STAGES.has(statusKey)) {
       const noteText = typeof note === 'string' ? note.trim() : '';
       if (!noteText) {
         res.status(400).json({ success: false, message: 'Note is required for this status change' } as APIResponseType);
@@ -913,15 +993,38 @@ export async function updateRequestStatusController(req: Request, res: Response)
     // Use the actual DB id (not requestNumber) for updates
     const dbId = request.id;
 
+    // Calculate action flags based on new stage/subStatus
+    const calculateFlags = (stage: string, subStat: string | null) => {
+      const flags = { requiresCustomerAction: false, requiresAdminAction: false, requiresAgentAction: false };
+      if (stage === REQUEST_STAGE.REVIEW && subStat === SUB_STATUS.REVIEW.INFO_REQUIRED) {
+        flags.requiresCustomerAction = true;
+      } else if (stage === REQUEST_STAGE.OFFER && subStat === SUB_STATUS.OFFER.SENT) {
+        flags.requiresCustomerAction = true;
+      } else if (stage === REQUEST_STAGE.DOCUMENTATION) {
+        if (subStat === SUB_STATUS.DOCUMENTATION.PENDING_SIGNATURE || subStat === SUB_STATUS.DOCUMENTATION.PENDING_BANK_DETAILS) {
+          flags.requiresCustomerAction = true;
+        } else if (subStat === SUB_STATUS.DOCUMENTATION.BANK_DETAILS_SUBMITTED) {
+          flags.requiresAdminAction = true;
+        }
+      } else if (stage === REQUEST_STAGE.INSPECTION && subStat === SUB_STATUS.INSPECTION.SCHEDULED) {
+        flags.requiresAgentAction = true;
+      } else if (stage === REQUEST_STAGE.REVIEW && subStat !== SUB_STATUS.REVIEW.INFO_REQUIRED) {
+        flags.requiresAdminAction = true;
+      }
+      return flags;
+    };
+
     // Persist the status change
     // perform status update atomically
     const updatedRequest = await prisma.$transaction(async (tx) => {
       // Prepare update payload. We only clear assignment when a reschedule is requested.
-      // Historically we cleared assignedAgentId on CANCELLED/REJECTED; that removed the persisted association.
-      // New behaviour: preserve assignedAgentId on CANCELLED/REJECTED (so assignment is auditable), but clear it when
-      // a reschedule is requested (agent should be unassigned while customer picks a new date).
-      const updatePayload: Prisma.RequestUpdateInput = { currentStatus: toStatus as RequestStatus };
-      if (toStatus === REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED) {
+      const actionFlags = calculateFlags(toStage, toSubStatus);
+      const updatePayload: Prisma.RequestUpdateInput = { 
+        stage: toStage as RequestStage,
+        subStatus: toSubStatus,
+        ...actionFlags
+      };
+      if (toStage === REQUEST_STAGE.INSPECTION && toSubStatus === SUB_STATUS.INSPECTION.RESCHEDULE_REQUESTED) {
         // Revoke assignment and clear scheduled date for reschedule requests
         updatePayload.assignedAgent = { disconnect: true };
         updatePayload.inspectionScheduledAt = null;
@@ -932,8 +1035,10 @@ export async function updateRequestStatusController(req: Request, res: Response)
 
       // Normalize metadata for MORE_INFO_REQUIRED to a structured AdminRequestedInfoMetadata
       interface StatusChangeMetadata {
-        fromStatus: string;
-        toStatus: string;
+        fromStage: string;
+        fromSubStatus: string | null;
+        toStage: string;
+        toSubStatus: string | null;
         requestedBy?: string;
         requestedByName?: string | null;
         note?: string | null;
@@ -941,28 +1046,30 @@ export async function updateRequestStatusController(req: Request, res: Response)
         requestedInspectionAt?: string | null;
         previousAssignedAgentId?: string | null;
       }
-      let metadata: StatusChangeMetadata = { fromStatus, toStatus };
-  if (toStatus === REQUEST_STATUS.MORE_INFO_REQUIRED) {
+      let metadata: StatusChangeMetadata = { fromStage, fromSubStatus, toStage, toSubStatus };
+      if (toStage === REQUEST_STAGE.REVIEW && toSubStatus === SUB_STATUS.REVIEW.INFO_REQUIRED) {
         // Keep metadata minimal: who requested it and the note. Avoid storing role/fields/dueBy in shared metadata.
         metadata = {
-          fromStatus,
-          toStatus,
+          fromStage,
+          fromSubStatus,
+          toStage,
+          toSubStatus,
           requestedBy: user.id,
           requestedByName: `${(user.firstName || '')} ${(user.lastName || '')}`.trim() || null,
           note: typeof note === 'string' && note.trim() ? note.trim() : null,
           message: typeof note === 'string' && note.trim() ? note.trim() : null,
         };
-      } else if (toStatus === REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED) {
+      } else if (toStage === REQUEST_STAGE.INSPECTION && toSubStatus === SUB_STATUS.INSPECTION.RESCHEDULE_REQUESTED) {
         // Include the requested inspection date (date-only string) in metadata
-        metadata = { fromStatus, toStatus, note, requestedInspectionAt: requestedInspectionAt || null };
+        metadata = { fromStage, fromSubStatus, toStage, toSubStatus, note, requestedInspectionAt: requestedInspectionAt || null };
       } else {
-        metadata = { fromStatus, toStatus, note };
+        metadata = { fromStage, fromSubStatus, toStage, toSubStatus, note };
       }
 
       // Attach previous assigned agent for auditing when we clear it (reschedule flow)
       try {
         const prevAssigned = request.assignedAgentId || null;
-        if (prevAssigned && toStatus === REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED) {
+        if (prevAssigned && toStage === REQUEST_STAGE.INSPECTION && toSubStatus === SUB_STATUS.INSPECTION.RESCHEDULE_REQUESTED) {
           metadata.previousAssignedAgentId = prevAssigned;
         }
       } catch {
@@ -973,10 +1080,17 @@ export async function updateRequestStatusController(req: Request, res: Response)
     });
 
     let finalRequest = updatedRequest;
-    if (toStatus === REQUEST_STATUS.APPROVED) {
+    // If inspection is approved, move to documentation (pending signature)
+    if (toStage === REQUEST_STAGE.INSPECTION && toSubStatus === SUB_STATUS.INSPECTION.APPROVED) {
       finalRequest = await prisma.request.update({ 
         where: { id: dbId }, 
-        data: { currentStatus: REQUEST_STATUS.PENDING_SIGNATURE } 
+        data: { 
+          stage: REQUEST_STAGE.DOCUMENTATION,
+          subStatus: SUB_STATUS.DOCUMENTATION.PENDING_SIGNATURE,
+          requiresCustomerAction: true,
+          requiresAdminAction: false,
+          requiresAgentAction: false
+        } 
       });
     }
 
@@ -992,37 +1106,38 @@ export async function updateRequestStatusController(req: Request, res: Response)
 
     // Send status change notification to customer
     if (fullRequest?.customer) {
+      const statusKey = toSubStatus ? `${toStage}:${toSubStatus}` : toStage;
       const statusMessages: Record<string, { header: string; description: string; footer: string }> = {
-        [REQUEST_STATUS.MORE_INFO_REQUIRED]: {
+        [`${REQUEST_STAGE.REVIEW}:${SUB_STATUS.REVIEW.INFO_REQUIRED}`]: {
           header: 'More Information Required',
           description: `We need additional information for your loan request. ${note || 'Please check the request details.'}`,
           footer: 'Please provide the requested information to proceed.',
         },
-        [REQUEST_STATUS.REJECTED]: {
+        [REQUEST_STAGE.REJECTED]: {
           header: 'Request Rejected',
           description: `Your loan request has been rejected. ${note || ''}`,
           footer: 'Contact support for more information.',
         },
-        [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: {
+        [`${REQUEST_STAGE.INSPECTION}:${SUB_STATUS.INSPECTION.RESCHEDULE_REQUESTED}`]: {
           header: 'Inspection Reschedule Requested',
           description: 'You have requested to reschedule the inspection. We will contact you soon with new options.',
           footer: 'Thank you for your patience.',
         },
-        [REQUEST_STATUS.OFFER_ACCEPTED]: {
+        [`${REQUEST_STAGE.OFFER}:${SUB_STATUS.OFFER.ACCEPTED}`]: {
           header: 'Offer Accepted',
           description: 'You have accepted the loan offer. The next step is to complete the inspection.',
           footer: 'Thank you for choosing FundifyHub.',
         },
-        [REQUEST_STATUS.OFFER_DECLINED]: {
+        [`${REQUEST_STAGE.OFFER}:${SUB_STATUS.OFFER.DECLINED}`]: {
           header: 'Offer Declined',
           description: 'You have declined the loan offer.',
           footer: 'You can submit a new request anytime.',
         },
       };
 
-      const msg = statusMessages[toStatus] || {
+      const msg = statusMessages[statusKey] || {
         header: 'Request Status Updated',
-        description: `Your request status has changed from ${fromStatus} to ${toStatus}.${note ? ` Note: ${note}` : ''}`,
+        description: `Your request status has changed to ${toStage}${toSubStatus ? ` (${toSubStatus})` : ''}.${note ? ` Note: ${note}` : ''}`,
         footer: 'Check your dashboard for details.',
       };
 
@@ -1035,8 +1150,8 @@ export async function updateRequestStatusController(req: Request, res: Response)
         },
         {
           requestId: fullRequest.requestNumber || dbId,
-          currentStatus: toStatus,
-          previousStatus: fromStatus,
+          currentStatus: statusKey,
+          previousStatus: fromSubStatus ? `${fromStage}:${fromSubStatus}` : fromStage,
           header: msg.header,
           description: msg.description,
           footer: msg.footer,
@@ -1046,14 +1161,16 @@ export async function updateRequestStatusController(req: Request, res: Response)
     }
 
     // Audit the status change
-    auditRequest.statusChanged(req, dbId, fromStatus, toStatus, note).catch(() => {});
+    const fromStatusStr = fromSubStatus ? `${fromStage}:${fromSubStatus}` : fromStage;
+    const toStatusStr = toSubStatus ? `${toStage}:${toSubStatus}` : toStage;
+    auditRequest.statusChanged(req, dbId, fromStatusStr, toStatusStr, note).catch(() => {});
 
     // Emit socket event for real-time update
     // Use requestNumber for the room name since frontend joins using that
     emitRequestStatusChanged({
       requestId: fullRequest?.requestNumber || dbId,
-      previousStatus: fromStatus as REQUEST_STATUS,
-      newStatus: toStatus as REQUEST_STATUS,
+      previousStatus: fromStatusStr,
+      newStatus: toStatusStr,
       changedBy: {
         id: user.id,
         name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
@@ -1068,8 +1185,8 @@ export async function updateRequestStatusController(req: Request, res: Response)
         userId: fullRequest.customer.id,
         type: 'info',
         title: 'Request Status Updated',
-        message: `Your request status has changed from ${fromStatus} to ${toStatus}.`,
-        data: { requestId: dbId, status: toStatus },
+        message: `Your request status has changed to ${toStage}${toSubStatus ? ` (${toSubStatus})` : ''}.`,
+        data: { requestId: dbId, status: toStatusStr },
       });
     }
 
@@ -1133,8 +1250,10 @@ export async function createOfferController(req: Request, res: Response): Promis
       return;
     }
 
-    const fromStatus = request.currentStatus;
-    const toStatus = REQUEST_STATUS.OFFER_SENT;
+    const fromStage = request.stage;
+    const fromSubStatus = request.subStatus;
+    const toStage = REQUEST_STAGE.OFFER;
+    const toSubStatus = SUB_STATUS.OFFER.SENT;
 
     // Use the actual DB id (not requestNumber) for updates
     const dbId = request.id;
@@ -1157,7 +1276,10 @@ export async function createOfferController(req: Request, res: Response): Promis
           lateFeePercentage: lateFeeRate,
           adminProcessingFee: typeof processingFee === 'number' ? processingFee : 0,
           offerMadeDate: new Date(),
-          currentStatus: toStatus,
+          stage: toStage,
+          subStatus: toSubStatus,
+          requiresCustomerAction: true,
+          requiresAdminAction: false,
           adminEmiSchedule: emiSnapshot,
         },
       });
@@ -1176,6 +1298,9 @@ export async function createOfferController(req: Request, res: Response): Promis
 
     // Send offer notification to customer
     if (fullRequest?.customer) {
+      const toStatusStr = `${toStage}:${toSubStatus}`;
+      const fromStatusStr = fromSubStatus ? `${fromStage}:${fromSubStatus}` : fromStage;
+      
       sendRequestStatusNotification(
         {
           userId: fullRequest.customer.id,
@@ -1185,8 +1310,8 @@ export async function createOfferController(req: Request, res: Response): Promis
         },
         {
           requestId: fullRequest.requestNumber || dbId,
-          currentStatus: toStatus,
-          previousStatus: fromStatus,
+          currentStatus: toStatusStr,
+          previousStatus: fromStatusStr,
           header: 'Loan Offer Received',
           description: `Congratulations! We have sent you a loan offer of ₹${amount.toLocaleString('en-IN')} at ${interestRate}% interest for ${tenureMonths} months.`,
           footer: 'Please review the offer and respond within 7 days.',
@@ -1197,8 +1322,8 @@ export async function createOfferController(req: Request, res: Response): Promis
       // Use requestNumber for the room name since frontend joins using that
       emitRequestStatusChanged({
         requestId: fullRequest.requestNumber || dbId,
-        previousStatus: fromStatus as REQUEST_STATUS,
-        newStatus: toStatus,
+        previousStatus: fromStatusStr,
+        newStatus: toStatusStr,
         changedBy: {
           id: user.id,
           name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Admin',
@@ -1224,8 +1349,10 @@ export async function createOfferController(req: Request, res: Response): Promis
       penaltyPercentage: penaltyRate,
       lateFeePercentage: lateFeeRate,
       processingFee: processingFee || 0,
-      fromStatus,
-      toStatus,
+      fromStage,
+      fromSubStatus,
+      toStage,
+      toSubStatus,
     }).catch(() => {});
 
   res.status(200).json({ success: true, message: 'Offer created', data: { request: fullRequest } } as APIResponseType);
@@ -1396,9 +1523,10 @@ export async function confirmOfferController(req: Request, res: Response): Promi
       return;
     }
 
-    const allowedStatuses = LOAN_CREATION_ALLOWED_STATUSES;
-    if (!allowedStatuses.includes(request.currentStatus as REQUEST_STATUS)) {
-      res.status(400).json({ success: false, message: `Cannot confirm loan in current status: ${request.currentStatus}` } as APIResponseType);
+    // Allowed stages for loan creation: after offer accepted and inspection approved
+    const allowedStages = [REQUEST_STAGE.INSPECTION, REQUEST_STAGE.DOCUMENTATION, REQUEST_STAGE.DISBURSEMENT];
+    if (!allowedStages.includes(request.stage as REQUEST_STAGE)) {
+      res.status(400).json({ success: false, message: `Cannot confirm loan in current stage: ${request.stage}` } as APIResponseType);
       return;
     }
 
@@ -1496,7 +1624,8 @@ export async function createLoanController(req: Request, res: Response): Promise
       select: { 
         id: true, 
         districtId: true, 
-        currentStatus: true,
+        stage: true,
+        subStatus: true,
         adminOfferedAmount: true,
         adminInterestRate: true,
         adminTenureMonths: true,
@@ -1521,11 +1650,12 @@ export async function createLoanController(req: Request, res: Response): Promise
       return;
     }
 
-    if (request.currentStatus !== REQUEST_STATUS.AMOUNT_DISBURSED) {
+    // Check that disbursement is completed
+    if (request.stage !== REQUEST_STAGE.DISBURSEMENT || request.subStatus !== SUB_STATUS.DISBURSEMENT.COMPLETED) {
       res.status(400).json({ 
         success: false, 
-        message: 'Loan can only be created from AMOUNT_DISBURSED status',
-        data: { currentStatus: request.currentStatus }
+        message: 'Loan can only be created after disbursement is completed',
+        data: { stage: request.stage, subStatus: request.subStatus }
       } as APIResponseType);
       return;
     }
@@ -1761,8 +1891,11 @@ export async function generateAgreementController(req: Request, res: Response): 
       }
     }
 
-    // Verify request is in correct status
-    if (request.currentStatus !== REQUEST_STATUS.PENDING_SIGNATURE && request.currentStatus !== REQUEST_STATUS.APPROVED) {
+    // Verify request is in correct stage for agreement generation (after inspection approval or in documentation)
+    const validForAgreement = 
+      (request.stage === REQUEST_STAGE.DOCUMENTATION && request.subStatus === SUB_STATUS.DOCUMENTATION.PENDING_SIGNATURE) ||
+      (request.stage === REQUEST_STAGE.INSPECTION && request.subStatus === SUB_STATUS.INSPECTION.APPROVED);
+    if (!validForAgreement) {
       res.status(400).json({ 
         success: false, 
         message: 'Agreement can only be generated for approved requests awaiting signature' 
@@ -1788,7 +1921,7 @@ export async function generateAgreementController(req: Request, res: Response): 
       customerName: `${request.customer?.firstName || ''} ${request.customer?.lastName || ''}`.trim() || 'Customer',
       customerEmail: request.customer?.email || '',
       customerPhone: request.customer?.phoneNumber || '',
-      customerDistrict: request.district?.name || '',
+      customerDistrict: request.district.name,
       
       assetType: request.asset?.assetType || 'Asset',
       assetBrand: request.asset?.brand,
@@ -1900,11 +2033,11 @@ export async function signAgreementController(req: Request, res: Response): Prom
       return;
     }
 
-    // Verify request is in correct status
-    if (request.currentStatus !== REQUEST_STATUS.PENDING_SIGNATURE) {
+    // Verify request is in correct stage for signing
+    if (request.stage !== REQUEST_STAGE.DOCUMENTATION || request.subStatus !== SUB_STATUS.DOCUMENTATION.PENDING_SIGNATURE) {
       res.status(400).json({
         success: false,
-        message: 'Agreement can only be signed when status is PENDING_SIGNATURE'
+        message: 'Agreement can only be signed when in DOCUMENTATION stage with PENDING_SIGNATURE status'
       } as APIResponseType);
       return;
     }
@@ -1927,7 +2060,7 @@ export async function signAgreementController(req: Request, res: Response): Prom
       customerName: `${request.customer?.firstName || ''} ${request.customer?.lastName || ''}`.trim() || 'Customer',
       customerEmail: request.customer?.email || '',
       customerPhone: request.customer?.phoneNumber || '',
-      customerDistrict: request.district?.name || '',
+      customerDistrict: request.district.name,
 
       assetType: request.asset?.assetType || 'Asset',
       assetBrand: request.asset?.brand,
@@ -2040,20 +2173,29 @@ export async function signAgreementController(req: Request, res: Response): Prom
     // Generate signed URL for the client
     const { url: signedUrl } = await generateSignedUrl(uploadedFile.key, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
 
-    // Update request status to PENDING_BANK_DETAILS
-    const fromStatus = request.currentStatus;
-    const toStatus = REQUEST_STATUS.PENDING_BANK_DETAILS;
+    // Update request to next stage - need bank details
+    const fromStage = request.stage;
+    const fromSubStatus = request.subStatus;
+    const toStage = REQUEST_STAGE.DOCUMENTATION;
+    const toSubStatus = SUB_STATUS.DOCUMENTATION.PENDING_BANK_DETAILS;
 
     await prisma.request.update({
       where: { id: request.id },
-      data: { currentStatus: toStatus }
+      data: { 
+        stage: toStage,
+        subStatus: toSubStatus,
+        requiresCustomerAction: true,
+        requiresAdminAction: false
+      }
     });
 
     // Emit real-time event
+    const fromStatusStr = fromSubStatus ? `${fromStage}:${fromSubStatus}` : fromStage;
+    const toStatusStr = `${toStage}:${toSubStatus}`;
     emitRequestStatusChanged({
       requestId: request.requestNumber,
-      previousStatus: fromStatus as REQUEST_STATUS,
-      newStatus: toStatus,
+      previousStatus: fromStatusStr,
+      newStatus: toStatusStr,
       changedBy: {
         id: user.id,
         name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
@@ -2070,7 +2212,7 @@ export async function signAgreementController(req: Request, res: Response): Prom
       data: {
         signedUrl,
         documentId: document.id,
-        nextStatus: toStatus,
+        nextStatus: toStatusStr,
       }
     } as APIResponseType);
 
@@ -2103,7 +2245,8 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
         requestNumber: true,
         customerId: true, 
         districtId: true,
-        currentStatus: true 
+        stage: true,
+        subStatus: true
       }
     });
 
@@ -2250,16 +2393,25 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
 
     // After upload (and stamping if available), transition request to next status
     try {
-      const fromStatus = request.currentStatus;
-      const toStatus = REQUEST_STATUS.PENDING_BANK_DETAILS;
+      const fromStage = request.stage;
+      const fromSubStatus = request.subStatus;
+      const toStage = REQUEST_STAGE.DOCUMENTATION;
+      const toSubStatus = SUB_STATUS.DOCUMENTATION.PENDING_BANK_DETAILS;
 
-      await prisma.request.update({ where: { id: id }, data: { currentStatus: toStatus } });
+      await prisma.request.update({ where: { id: id }, data: { 
+        stage: toStage,
+        subStatus: toSubStatus,
+        requiresCustomerAction: true,
+        requiresAdminAction: false
+      } });
 
       // Emit real-time event
+      const fromStatusStr = fromSubStatus ? `${fromStage}:${fromSubStatus}` : fromStage;
+      const toStatusStr = `${toStage}:${toSubStatus}`;
       emitRequestStatusChanged({
         requestId: request.requestNumber,
-        previousStatus: fromStatus as REQUEST_STATUS,
-        newStatus: toStatus,
+        previousStatus: fromStatusStr,
+        newStatus: toStatusStr,
         changedBy: {
           id: user.id,
           name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
@@ -2281,7 +2433,7 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
         stampedDocumentId,
         stampedFileKey,
         stampedSignedUrl,
-        nextStatus: REQUEST_STATUS.PENDING_BANK_DETAILS,
+        nextStatus: `${REQUEST_STAGE.DOCUMENTATION}:${SUB_STATUS.DOCUMENTATION.PENDING_BANK_DETAILS}`,
       }
     });
 
@@ -2335,8 +2487,8 @@ export async function completeInspectionController(req: Request, res: Response):
     }
 
     // Must be in inspection in progress
-    if (request.currentStatus !== REQUEST_STATUS.INSPECTION_IN_PROGRESS) {
-      res.status(400).json({ success: false, message: `Inspection can only be completed from status ${REQUEST_STATUS.INSPECTION_IN_PROGRESS}` } as APIResponseType);
+    if (request.stage !== REQUEST_STAGE.INSPECTION || request.subStatus !== SUB_STATUS.INSPECTION.IN_PROGRESS) {
+      res.status(400).json({ success: false, message: `Inspection can only be completed when in INSPECTION stage with IN_PROGRESS status` } as APIResponseType);
       return;
     }
 
@@ -2360,21 +2512,30 @@ export async function completeInspectionController(req: Request, res: Response):
       }
     }
 
-    const fromStatus = request.currentStatus;
-    const toStatus = REQUEST_STATUS.INSPECTION_COMPLETED;
+    const fromStage = request.stage;
+    const fromSubStatus = request.subStatus;
+    const toStage = REQUEST_STAGE.INSPECTION;
+    const toSubStatus = SUB_STATUS.INSPECTION.COMPLETED;
 
     // Persist update and create aggregated history entry
     const updatedRequest = await prisma.$transaction(async (tx) => {
-      const u = await tx.request.update({ where: { id: request.id }, data: { currentStatus: toStatus } });
+      const u = await tx.request.update({ where: { id: request.id }, data: { 
+        stage: toStage,
+        subStatus: toSubStatus,
+        requiresAgentAction: false,
+        requiresAdminAction: true
+      } });
       // createRequestHistory is now a stub - audit logging is done via auditInspection below
       return u;
     });
 
     // Emit real-time event
+    const fromStatusStr = fromSubStatus ? `${fromStage}:${fromSubStatus}` : fromStage;
+    const toStatusStr = `${toStage}:${toSubStatus}`;
     emitRequestStatusChanged({
       requestId: request.requestNumber,
-      previousStatus: fromStatus as REQUEST_STATUS,
-      newStatus: toStatus,
+      previousStatus: fromStatusStr,
+      newStatus: toStatusStr,
       changedBy: {
         id: user.id,
         name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
@@ -2430,7 +2591,7 @@ export async function updateBankDetailsController(req: Request, res: Response): 
           { requestNumber: id }
         ] 
       },
-      select: { id: true, customerId: true, currentStatus: true }
+      select: { id: true, customerId: true, stage: true, subStatus: true }
     });
 
     if (!request) {
@@ -2469,23 +2630,30 @@ export async function updateBankDetailsController(req: Request, res: Response): 
     });
 
     // Update bank details using the database ID
-    const fromStatus = request.currentStatus;
-    const toStatus = REQUEST_STATUS.BANK_DETAILS_SUBMITTED;
+    const fromStage = request.stage;
+    const fromSubStatus = request.subStatus;
+    const toStage = REQUEST_STAGE.DOCUMENTATION;
+    const toSubStatus = SUB_STATUS.DOCUMENTATION.BANK_DETAILS_SUBMITTED;
 
     const updatedRequest = await prisma.request.update({
       where: { id: request.id },
       data: {
         disbursementAccountId: bankDetails.id,
         bankDetailsSubmittedAt: new Date(),
-        currentStatus: toStatus,
+        stage: toStage,
+        subStatus: toSubStatus,
+        requiresCustomerAction: false,
+        requiresAdminAction: true
       }
     });
 
     // Emit real-time event
+    const fromStatusStr = fromSubStatus ? `${fromStage}:${fromSubStatus}` : fromStage;
+    const toStatusStr = `${toStage}:${toSubStatus}`;
     emitRequestStatusChanged({
       requestId: updatedRequest.requestNumber,
-      previousStatus: fromStatus as REQUEST_STATUS,
-      newStatus: toStatus,
+      previousStatus: fromStatusStr,
+      newStatus: toStatusStr,
       changedBy: {
         id: user.id,
         name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
@@ -2501,7 +2669,7 @@ export async function updateBankDetailsController(req: Request, res: Response): 
       message: 'Bank details submitted successfully',
       data: {
         requestId: updatedRequest.id,
-        status: updatedRequest.currentStatus,
+        status: `${updatedRequest.stage}:${updatedRequest.subStatus}`,
       }
     });
 
@@ -2539,14 +2707,21 @@ export async function getAgentAssignedRequestsController(req: Request, res: Resp
 
     const where: Prisma.RequestWhereInput = { assignedAgentId: userId };
 
-    // Agents should not see requests that have progressed past bank details submission
-    // (these are considered completed for the agent's responsibilities)
-    where.currentStatus = { notIn: AGENT_ACCESS_DENY_STATUSES };
+    // Agents should not see requests that have progressed past inspection phase
+    // (DISBURSEMENT, ACTIVE, COMPLETED stages are not visible to agents)
+    const AGENT_DENY_STAGES = [REQUEST_STAGE.DISBURSEMENT, REQUEST_STAGE.ACTIVE, REQUEST_STAGE.COMPLETED];
+    where.stage = { notIn: AGENT_DENY_STAGES };
 
-    // Optional status filter
+    // Optional stage filter (new format stage:subStatus or just stage)
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
     if (status) {
-        where.currentStatus = status as RequestStatus;
+      if (status.includes(':')) {
+        const [stage, subStat] = status.split(':');
+        where.stage = stage as RequestStage;
+        where.subStatus = subStat;
+      } else {
+        where.stage = status as RequestStage;
+      }
     }
 
     // Optional simple search
@@ -2699,7 +2874,7 @@ export async function addCommentController(req: Request, res: Response): Promise
     } else if (roles.includes(ROLES.CUSTOMER)) {
       if (request.customerId === user.id) {
         // Customers can comment if request is not rejected, OR if comments are explicitly enabled
-        if (request.currentStatus !== REQUEST_STATUS.REJECTED || request.commentsEnabled) {
+        if (request.stage !== REQUEST_STAGE.REJECTED || request.commentsEnabled) {
           allowed = true;
         }
       }

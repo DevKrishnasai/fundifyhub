@@ -293,7 +293,7 @@ export function QuickInfo({ request, className }: QuickInfoProps) {
         <Separator />
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">District</span>
-          <span>{request.district}</span>
+          <span>{(request.district as any)?.name || 'N/A'}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Asset</span>

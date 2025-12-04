@@ -73,7 +73,8 @@ export async function listAssets(req: Request, res: Response): Promise<void> {
             select: {
               id: true,
               requestNumber: true,
-              currentStatus: true,
+              stage: true,
+              subStatus: true,
               customer: {
                 select: {
                   id: true,
@@ -144,7 +145,8 @@ export async function getAssetById(req: Request, res: Response): Promise<void> {
           select: {
             id: true,
             requestNumber: true,
-            currentStatus: true,
+            stage: true,
+            subStatus: true,
             requestedAmount: true,
             adminOfferedAmount: true,
             customer: {

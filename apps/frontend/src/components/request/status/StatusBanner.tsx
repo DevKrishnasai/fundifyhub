@@ -49,11 +49,14 @@ import {
 
 export type BannerVariant = 'info' | 'warning' | 'success' | 'error' | 'neutral';
 
+/** Union type for all user roles */
+type UserRoleKey = 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
+
 interface BannerConfig {
   icon: LucideIcon;
   variant: BannerVariant;
   title: string;
-  description: string | Record<'CUSTOMER' | 'DISTRICT_ADMIN' | 'SUPER_ADMIN' | 'AGENT', string>;
+  description: string | Partial<Record<UserRoleKey, string>>;
   actionLabel?: string;
   showProgress?: boolean;
   phase?: number; // 1-6 for workflow phases
@@ -373,7 +376,7 @@ const VARIANT_STYLES: Record<BannerVariant, { bg: string; border: string; icon: 
 
 interface StatusBannerProps {
   status: REQUEST_STATUS;
-  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
+  userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
   onActionClick?: () => void;
   customDescription?: string;
   showPhaseProgress?: boolean;

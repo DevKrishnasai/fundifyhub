@@ -42,6 +42,13 @@ export enum ServerEvent {
   PAYMENT_RECEIVED = 'payment:received',
   EMI_REMINDER = 'emi:reminder',
   EMI_OVERDUE = 'emi:overdue',
+
+  // Auction events
+  AUCTION_BID_PLACED = 'auction:bidPlaced',
+  AUCTION_OUTBID = 'auction:outbid',
+  AUCTION_EXTENDED = 'auction:extended',
+  AUCTION_ENDED = 'auction:ended',
+  AUCTION_WON = 'auction:won',
 }
 
 /** Client-to-server events */
@@ -54,6 +61,8 @@ export enum ClientEvent {
   LEAVE_REQUEST = 'leave:request',
   JOIN_USER = 'join:user',
   LEAVE_USER = 'leave:user',
+  JOIN_AUCTION = 'join:auction',
+  LEAVE_AUCTION = 'leave:auction',
 
   // Presence
   PING = 'ping',
@@ -106,11 +115,11 @@ export interface RequestUpdatedPayload {
   timestamp: string;
 }
 
-/** Request status change payload */
+/** Request status change payload - supports both old REQUEST_STATUS and new stage:subStatus format */
 export interface RequestStatusChangedPayload {
   requestId: string;
-  previousStatus: REQUEST_STATUS;
-  newStatus: REQUEST_STATUS;
+  previousStatus: string;
+  newStatus: string;
   changedBy: {
     id: string;
     name: string;
@@ -232,6 +241,62 @@ export interface EmiOverduePayload {
 }
 
 // ============================================
+// AUCTION EVENT PAYLOADS
+// ============================================
+
+/** Auction bid placed payload */
+export interface AuctionBidPayload {
+  auctionId: string;
+  bid: {
+    id: string;
+    amount: number;
+    bidderId: string;
+    bidderName: string;
+    placedAt: string;
+    isAutoBid: boolean;
+  };
+  currentHighBid: number;
+  totalBids: number;
+  wasExtended: boolean;
+  extendedEndTime: string | null;
+}
+
+/** User outbid notification payload */
+export interface AuctionOutbidPayload {
+  auctionId: string;
+  auctionTitle: string;
+  yourBid: number;
+  newHighBid: number;
+  newHighBidder: string;
+}
+
+/** Auction time extended payload */
+export interface AuctionExtendedPayload {
+  auctionId: string;
+  newEndTime: string;
+  reason: string; // 'last_minute_bid'
+}
+
+/** Auction ended payload */
+export interface AuctionEndedPayload {
+  auctionId: string;
+  status: 'SOLD' | 'UNSOLD' | 'CANCELLED';
+  winnerId: string | null;
+  winnerName: string | null;
+  finalPrice: number | null;
+  totalBids: number;
+}
+
+/** Auction won notification payload */
+export interface AuctionWonPayload {
+  auctionId: string;
+  auctionTitle: string;
+  assetId: string;
+  winningBid: number;
+  nextSteps: string;
+}
+
+// ============================================
 // ROOM TYPES
 // ============================================
 
@@ -245,6 +310,8 @@ export enum RoomType {
   ROLE = 'role',
   /** District-based room: district:{districtName} */
   DISTRICT = 'district',
+  /** Auction-specific room: auction:{auctionId} */
+  AUCTION = 'auction',
 }
 
 /** Generate room name */

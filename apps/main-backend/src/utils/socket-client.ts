@@ -87,11 +87,12 @@ export function emitRequestUpdated(payload: {
 /**
  * Emit request status changed event
  * Called when a request transitions between statuses
+ * Supports both old REQUEST_STATUS and new stage:subStatus format
  */
 export function emitRequestStatusChanged(payload: {
   requestId: string;
-  previousStatus: REQUEST_STATUS;
-  newStatus: REQUEST_STATUS;
+  previousStatus: string;
+  newStatus: string;
   changedBy: {
     id: string;
     name: string;

@@ -226,7 +226,8 @@ export async function getDocumentController(req: Request, res: Response): Promis
           select: {
             id: true,
             customerId: true,
-            currentStatus: true,
+            stage: true,
+            subStatus: true,
           },
         },
       },
@@ -459,7 +460,8 @@ export async function listDocumentsController(req: Request, res: Response): Prom
           select: {
             id: true,
             customerId: true,
-            currentStatus: true,
+            stage: true,
+            subStatus: true,
           },
         },
       },

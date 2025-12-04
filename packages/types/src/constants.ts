@@ -1169,6 +1169,12 @@ export const NAV_ITEMS: NavMenuItem[] = [
     roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN],
   },
   { 
+    label: 'Auctions', 
+    href: '/auctions', 
+    icon: 'Gavel',
+    // Visible to all roles - customers can bid, admins can manage
+  },
+  { 
     label: 'Analytics', 
     href: '/analytics', 
     icon: 'BarChart3',

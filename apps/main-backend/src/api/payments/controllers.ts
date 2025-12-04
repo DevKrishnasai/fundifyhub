@@ -100,8 +100,8 @@ export const payEmiController = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    // Check if loan is ACTIVE
-    if (emi.loan.request.currentStatus !== 'ACTIVE') {
+    // Check if loan is ACTIVE (stage must be ACTIVE)
+    if (emi.loan.request.stage !== 'ACTIVE') {
       return res.status(400).json({ success: false, message: 'Loan is not active' });
     }
 
@@ -265,8 +265,8 @@ export const getEmiBreakdownController = async (req: Request, res: Response) => 
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    // Check if loan is ACTIVE
-    if (emi.loan.request.currentStatus !== 'ACTIVE') {
+    // Check if loan is ACTIVE (stage must be ACTIVE)
+    if (emi.loan.request.stage !== 'ACTIVE') {
       return res.status(400).json({ success: false, message: 'Loan is not active' });
     }
 

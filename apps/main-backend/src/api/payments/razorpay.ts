@@ -162,7 +162,12 @@ async function checkAndCompleteLoan(tx: Prisma.TransactionClient, loanId: string
 
     await tx.request.update({
       where: { id: requestId },
-      data: { currentStatus: REQUEST_STATUS.COMPLETED },
+      data: { 
+        stage: 'COMPLETED',
+        subStatus: null,
+        requiresCustomerAction: false,
+        requiresAdminAction: false,
+      },
     });
 
     logger.info(`🎉 LOAN COMPLETED: ${loanId} - All EMIs paid!`);

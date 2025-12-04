@@ -7,7 +7,8 @@
 
 import { prisma, EMIStatus } from '@fundifyhub/prisma';
 import { 
-  REQUEST_STATUS, 
+  REQUEST_STAGE,
+  SUB_STATUS,
   ROLES,
   AUDIT_ENTITY_TYPE,
   AUDIT_ACTION,
@@ -18,8 +19,8 @@ import {
   DEFAULT_LATE_FEE_PERCENTAGE,
   canViewRequestDetail,
   CLIENT_CONSTANTS,
-  UserRole,
 } from '@fundifyhub/types';
+import type { Role } from '@fundifyhub/types';
 import { calculateEmiBreakdown, isEmiOverdue, type EMIBreakdown } from '@fundifyhub/utils';
 import { generateSignedUrls } from '../utils/uploadthing';
 import logger from '../utils/logger';
@@ -65,7 +66,8 @@ export interface AssignAgentResult {
   error?: string;
   statusCode: number;
   fromStatus?: string;
-  toStatus?: string;
+  toStage?: string;
+  toSubStatus?: string;
   agent?: {
     id: string;
     firstName: string | null;
@@ -191,7 +193,7 @@ export async function getRequestDetail(
     const canView = canViewRequestDetail(
       {
         id: user.id,
-        roles: user.roles as UserRole[],
+        roles: user.roles as Role[],
         districts: user.districts
       },
       {
@@ -200,7 +202,8 @@ export async function getRequestDetail(
         agentId: request.assignedAgentId,
         adminId: request.assignedAdminId
       },
-      request.currentStatus as REQUEST_STATUS
+      request.stage as REQUEST_STAGE,
+      request.subStatus
     );
 
     if (!canView) {
@@ -456,13 +459,18 @@ export async function assignAgent(
       return { success: false, error: 'Agent not available in request district', statusCode: 400 };
     }
 
-    const fromStatus = request.currentStatus;
-    const toStatus = REQUEST_STATUS.INSPECTION_SCHEDULED;
+    const fromStatus = request.stage;
+    const toStage = REQUEST_STAGE.INSPECTION;
+    const toSubStatus = SUB_STATUS.INSPECTION.SCHEDULED;
 
     // Build update data
     const updateData: Record<string, unknown> = {
       assignedAgentId: agentId,
-      currentStatus: toStatus
+      stage: toStage,
+      subStatus: toSubStatus,
+      requiresAgentAction: true,
+      requiresCustomerAction: false,
+      requiresAdminAction: false
     };
 
     if (inspectionDate) {
@@ -519,7 +527,8 @@ export async function assignAgent(
       request: fullRequest,
       statusCode: 200,
       fromStatus,
-      toStatus,
+      toStage,
+      toSubStatus,
       agent: {
         id: agent.id,
         firstName: agent.firstName,

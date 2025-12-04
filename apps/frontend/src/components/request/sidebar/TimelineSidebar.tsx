@@ -55,7 +55,7 @@ interface TimelineSidebarProps {
   className?: string;
   maxItems?: number;
   onViewAll?: () => void;
-  userRole?: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
+  userRole?: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
 }
 
 // Icon mapping for history actions

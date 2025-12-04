@@ -100,7 +100,7 @@ export function AssetSection({ request, isLoading, className }: AssetSectionProp
         />
         <SectionRow 
           label="District" 
-          value={request.district}
+          value={(request.district as any)?.name || 'N/A'}
           inline
         />
       </SectionGrid>

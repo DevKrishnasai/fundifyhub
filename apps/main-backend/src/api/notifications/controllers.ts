@@ -50,7 +50,8 @@ export async function getNotificationsController(req: Request, res: Response): P
             select: {
               id: true,
               requestNumber: true,
-              currentStatus: true,
+              stage: true,
+              subStatus: true,
             },
           },
           loan: {

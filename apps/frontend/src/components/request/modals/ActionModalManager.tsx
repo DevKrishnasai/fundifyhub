@@ -79,7 +79,7 @@ export function ActionModalManager() {
         <AssignAgentModal
           open={true}
           onOpenChange={(open) => !open && closeAction()}
-          district={request.district}
+          district={(request.district as any)?.name}
           isReschedule={activeActionId === WORKFLOW_EVENTS.RESCHEDULE_INSPECTION}
           onSubmit={async (agentId, date) => {
             await executeAction(activeActionId, { agentId, inspectionDate: date });
@@ -93,7 +93,7 @@ export function ActionModalManager() {
         <AssignAdminModal
           open={true}
           onOpenChange={(open) => !open && closeAction()}
-          district={request.district}
+          district={(request.district as any)?.name}
           onSubmit={async (adminId) => {
             await executeAction(activeActionId, { adminId });
           }}

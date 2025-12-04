@@ -4,12 +4,24 @@
  * This package provides all shared types, constants, and schemas
  * organized by domain for the FundifyHub application.
  *
- * MIGRATION IN PROGRESS:
- * - New code should import from domain modules (common/, auth/, request/, etc.)
- * - Legacy exports maintained for backward compatibility with templates package
+ * STATUS SYSTEM v2: Stage-Based Architecture
+ * - 10 stages replace 28 statuses for simplicity
+ * - Sub-status provides granular detail within each stage
+ * - Action flags enable fast filtering queries
  *
  * @packageDocumentation
  */
+
+// ============================================
+// STAGE-BASED STATUS SYSTEM (v2)
+// Primary exports for the new simplified status architecture
+// ============================================
+
+// Stage constants, sub-statuses, display config
+export * from './stage-constants';
+
+// Workflow events, transition types, payloads
+export * from './stage-workflow-types';
 
 // ============================================
 // DOMAIN EXPORTS (NEW STRUCTURE)
@@ -132,3 +144,31 @@ export {
 
 // Navigation types
 export type { NavMenuItem } from './constants';
+
+// ============================================
+// BACKWARDS COMPATIBILITY EXPORTS
+// These are temporary to support the migration from
+// currentStatus/REQUEST_STATUS to stage/REQUEST_STAGE
+// TODO: Remove after full migration to stage-based system
+// ============================================
+
+// Legacy REQUEST_STATUS enum - for files not yet migrated
+export { REQUEST_STATUS, PENDING_REQUEST_STATUSES, AGENT_ACCESS_DENY_STATUSES } from './constants';
+
+// Role-related exports
+export { ROLE_HIERARCHY, ROLE_LABELS, ADMIN_ROLES, REQUEST_MANAGER_ROLES, ADMIN_AGENT_ROLES } from './constants';
+
+// Queue and job types
+export { QUEUE_NAMES, JOB_TYPES, SERVICE_CONTROL_ACTIONS, CONNECTION_STATUS } from './constants';
+
+// EMI-related constants
+export { 
+  EMI_STATUS, 
+  LOAN_STATUS, 
+  OVERDUE_GRACE_PERIOD_DAYS,
+  DEFAULT_PENALTY_PERCENTAGE,
+  DEFAULT_LATE_FEE_PERCENTAGE,
+} from './constants';
+
+// UserRole type alias (for backwards compatibility)
+export type UserRole = import('./auth').Role;

@@ -1,10 +1,22 @@
 import { Request, Response } from 'express';
 import { prisma } from '@fundifyhub/prisma';
-import { LOAN_STATUS, REQUEST_STATUS, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
+import { LOAN_STATUS, REQUEST_STAGE, PENDING_STAGES, stageToLegacyStatus } from '@fundifyhub/types';
 import { APIResponseType } from '../../types';
 import logger from '../../utils/logger';
 import { ROLES } from '@fundifyhub/types';
 import { hasDistrictAccess, hasAnyRole } from '../../utils/rbac';
+
+/**
+ * Enrich request with computed currentStatus for backward compatibility with frontend
+ */
+function enrichRequestWithLegacyStatus<T extends { stage?: string; subStatus?: string | null }>(
+  request: T
+): T & { currentStatus: string } {
+  const stage = (request.stage as REQUEST_STAGE) || REQUEST_STAGE.REVIEW;
+  const subStatus = request.subStatus || null;
+  const currentStatus = stageToLegacyStatus(stage, subStatus);
+  return { ...request, currentStatus };
+}
 
 
 export async function getActiveLoansController(req: Request, res: Response): Promise<void> {
@@ -55,13 +67,14 @@ export async function getActiveLoansController(req: Request, res: Response): Pro
  */
 export async function getPendingRequestsController(req: Request, res: Response): Promise<void> {
   try {
-    const pendingStatuses = PENDING_REQUEST_STATUSES;
-
+    // Pending requests are in REVIEW or OFFER stage that require admin action
     const pendingRequests = await prisma.request.findMany({
       where: {
-        currentStatus: {
-          in: pendingStatuses
-        }
+        OR: [
+          { stage: 'REVIEW' },
+          { stage: 'OFFER', subStatus: 'PENDING' },
+        ],
+        requiresAdminAction: true,
       },
       include: {
         customer: {
@@ -154,11 +167,25 @@ export async function getRequestsController(req: Request, res: Response): Promis
     }
 
     const { status, district, limit = '50', offset = '0' } = req.query as Record<string, string>;
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
+    // Status filter maps to stage-based filtering
     if (status) {
-      const statuses = String(status).split(',').map(s => s.trim()).filter(Boolean);
-      if (statuses.length > 0) where.currentStatus = { in: statuses };
+      const statuses = String(status).split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+      if (statuses.length > 0) {
+        // Map status keywords to stages
+        const stageFilters: REQUEST_STAGE[] = [];
+        for (const s of statuses) {
+          if (s === 'PENDING') {
+            stageFilters.push(...PENDING_STAGES);
+          } else if (Object.values(REQUEST_STAGE).includes(s as REQUEST_STAGE)) {
+            stageFilters.push(s as REQUEST_STAGE);
+          }
+        }
+        if (stageFilters.length > 0) {
+          where.stage = { in: stageFilters };
+        }
+      }
     }
 
     if (district) {
@@ -172,14 +199,13 @@ export async function getRequestsController(req: Request, res: Response): Promis
       
       // District admins see:
       // 1. Requests assigned to them (assignedAdminId = their id) - regardless of status
-      // 2. Unassigned requests in their districts in any pending status (assignedAdminId = null AND districtId in their districts AND currentStatus in PENDING_REQUEST_STATUSES)
-      // Once assigned, only the assigned admin, super admin, assigned agent, and customer can see it
+      // 2. Unassigned requests in their districts in any pending stage
       where.OR = [
         { assignedAdminId: user.id },
         { 
           assignedAdminId: null,
           districtId: { in: userDistrictIds },
-          currentStatus: { in: PENDING_REQUEST_STATUSES }
+          stage: { in: PENDING_STAGES }
         }
       ];
       
@@ -192,7 +218,7 @@ export async function getRequestsController(req: Request, res: Response): Promis
         // Override the OR with specific district filter but keep assignment logic
         where.OR = [
           { assignedAdminId: user.id, districtId: String(district) },
-          { assignedAdminId: null, districtId: String(district), currentStatus: { in: PENDING_REQUEST_STATUSES } }
+          { assignedAdminId: null, districtId: String(district), stage: { in: PENDING_STAGES } }
         ];
       }
     }
@@ -227,7 +253,11 @@ export async function getRequestsController(req: Request, res: Response): Promis
         requestedAmount: true,
         districtId: true,
         district: { select: { id: true, name: true, code: true } },
-        currentStatus: true,
+        stage: true,
+        subStatus: true,
+        requiresCustomerAction: true,
+        requiresAdminAction: true,
+        requiresAgentAction: true,
         assignedAgentId: true,
         assignedAdminId: true,
         adminOfferedAmount: true,
@@ -279,7 +309,10 @@ export async function getRequestsController(req: Request, res: Response): Promis
       take: lim,
     });
 
-    res.status(200).json({ success: true, message: `Found ${requests.length} request(s)`, data: { requests } } as APIResponseType);
+    // Add currentStatus for backward compatibility with frontend
+    const requestsWithLegacyStatus = requests.map(enrichRequestWithLegacyStatus);
+
+    res.status(200).json({ success: true, message: `Found ${requests.length} request(s)`, data: { requests: requestsWithLegacyStatus } } as APIResponseType);
   } catch (error) {
     logger.error('Error getting admin requests:', error as Error);
     res.status(500).json({ success: false, message: 'Failed to get requests' } as APIResponseType);

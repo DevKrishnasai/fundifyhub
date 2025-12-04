@@ -125,7 +125,7 @@ export function RequestCard({
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <MapPin className="w-3.5 h-3.5" />
                 <span className={cn(isCompact ? "text-xs" : "text-sm")}>
-                  {request.district}
+                  {(request.district as any)?.name || 'N/A'}
                 </span>
               </div>
 

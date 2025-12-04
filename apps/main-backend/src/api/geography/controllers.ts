@@ -957,7 +957,8 @@ export async function getWarehouseInventoryController(req: Request, res: Respons
             select: {
               id: true,
               requestNumber: true,
-              currentStatus: true,
+              stage: true,
+              subStatus: true,
               customer: {
                 select: {
                   id: true,

@@ -1137,12 +1137,20 @@ export function getActionsForUser(
 
 /**
  * Check if user can view request details
+ * 
+ * Supports both:
+ * - Stage-based (new): pass stage and optional subStatus
+ * - Status-based (legacy): pass currentStatus (REQUEST_STATUS)
  */
 export function canViewRequestDetail(
   user: UserContext,
   request: RequestContext,
-  currentStatus?: REQUEST_STATUS
+  stageOrStatus?: REQUEST_STATUS | string,
+  subStatus?: string | null
 ): boolean {
+  // Import stage constants dynamically to avoid circular dependency
+  const { REQUEST_STAGE } = require('../stage-constants');
+  
   if (user.roles.includes(ROLES.SUPER_ADMIN)) {
     return true;
   }
@@ -1156,7 +1164,14 @@ export function canViewRequestDetail(
       return true;
     }
     if (user.districts?.includes(request.districtId)) {
-      if (currentStatus && PENDING_REQUEST_STATUSES.includes(currentStatus) && !request.adminId) {
+      // Check if stage is pending-like (DRAFT, REVIEW, OFFER)
+      const pendingStages = [REQUEST_STAGE.DRAFT, REQUEST_STAGE.REVIEW, REQUEST_STAGE.OFFER];
+      const isPending = stageOrStatus && pendingStages.includes(stageOrStatus);
+      
+      // Legacy: Also check old status format
+      const isLegacyPending = stageOrStatus && PENDING_REQUEST_STATUSES.includes(stageOrStatus as REQUEST_STATUS);
+      
+      if ((isPending || isLegacyPending) && !request.adminId) {
         return true;
       }
       return false;
@@ -1164,7 +1179,18 @@ export function canViewRequestDetail(
   }
 
   if (user.roles.includes(ROLES.AGENT) && user.id === request.agentId) {
-    if (currentStatus && AGENT_ACCESS_DENY_STATUSES.includes(currentStatus)) {
+    // Agent loses access after certain stages (post-disbursement)
+    const agentDenyStages = [REQUEST_STAGE.DISBURSEMENT, REQUEST_STAGE.ACTIVE, REQUEST_STAGE.COMPLETED];
+    if (stageOrStatus && agentDenyStages.includes(stageOrStatus)) {
+      // Check subStatus - allow if not yet disbursed
+      if (stageOrStatus === REQUEST_STAGE.DISBURSEMENT && subStatus !== 'COMPLETED') {
+        return true;
+      }
+      return false;
+    }
+    
+    // Legacy: Also check old status format
+    if (stageOrStatus && AGENT_ACCESS_DENY_STATUSES.includes(stageOrStatus as REQUEST_STATUS)) {
       return false;
     }
     return true;

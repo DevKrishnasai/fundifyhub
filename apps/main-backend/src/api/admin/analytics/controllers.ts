@@ -66,11 +66,12 @@ export async function getAnalyticsSummaryController(req: Request, res: Response)
       // Overdue EMIs count
       prisma.eMISchedule.count({ where: { status: 'OVERDUE' } }),
       
-      // Pending requests
+      // Pending requests (REVIEW stage with PENDING subStatus)
       prisma.request.count({ 
         where: { 
           ...districtFilter,
-          currentStatus: 'PENDING',
+          stage: 'REVIEW',
+          subStatus: 'PENDING',
         } 
       }),
       
@@ -131,7 +132,7 @@ export async function getAnalyticsTrendsController(req: Request, res: Response):
     // Get requests grouped by month
     const requests = await prisma.request.findMany({
       where: { createdAt: { gte: startDate } },
-      select: { createdAt: true, currentStatus: true },
+      select: { createdAt: true, stage: true, subStatus: true },
     });
 
     // Get loans grouped by month
@@ -244,7 +245,7 @@ export async function getAnalyticsDistrictBreakdownController(req: Request, res:
           disbursedAmount,
         ] = await Promise.all([
           prisma.request.count({ where: { districtId: d.districtId } }),
-          prisma.request.count({ where: { districtId: d.districtId, currentStatus: 'PENDING' } }),
+          prisma.request.count({ where: { districtId: d.districtId, stage: 'REVIEW', subStatus: 'PENDING' } }),
           prisma.loan.count({
             where: {
               status: 'ACTIVE',
@@ -297,13 +298,13 @@ export async function getAnalyticsRequestStatusController(req: Request, res: Res
     }
 
     const statusCounts = await prisma.request.groupBy({
-      by: ['currentStatus'],
+      by: ['stage'],
       _count: { id: true },
     });
 
     const statusBreakdown = statusCounts.map(s => ({
-      status: s.currentStatus,
-      count: s._count.id,
+      status: s.stage,
+      count: s._count?.id ?? 0,
     }));
 
     // Sort by count descending

@@ -504,20 +504,42 @@ export const LOCAL_STORAGE_KEYS = {
 // ============================================
 
 export enum MODAL_COMPONENTS {
+  // Offer modals
   CREATE_OFFER_MODAL = 'CreateOfferModal',
+  
+  // Assignment modals
   ASSIGN_AGENT_MODAL = 'AssignAgentModal',
   ASSIGN_ADMIN_MODAL = 'AssignAdminModal',
+  
+  // Rejection/Cancellation modals
   REJECT_MODAL = 'RejectModal',
   APPROVE_MODAL = 'ApproveModal',
+  CANCEL_MODAL = 'CancelModal',
+  WITHDRAW_MODAL = 'WithdrawModal',
+  CANCEL_WITHDRAW_MODAL = 'CancelWithdrawModal', // Legacy alias
+  
+  // Disbursement modals
   DISBURSEMENT_MODAL = 'DisbursementModal',
+  TRANSFER_FAILED_MODAL = 'TransferFailedModal',
+  
+  // Offer response modals
   OFFER_DECLINE_MODAL = 'OfferDeclineModal',
-  CANCEL_WITHDRAW_MODAL = 'CancelWithdrawModal',
+  DECLINE_OFFER_MODAL = 'DeclineOfferModal', // Alias
+  
+  // Info request modals
   REQUEST_INFO_MODAL = 'RequestInfoModal',
   REQUEST_BANK_DETAILS_MODAL = 'RequestBankDetailsModal',
+  
+  // Bank details modal
   BANK_DETAILS_MODAL = 'BankDetailsModal',
+  
+  // Inspection modals
   RESCHEDULE_MODAL = 'RescheduleModal',
   COMPLETE_INSPECTION_MODAL = 'CompleteInspectionModal',
   AGENT_ISSUE_MODAL = 'AgentIssueModal',
+  REPORT_ISSUE_MODAL = 'ReportIssueModal',
+  
+  // Documentation modals
   REFUSE_SIGNATURE_MODAL = 'RefuseSignatureModal',
   EXPLANATION_MODAL = 'ExplanationModal',
 }
