@@ -9,9 +9,9 @@ import {
   ROLES, 
   ASSET_TYPE_OPTIONS, 
   ASSET_CONDITION_OPTIONS, 
-  DISTRICTS,
   DOCUMENT_TYPE 
 } from "@fundifyhub/types"
+import { useDistricts } from "@/hooks/queries"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,7 +56,7 @@ interface FormData {
   purchaseYear: string
   originalPrice: string
   requestedAmount: string
-  district: string
+  districtId: string
   description: string
 }
 
@@ -68,7 +68,7 @@ const initialFormData: FormData = {
   purchaseYear: "",
   originalPrice: "",
   requestedAmount: "",
-  district: "",
+  districtId: "",
   description: ""
 }
 
@@ -106,6 +106,9 @@ function UploadAssetContent() {
   const [hasDraft, setHasDraft] = useState(false)
   const [draftLoaded, setDraftLoaded] = useState(false)
   const errorRef = useRef<HTMLDivElement>(null)
+
+  // Fetch districts from API
+  const { data: districts, isLoading: districtsLoading } = useDistricts()
 
   const userRoles = user?.roles?.map((r: string) => r.toUpperCase()) || []
   const isCustomer = userRoles.includes(ROLES.CUSTOMER)
@@ -223,7 +226,7 @@ function UploadAssetContent() {
       setError("Please enter a valid requested amount (minimum ₹1,000)")
       return false
     }
-    if (!formData.district) {
+    if (!formData.districtId) {
       setError("Please select your district")
       return false
     }
@@ -256,7 +259,7 @@ function UploadAssetContent() {
         purchaseYear: parseInt(formData.purchaseYear),
         originalPrice: formData.originalPrice ? parseInt(formData.originalPrice) : null,
         requestedAmount: parseInt(formData.requestedAmount),
-        district: formData.district,
+        districtId: formData.districtId,
         AdditionalDescription: formData.description.trim(),
         // Send all documents with their categories
         documents: documents.map(doc => ({
@@ -537,14 +540,18 @@ function UploadAssetContent() {
                   <Label htmlFor="district" className="flex items-center gap-1">
                     District <span className="text-destructive">*</span>
                   </Label>
-                  <Select value={formData.district} onValueChange={(v) => handleChange("district", v)}>
+                  <Select 
+                    value={formData.districtId} 
+                    onValueChange={(v) => handleChange("districtId", v)}
+                    disabled={districtsLoading}
+                  >
                     <SelectTrigger className="h-11">
-                      <SelectValue placeholder="Select your district" />
+                      <SelectValue placeholder={districtsLoading ? "Loading districts..." : "Select your district"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {DISTRICTS.map(district => (
-                        <SelectItem key={district} value={district}>
-                          {district}
+                      {districts?.map(district => (
+                        <SelectItem key={district.id} value={district.id}>
+                          {district.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

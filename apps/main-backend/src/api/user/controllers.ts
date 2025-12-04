@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Prisma, prisma, RequestStatus } from '@fundifyhub/prisma';
+import { Prisma, prisma, RequestStatus, AssetCondition } from '@fundifyhub/prisma';
 import { ROLES, ALLOWED_IMAGE_TYPES } from '@fundifyhub/types';
 import { ASSET_CONDITION, ASSET_TYPE, DOCUMENT_CATEGORY, LOAN_STATUS, REQUEST_STATUS, UserType, AssetPhotoData, ALLOWED_UPDATE_STATUSES, ADMIN_AGENT_ROLES, PENDING_REQUEST_STATUSES } from '@fundifyhub/types';
 import logger from '../../utils/logger';
@@ -116,14 +116,12 @@ export async function validateController(req: Request, res: Response): Promise<v
  * Validates required fields for asset request
  */
 function validateAssetFields(fields: {
-  district?: string;
   assetType?: string;
   assetBrand?: string;
   assetModel?: string;
   assetCondition?: string;
 }, res: Response): boolean {
   const requiredFields = {
-    district: { value: fields.district, message: 'district is required' },
     assetType: { value: fields.assetType, message: 'assetType is required' },
     assetBrand: { value: fields.assetBrand, message: 'assetBrand is required' },
     assetModel: { value: fields.assetModel, message: 'assetModel is required' },
@@ -186,7 +184,7 @@ function validateAssetPhotos(assetPhotos: string[] | undefined, res: Response): 
  * Builds request data object from input fields
  */
 function buildRequestData(fields: {
-  district: string;
+  districtId: string;
   assetType: string;
   assetBrand: string;
   assetModel: string;
@@ -197,7 +195,7 @@ function buildRequestData(fields: {
   customerId: string;
 }): Prisma.RequestCreateInput {
   const requestData: Prisma.RequestCreateInput = {
-    district: fields.district,
+    district: { connect: { id: fields.districtId } },
     requestedAmount: typeof fields.requestedAmount === 'number' ? fields.requestedAmount : 0,
     customer: { connect: { id: fields.customerId } },
     requestNumber: `REQ${Date.now()}`, // Temporary request number
@@ -206,7 +204,7 @@ function buildRequestData(fields: {
         assetType: fields.assetType,
         brand: fields.assetBrand,
         model: fields.assetModel,
-        condition: fields.assetCondition,
+        condition: fields.assetCondition as AssetCondition,
         purchaseYear: fields.purchaseYear || new Date().getFullYear(),
         description: fields.AdditionalDescription || '',
         estimatedValue: typeof fields.requestedAmount === 'number' ? fields.requestedAmount : null,
@@ -278,13 +276,14 @@ async function handleDocuments(tx: Prisma.TransactionClient, requestId: string, 
 export async function addAssetController(req: Request, res: Response): Promise<void> {
   try {
   const customerId = req.user?.id;
-  const userDistricts = Array.isArray(req.user?.districts) ? req.user!.districts : [];
-  const district = userDistricts.length > 0 ? userDistricts[0] : '';
+  // Get user's home district ID for new requests - from JWT payload or fetch from DB
+  const userDistrictIds = Array.isArray(req.user?.districts) ? req.user!.districts : [];
+  const districtId = userDistrictIds.length > 0 ? userDistrictIds[0] : '';
 
     // Enforce non-null for required user fields
-    if (!customerId || !district) {
-      res.status(400).json({ success: false, message: 'Missing customerId or district in user context.' });
-      logger.error('Asset request failed: missing customerId or district');
+    if (!customerId || !districtId) {
+      res.status(400).json({ success: false, message: 'Missing customerId or districtId in user context.' });
+      logger.error('Asset request failed: missing customerId or districtId');
       return;
     }
     const {
@@ -299,7 +298,7 @@ export async function addAssetController(req: Request, res: Response): Promise<v
     } = req.body || {};
 
     // Step 1: Validate required fields
-    if (!validateAssetFields({ district, assetType, assetBrand, assetModel, assetCondition }, res)) {
+    if (!validateAssetFields({ assetType, assetBrand, assetModel, assetCondition }, res)) {
       logger.warn('Asset request validation failed: missing required fields');
       return;
     }
@@ -404,7 +403,7 @@ export async function addAssetController(req: Request, res: Response): Promise<v
 
     // Step 4: Build request data
     const requestData = buildRequestData({
-  district,
+  districtId,
   assetType,
   assetBrand,
   assetModel,
@@ -488,13 +487,23 @@ export async function addAssetController(req: Request, res: Response): Promise<v
         let recipientUserId: string | undefined = undefined;
         
         try {
-          // Prisma filters for string[] can be awkward across generated types; query candidates
-          // then filter in JS by district membership.
+          // Query district admins with their district assignments
           const candidates = await prisma.user.findMany({
             where: { roles: { has: ROLES.DISTRICT_ADMIN } },
-            select: { id: true, email: true, district: true, phoneNumber: true, firstName: true },
+            select: { 
+              id: true, 
+              email: true, 
+              phoneNumber: true, 
+              firstName: true,
+              districtAssignments: {
+                where: { deletedAt: null },
+                select: { districtId: true }
+              }
+            },
           });
-          const districtAdmin = candidates.find((u) => Array.isArray(u.district) && u.district.includes(district));
+          const districtAdmin = candidates.find((u) => 
+            u.districtAssignments?.some(a => a.districtId === districtId)
+          );
           if (districtAdmin) {
             recipientUserId = districtAdmin.id;
             recipientEmail = districtAdmin.email;
@@ -530,7 +539,7 @@ export async function addAssetController(req: Request, res: Response): Promise<v
             {
               assetName: `${assetBrand || ''} ${assetModel || ''}`.trim(),
               amount: requestedAmount ?? 0,
-              district,
+              districtId,
               requestId: createdRequest.id,
               timestamp: new Date().toISOString(),
               additionalDescription: AdditionalDescription,
@@ -679,7 +688,15 @@ export async function getUserProfile(userId: string): Promise<{
         emailVerified: true,
         phoneVerified: true,
         isActive: true,
-        district: true,
+        homeDistrictId: true,
+        homeDistrict: { select: { id: true, name: true } },
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            districtId: true,
+            district: { select: { id: true, name: true } }
+          }
+        },
         phoneNumber: true,
         createdAt: true,
         updatedAt: true,
@@ -693,9 +710,12 @@ export async function getUserProfile(userId: string): Promise<{
       };
     }
 
+    // Extract district IDs from assignments for compatibility
+    const districtIds = user.districtAssignments?.map(a => a.districtId) || [];
+
     const normalizedUser: UserType = {
       ...user,
-      districts: normalizeDistricts(user.district),
+      districts: districtIds,
     };
 
     return {
@@ -743,7 +763,10 @@ export async function validateUserAuth(userId: string): Promise<{
         lastName: true,
         roles: true,
         isActive: true,
-        district: true,
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: { districtId: true }
+        },
       },
     });
 
@@ -759,7 +782,7 @@ export async function validateUserAuth(userId: string): Promise<{
 
     const normalizedFreshUser: UserType = {
       ...freshUser,
-      districts: normalizeDistricts(freshUser.district),
+      districts: freshUser.districtAssignments?.map(a => a.districtId) || [],
     };
 
     return {
@@ -1189,10 +1212,10 @@ export async function getDashboardStatsController(req: Request, res: Response): 
       // District admin sees stats for:
       // 1. Requests assigned to them (regardless of district)
       // 2. Requests in their districts
-      const districtAdminWhere = {
+      const districtAdminWhere: Prisma.RequestWhereInput = {
         OR: [
           { assignedAdminId: userId },
-          { district: { in: userDistricts } }
+          { districtId: { in: userDistricts } }
         ]
       };
 
@@ -1212,7 +1235,7 @@ export async function getDashboardStatsController(req: Request, res: Response): 
         },
         _sum: { approvedAmount: true },
       });
-      stats.totalDisbursed = disbursedResult._sum.approvedAmount ?? 0;
+      stats.totalDisbursed = disbursedResult._sum?.approvedAmount ?? 0;
       stats.pendingCount = await prisma.request.count({
         where: {
           ...districtAdminWhere,
@@ -1425,7 +1448,10 @@ export async function updateProfileController(req: Request, res: Response): Prom
         emailVerified: true,
         phoneVerified: true,
         isActive: true,
-        district: true,
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: { districtId: true }
+        },
         phoneNumber: true,
         createdAt: true,
         updatedAt: true,
@@ -1441,7 +1467,7 @@ export async function updateProfileController(req: Request, res: Response): Prom
 
     const normalizedUser: UserType = {
       ...updatedUser,
-      districts: normalizeDistricts(updatedUser.district),
+      districts: updatedUser.districtAssignments?.map(a => a.districtId) || [],
     };
 
     logger.info(`Profile updated for user: ${userId}`);

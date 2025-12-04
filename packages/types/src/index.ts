@@ -112,5 +112,23 @@ export {
   RATE_LIMIT_PREFIX,
 } from './constants';
 
+// Asset management (used by frontend and backend)
+export {
+  ASSET_STATUS,
+  ASSET_CONDITION,
+  ASSET_CONDITION_OPTIONS,
+  MOVEMENT_TYPE,
+  MOVEMENT_TYPE_LABELS,
+} from './constants';
+
+// Auction system (used by frontend and backend)
+export {
+  AUCTION_STATUS,
+  BID_STATUS,
+  AUCTION_STATUS_LABELS,
+  AUCTION_STATUS_COLORS,
+  BID_STATUS_LABELS,
+} from './constants';
+
 // Navigation types
 export type { NavMenuItem } from './constants';

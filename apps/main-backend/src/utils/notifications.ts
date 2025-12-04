@@ -6,6 +6,7 @@
  */
 
 import queueClient from './queues';
+import { prisma } from '@fundifyhub/prisma';
 import {
   TEMPLATE_NAMES,
   NotificationChannel,
@@ -479,13 +480,20 @@ export async function sendAssetPledgeNotification(
   assetInfo: {
     assetName: string;
     amount: number;
-    district: string;
+    districtId: string;  // District ID (FK to District model)
     requestId: string;
     timestamp: string;
     additionalDescription?: string;
   }
 ): Promise<NotifyResult> {
   try {
+    // Look up district name from ID
+    const district = await prisma.district.findUnique({
+      where: { id: assetInfo.districtId },
+      select: { name: true }
+    });
+    const districtName = district?.name || 'Unknown District';
+
     const channels: NotificationChannel[] = [NotificationChannel.IN_APP];
     if (recipient.email) channels.push(NotificationChannel.EMAIL);
     if (recipient.phoneNumber) channels.push(NotificationChannel.WHATSAPP);
@@ -507,7 +515,7 @@ export async function sendAssetPledgeNotification(
         customerName: recipient.name || 'Customer',
         assetName: assetInfo.assetName,
         amount: assetInfo.amount,
-        district: assetInfo.district,
+        district: districtName,
         requestId: assetInfo.requestId,
         timestamp: assetInfo.timestamp,
         additionalDescription: assetInfo.additionalDescription,

@@ -15,9 +15,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import toast from '@/lib/toast'
 import { Eye, EyeOff, User, Mail, Phone, Lock, ChevronRight, ChevronLeft, Check, X, CheckCircle } from "lucide-react"
-import { DISTRICTS, ROLES } from '@fundifyhub/types'
+import { ROLES } from '@fundifyhub/types'
 import { post, postWithResult } from '@/lib/api-client'
 import { BACKEND_API_CONFIG } from '@/lib/urls'
+import { useDistricts, type District } from '@/hooks/queries'
 
 import { sanitizePhone, isValidPhone } from '@/lib/phone'
 import { PublicHeader } from "@/components/layout/PublicHeader"
@@ -77,10 +78,14 @@ export default function RegisterPage() {
   const [step1Data, setStep1Data] = useState({
     firstName: "",
     lastName: "",
-    district: "",
+    districtId: "", // Changed from district name to districtId (UUID)
     password: "",
     confirmPassword: "",
   })
+  
+  // Fetch all available districts
+  const { data: districts, isLoading: isLoadingDistricts } = useDistricts()
+  
   // per-field errors for step1
   const [step1Errors, setStep1Errors] = useState<{ [k: string]: string }>({})
   
@@ -129,7 +134,7 @@ export default function RegisterPage() {
     const errs: { [k: string]: string } = {}
     if (!step1Data.firstName.trim()) errs.firstName = 'First name is required'
     if (!step1Data.lastName.trim()) errs.lastName = 'Last name is required'
-    if (!step1Data.district) errs.district = 'Please select your district'
+    if (!step1Data.districtId) errs.districtId = 'Please select your district'
     if (step1Data.password.length < 8) errs.password = 'Password must be at least 8 characters long'
     const { strength } = getPasswordStrength(step1Data.password)
     if (step1Data.password && strength < 3) errs.password = 'Password is too weak. Include uppercase, lowercase, numbers and a special character.'
@@ -144,8 +149,8 @@ export default function RegisterPage() {
 
   // quick readiness check to enable the Next button (doesn't set errors)
   const isStep1Ready = () => {
-    const { firstName, lastName, district, password, confirmPassword } = step1Data
-    if (!firstName.trim() || !lastName.trim() || !district) return false
+    const { firstName, lastName, districtId, password, confirmPassword } = step1Data
+    if (!firstName.trim() || !lastName.trim() || !districtId) return false
     if (password.length < 8) return false
     if (password !== confirmPassword) return false
     const { strength } = getPasswordStrength(password)
@@ -406,7 +411,7 @@ export default function RegisterPage() {
         phoneNumber: step2Data.phoneNumber,
         firstName: step1Data.firstName,
         lastName: step1Data.lastName,
-        district: step1Data.district,
+        district: step1Data.districtId, // Send districtId (backend expects 'district' field)
         password: step1Data.password,
       })
 
@@ -597,19 +602,25 @@ export default function RegisterPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="district">District</Label>
-                  <Select value={step1Data.district} onValueChange={(val) => setStep1Data(prev => ({ ...prev, district: val }))}>
+                  <Select 
+                    value={step1Data.districtId} 
+                    onValueChange={(val) => setStep1Data(prev => ({ ...prev, districtId: val }))}
+                    disabled={isLoadingDistricts}
+                  >
                     <SelectTrigger aria-label="Select district" className="w-full">
-                      <SelectValue placeholder="Select your district" />
+                      <SelectValue placeholder={isLoadingDistricts ? "Loading districts..." : "Select your district"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {DISTRICTS.map((d) => (
-                        <SelectItem key={d} value={d}>
-                          {d}
+                      {districts?.map((d: District) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name} ({d.code})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                    {(step1Errors.district || serverFieldErrors.district) && <p className="text-sm text-red-600">{serverFieldErrors.district || step1Errors.district}</p>}
+                  {(step1Errors.districtId || serverFieldErrors.districtId) && (
+                    <p className="text-sm text-red-600">{serverFieldErrors.districtId || step1Errors.districtId}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">

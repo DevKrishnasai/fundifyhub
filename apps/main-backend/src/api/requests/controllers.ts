@@ -272,7 +272,7 @@ export async function getRequestDetailController(req: Request, res: Response): P
       },
       {
         customerId: request.customerId,
-        district: request.district,
+        districtId: request.districtId,
         agentId: request.assignedAgentId,
         adminId: request.assignedAdminId
       },
@@ -371,17 +371,26 @@ export async function assignAgentController(req: Request, res: Response): Promis
     }
 
     // If district admin, verify they have access to the request's district
-    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+    if (!isSuper && !hasDistrictAccess(user, request.districtId)) {
       res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
       return;
     }
 
-    const agent = await prisma.user.findUnique({ where: { id: agentId } });
+    const agent = await prisma.user.findUnique({ 
+      where: { id: agentId },
+      include: {
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: { districtId: true }
+        }
+      }
+    });
     if (!agent || !Array.isArray(agent.roles) || !agent.roles.includes(ROLES.AGENT) || !agent.isActive) {
       res.status(400).json({ success: false, message: 'Invalid agent' } as APIResponseType);
       return;
     }
-    if (!Array.isArray(agent.district) || !agent.district.includes(request.district)) {
+    const agentDistrictIds = agent.districtAssignments?.map(a => a.districtId) || [];
+    if (!agentDistrictIds.includes(request.districtId)) {
       res.status(400).json({ success: false, message: 'Agent not available in request district' } as APIResponseType);
       return;
     }
@@ -515,7 +524,7 @@ export async function selfAssignAdminController(req: Request, res: Response): Pr
     }
 
     // District admin must have access to the request's district
-    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+    if (!isSuper && !hasDistrictAccess(user, request.districtId)) {
       res.status(403).json({ success: false, message: 'You do not have access to this district' } as APIResponseType);
       return;
     }
@@ -639,14 +648,23 @@ export async function assignAdminController(req: Request, res: Response): Promis
     }
 
     // Validate the admin being assigned
-    const admin = await prisma.user.findUnique({ where: { id: adminId } });
+    const admin = await prisma.user.findUnique({ 
+      where: { id: adminId },
+      include: {
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: { districtId: true }
+        }
+      }
+    });
     if (!admin || !Array.isArray(admin.roles) || !admin.roles.includes(ROLES.DISTRICT_ADMIN) || !admin.isActive) {
       res.status(400).json({ success: false, message: 'Invalid admin or admin is not active' } as APIResponseType);
       return;
     }
 
     // Check that admin has access to the request's district
-    if (!Array.isArray(admin.district) || !admin.district.includes(request.district)) {
+    const adminDistrictIds = admin.districtAssignments?.map(a => a.districtId) || [];
+    if (!adminDistrictIds.includes(request.districtId)) {
       res.status(400).json({ success: false, message: 'Admin does not have access to this district' } as APIResponseType);
       return;
     }
@@ -742,7 +760,12 @@ export async function getAvailableAdminsController(req: Request, res: Response):
       where: {
         roles: { has: ROLES.DISTRICT_ADMIN },
         isActive: true,
-        district: { has: district }
+        districtAssignments: {
+          some: {
+            districtId: district,
+            deletedAt: null,
+          }
+        }
       },
       select: {
         id: true,
@@ -750,7 +773,13 @@ export async function getAvailableAdminsController(req: Request, res: Response):
         lastName: true,
         email: true,
         phoneNumber: true,
-        district: true
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            districtId: true,
+            district: { select: { id: true, name: true } }
+          }
+        }
       },
       orderBy: [
         { firstName: 'asc' },
@@ -813,7 +842,7 @@ export async function updateRequestStatusController(req: Request, res: Response)
 
       // District admin: allowed if they have district access (broad admin permissions)
       if (roles.includes(ROLES.DISTRICT_ADMIN)) {
-        if (hasDistrictAccess(user, request.district)) {
+        if (hasDistrictAccess(user, request.districtId)) {
           permittedByAnyRole = true;
         }
       }
@@ -845,7 +874,7 @@ export async function updateRequestStatusController(req: Request, res: Response)
           res.status(403).json({ success: false, message: 'You can only update assigned requests' } as APIResponseType);
           return;
         }
-        if (roles.includes(ROLES.DISTRICT_ADMIN) && !hasDistrictAccess(user, request.district)) {
+        if (roles.includes(ROLES.DISTRICT_ADMIN) && !hasDistrictAccess(user, request.districtId)) {
           res.status(403).json({ success: false, message: 'Access denied to this district' } as APIResponseType);
           return;
         }
@@ -1099,7 +1128,7 @@ export async function createOfferController(req: Request, res: Response): Promis
     }
 
     // If district admin, verify they have access to the request's district
-    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+    if (!isSuper && !hasDistrictAccess(user, request.districtId)) {
       res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
       return;
     }
@@ -1240,7 +1269,7 @@ export async function getCurrentOfferController(req: Request, res: Response): Pr
       return;
     }
 
-    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+    if (!isSuper && !hasDistrictAccess(user, request.districtId)) {
       res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
       return;
     }
@@ -1304,7 +1333,7 @@ export async function offerPreviewController(req: Request, res: Response): Promi
     }
 
     // If district admin, verify they have access to the request's district
-    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+    if (!isSuper && !hasDistrictAccess(user, request.districtId)) {
       res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
       return;
     }
@@ -1362,7 +1391,7 @@ export async function confirmOfferController(req: Request, res: Response): Promi
     }
 
     // If district admin, verify they have access to the request's district
-    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+    if (!isSuper && !hasDistrictAccess(user, request.districtId)) {
       res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
       return;
     }
@@ -1466,7 +1495,7 @@ export async function createLoanController(req: Request, res: Response): Promise
       where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
       select: { 
         id: true, 
-        district: true, 
+        districtId: true, 
         currentStatus: true,
         adminOfferedAmount: true,
         adminInterestRate: true,
@@ -1487,7 +1516,7 @@ export async function createLoanController(req: Request, res: Response): Promise
     }
 
     // If district admin, verify they have access to the request's district
-    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+    if (!isSuper && !hasDistrictAccess(user, request.districtId)) {
       res.status(403).json({ success: false, message: 'Forbidden - No access to this district' } as APIResponseType);
       return;
     }
@@ -1644,7 +1673,12 @@ export async function getAvailableAgentsController(req: Request, res: Response):
       where: {
         roles: { has: ROLES.AGENT },
         isActive: true,
-        district: { has: district }
+        districtAssignments: {
+          some: {
+            districtId: district,
+            deletedAt: null,
+          }
+        }
       },
       select: {
         id: true,
@@ -1652,7 +1686,13 @@ export async function getAvailableAgentsController(req: Request, res: Response):
         lastName: true,
         email: true,
         phoneNumber: true,
-        district: true
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            districtId: true,
+            district: { select: { id: true, name: true } }
+          }
+        }
       },
       orderBy: [
         { firstName: 'asc' },
@@ -1695,7 +1735,8 @@ export async function generateAgreementController(req: Request, res: Response): 
       where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
       include: {
         customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } },
-        asset: true
+        asset: true,
+        district: { select: { name: true } }
       }
     });
 
@@ -1714,7 +1755,7 @@ export async function generateAgreementController(req: Request, res: Response): 
 
     // District admin must have district access
     if (hasAnyRole(user, [ROLES.DISTRICT_ADMIN]) && !hasAnyRole(user, [ROLES.SUPER_ADMIN])) {
-      if (!hasDistrictAccess(user, request.district)) {
+      if (!hasDistrictAccess(user, request.districtId)) {
         res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
         return;
       }
@@ -1747,7 +1788,7 @@ export async function generateAgreementController(req: Request, res: Response): 
       customerName: `${request.customer?.firstName || ''} ${request.customer?.lastName || ''}`.trim() || 'Customer',
       customerEmail: request.customer?.email || '',
       customerPhone: request.customer?.phoneNumber || '',
-      customerDistrict: request.district,
+      customerDistrict: request.district?.name || '',
       
       assetType: request.asset?.assetType || 'Asset',
       assetBrand: request.asset?.brand,
@@ -1838,7 +1879,8 @@ export async function signAgreementController(req: Request, res: Response): Prom
       where: { OR: [{ id: requestId }, { requestNumber: requestId }] },
       include: {
         customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } },
-        asset: true
+        asset: true,
+        district: { select: { name: true } }
       }
     });
 
@@ -1885,7 +1927,7 @@ export async function signAgreementController(req: Request, res: Response): Prom
       customerName: `${request.customer?.firstName || ''} ${request.customer?.lastName || ''}`.trim() || 'Customer',
       customerEmail: request.customer?.email || '',
       customerPhone: request.customer?.phoneNumber || '',
-      customerDistrict: request.district,
+      customerDistrict: request.district?.name || '',
 
       assetType: request.asset?.assetType || 'Asset',
       assetBrand: request.asset?.brand,
@@ -2060,7 +2102,7 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
         id: true, 
         requestNumber: true,
         customerId: true, 
-        district: true,
+        districtId: true,
         currentStatus: true 
       }
     });
@@ -2073,9 +2115,7 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
     // Authorization check
     const isCustomer = user.roles.includes(ROLES.CUSTOMER);
     const isAdmin = user.roles.includes(ROLES.DISTRICT_ADMIN) || user.roles.includes(ROLES.SUPER_ADMIN);
-    const isDistrictMatch = Array.isArray(user.districts)
-      ? user.districts.includes(request.district)
-      : false;
+    const isDistrictMatch = hasDistrictAccess(user, request.districtId);
 
     if (isCustomer && request.customerId !== user.id) {
       res.status(403).json({ success: false, error: 'Not authorized to upload agreement for this request' });
@@ -2286,7 +2326,7 @@ export async function completeInspectionController(req: Request, res: Response):
     // Only assigned agent or admins may complete an inspection
     const roles = user.roles;
     const isSuper = roles.includes(ROLES.SUPER_ADMIN);
-    const isDistrictAdmin = roles.includes(ROLES.DISTRICT_ADMIN) && hasDistrictAccess(user, request.district);
+    const isDistrictAdmin = roles.includes(ROLES.DISTRICT_ADMIN) && hasDistrictAccess(user, request.districtId);
     const isAssignedAgent = roles.includes(ROLES.AGENT) && request.assignedAgentId === user.id;
 
     if (!(isSuper || isDistrictAdmin || isAssignedAgent)) {
@@ -2528,7 +2568,7 @@ export async function getAgentAssignedRequestsController(req: Request, res: Resp
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
-          customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, district: true, address: true } },
+          customer: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, homeDistrictId: true, homeDistrict: { select: { id: true, name: true } }, address: true } },
           assignedAgent: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } },
           loan: { select: { id: true, approvedAmount: true, status: true, disbursedDate: true, approvedDate: true } },
           _count: { select: { documents: true, comments: true, inspections: true } },
@@ -2582,7 +2622,7 @@ export async function updateCommentsEnabledController(req: Request, res: Respons
       return;
     }
 
-    if (!isSuper && !hasDistrictAccess(user, request.district)) {
+    if (!isSuper && !hasDistrictAccess(user, request.districtId)) {
       res.status(403).json({ success: false, message: 'Forbidden - no access to this district' } as APIResponseType);
       return;
     }
@@ -2649,7 +2689,7 @@ export async function addCommentController(req: Request, res: Response): Promise
     if (isSuper) {
       allowed = true;
     } else if (roles.includes(ROLES.DISTRICT_ADMIN)) {
-      if (hasDistrictAccess(user, request.district)) {
+      if (hasDistrictAccess(user, request.districtId)) {
         allowed = true;
       }
     } else if (roles.includes(ROLES.AGENT)) {
@@ -2784,7 +2824,7 @@ export async function addDocumentController(req: Request, res: Response): Promis
       allowed = true;
       uploaderRole = DOCUMENT_UPLOADER_ROLE.ADMIN_SUBMITTED;
     } else if (roles.includes(ROLES.DISTRICT_ADMIN)) {
-      if (hasDistrictAccess(user, request.district)) {
+      if (hasDistrictAccess(user, request.districtId)) {
         allowed = true;
         uploaderRole = DOCUMENT_UPLOADER_ROLE.ADMIN_SUBMITTED;
       }

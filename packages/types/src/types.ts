@@ -1,4 +1,4 @@
-import { CONNECTION_STATUS, SERVICE_NAMES, TEMPLATE_NAMES } from "./constants";
+import { CONNECTION_STATUS, SERVICE_NAMES, TEMPLATE_NAMES, UserRole } from "./constants";
 
 // ---------- JSON VALUE TYPE ---------------
 // Type-safe replacement for `any` when dealing with JSON data
@@ -39,23 +39,310 @@ export interface UtilsEnvConfigType {
   };
 }
 
+// ============================================
+// GEOGRAPHY TYPES
+// ============================================
+
+export interface CountryType {
+  id: string;
+  name: string;
+  code: string;  // ISO 3166-1 alpha-2
+  isActive: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  states?: StateType[];
+}
+
+export interface StateType {
+  id: string;
+  name: string;
+  code: string;
+  countryId: string;
+  isActive: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  country?: CountryType;
+  districts?: DistrictType[];
+}
+
+export interface DistrictType {
+  id: string;
+  name: string;
+  code: string;
+  stateId: string;
+  isActive: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  state?: StateType;
+  warehouses?: WarehouseType[];
+}
+
+export interface WarehouseType {
+  id: string;
+  name: string;
+  code: string;
+  districtId: string;
+  address: string | null;
+  
+  // Geolocation
+  latitude: number | null;
+  longitude: number | null;
+  
+  // Contact
+  contactPerson: string | null;
+  contactPhone: string | null;
+  
+  // Capacity
+  capacity: number | null;
+  currentCount: number;
+  
+  isActive: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  district?: DistrictType;
+  assets?: AssetType[];
+}
+
+// ============================================
+// USER ASSIGNMENT TYPES
+// ============================================
+
+export interface UserStateAssignmentType {
+  id: string;
+  userId: string;
+  stateId: string;
+  isPrimary: boolean;
+  assignedAt: Date;
+  assignedBy: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  // Relations
+  user?: UserType;
+  state?: StateType;
+}
+
+export interface UserDistrictAssignmentType {
+  id: string;
+  userId: string;
+  districtId: string;
+  isPrimary: boolean;
+  assignedAt: Date;
+  assignedBy: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  // Relations
+  user?: UserType;
+  district?: DistrictType;
+}
+
+// ============================================
+// USER TYPE (Updated with multiple roles)
+// ============================================
+
 export interface UserType {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   phoneNumber?: string;
-  roles: string[];
-  // Districts assigned to the user. Always an array.
-  districts: string[];
+  
+  // Multiple roles (users can have multiple roles)
+  roles: UserRole[];
+  
+  // Home district for customers
+  homeDistrictId?: string | null;
+  
+  // Computed district IDs (from districtAssignments, populated by API)
+  districts?: string[];
+  
   isActive: boolean;
   emailVerified?: boolean;
   phoneVerified?: boolean;
+  
+  // Address
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  
+  // Soft delete
+  deletedAt?: Date | null;
+  deletedBy?: string | null;
+  
   createdAt?: Date;
   updatedAt?: Date;
+  
+  // Relations
+  homeDistrict?: DistrictType | null;
+  stateAssignments?: UserStateAssignmentType[];
+  districtAssignments?: UserDistrictAssignmentType[];
 }
 
-export interface JWTPayloadType extends UserType {}
+export interface JWTPayloadType {
+  id: string;
+  email: string;
+  roles: UserRole[];  // Multiple roles (e.g., [CUSTOMER, AGENT])
+  homeDistrictId?: string | null;
+  // For geographic scope (array of district IDs)
+  districts?: string[];  // User's assigned district IDs
+  stateIds?: string[];   // User's assigned state IDs (for STATE_ADMIN)
+  iat?: number;
+  exp?: number;
+}
+
+// ============================================
+// ASSET & AUCTION TYPES
+// ============================================
+
+export interface AssetType {
+  id: string;
+  assetType: string;
+  brand: string;
+  model: string;
+  condition: string;  // AssetCondition enum value
+  purchaseYear: number;
+  description: string;
+  
+  // Valuation
+  estimatedValue: number | null;
+  inspectedValue: number | null;
+  
+  // Depreciation tracking
+  depreciationRate: number | null;
+  lastValuationDate: Date | null;
+  currentMarketValue: number | null;
+  
+  status: string;  // AssetStatus enum value
+  warehouseId: string | null;
+  requestId: string;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  request?: RequestType;
+  warehouse?: WarehouseType | null;
+  movements?: AssetMovementType[];
+  auctionListings?: AuctionListingType[];
+}
+
+export interface AssetMovementType {
+  id: string;
+  assetId: string;
+  movementType: string;  // MovementType enum value
+  fromWarehouseId: string | null;
+  toWarehouseId: string | null;
+  movementDate: Date;
+  movedBy: string;
+  notes: string | null;
+  attachments: JsonValue | null;
+  verifiedBy: string | null;
+  verifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  asset?: AssetType;
+  fromWarehouse?: WarehouseType | null;
+  toWarehouse?: WarehouseType | null;
+}
+
+export interface AuctionListingType {
+  id: string;
+  listingNumber: string;
+  assetId: string;
+  
+  // Timing
+  startTime: Date;
+  endTime: Date;
+  extendedEndTime: Date | null;
+  
+  // Pricing
+  reservePrice: number;
+  startingBid: number;
+  bidIncrement: number;
+  buyNowPrice: number | null;
+  
+  // State
+  status: string;  // AuctionStatus enum value
+  currentHighBid: number | null;
+  totalBids: number;
+  
+  // Winner
+  winnerId: string | null;
+  winningBidId: string | null;
+  finalPrice: number | null;
+  
+  // Description
+  title: string;
+  description: string;
+  mediaUrls: JsonValue | null;
+  
+  // Terms
+  termsAndConditions: string | null;
+  pickupLocation: string | null;
+  pickupDeadline: Date | null;
+  
+  // Admin tracking
+  createdById: string;
+  approvedAt: Date | null;
+  approvedBy: string | null;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  asset?: AssetType;
+  winner?: UserType | null;
+  createdBy?: UserType;
+  bids?: AuctionBidType[];
+}
+
+export interface AuctionBidType {
+  id: string;
+  auctionId: string;
+  bidderId: string;
+  amount: number;
+  status: string;  // BidStatus enum value
+  maxAutoBid: number | null;
+  isAutoBid: boolean;
+  placedAt: Date;
+  outbidAt: Date | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  auction?: AuctionListingType;
+  bidder?: UserType;
+}
 
 // ---------- EMI & REQUEST RELATED ---------------
 
@@ -454,42 +741,49 @@ export interface RequestType {
   requestNumber: string; // Required for production
   customerId: string;
   requestedAmount: number;
-  district: string;
+  
+  // Geography - FK to District (replaces string district)
+  districtId: string;
+  
+  // Workflow state tracking
   currentStatus: string;
+  previousStatus: string | null;  // For rollback/audit - tracks last status before current
+  statusChangedAt: Date | null;   // When status was last changed
+  statusChangedBy: string | null; // User ID who changed the status
   
-  // Asset details - required for asset-based lending
-  purchaseYear: number;
-  assetType: string;
-  assetBrand: string;
-  assetModel: string;
-  assetCondition: string;
-  AdditionalDescription: string; // Required with default empty string
+  // Asset relation - now separate model
+  asset?: AssetType | null;
   
-  // Admin Offer Details
+  // Current active offer reference
+  activeOfferId: string | null;
+  
+  // Admin Offer Details (legacy - kept for backward compatibility)
   adminOfferedAmount: number | null;
   adminTenureMonths: number | null;
   adminInterestRate: number | null;
   adminEmiSchedule: AdminEMISchedulePreview | null;
   offerMadeDate: Date | null;
   offerResponseDate: Date | null;
-  // Processing fee that will be deducted from disbursed amount when loan is disbursed.
-  // This does NOT change EMI calculation (EMIs are calculated on adminOfferedAmount).
-  adminProcessingFee: number; // Required with default 0
+  adminProcessingFee: number;
   penaltyPercentage: number | null;
   lateFeePercentage: number | null;
   adminRequestedInfo: string | null;
   
-  // Bank Details
-  bankAccountNumber: string | null;
-  bankIfscCode: string | null;
-  bankAccountName: string | null;
-  upiId: string | null;
+  // Bank Details reference
+  disbursementAccountId: string | null;
   bankDetailsSubmittedAt: Date | null;
   
   // Assignment
   assignedAgentId: string | null;
   assignedAdminId: string | null;
   inspectionScheduledAt: Date | null;
+  
+  // Comments toggle
+  commentsEnabled: boolean;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
   
   submittedDate: Date;
   createdAt: Date;
@@ -499,18 +793,70 @@ export interface RequestType {
   customer?: UserType;
   assignedAgent?: UserType | null;
   assignedAdmin?: UserType | null;
+  district?: DistrictType;
+  disbursementAccount?: BankDetailsType | null;
+  offers?: AdminOfferType[];
   loan?: LoanType | null;
   documents?: DocumentType[];
-  emisSchedule?: EMIScheduleType[];
+  emiSchedules?: EMIScheduleType[];
   payments?: PaymentType[];
   paymentOrders?: PaymentOrderType[];
   comments?: CommentType[];
-  // Whether customers are allowed to post comments on this request. Admins can
-  // toggle this at any time; frontend/backend business logic may decide when
-  // this is applicable (for example after rejection).
-  commentsEnabled?: boolean | null;
   inspections?: InspectionType[];
-  requestHistory?: RequestHistoryItem[];
+}
+
+// Bank Details Type
+export interface BankDetailsType {
+  id: string;
+  userId: string;
+  accountNumber: string;
+  ifscCode: string;
+  accountName: string;
+  bankName: string | null;
+  branchName: string | null;
+  upiId: string | null;
+  isVerified: boolean;
+  verifiedAt: Date | null;
+  isPrimary: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  user?: UserType;
+}
+
+// Admin Offer Type
+export interface AdminOfferType {
+  id: string;
+  requestId: string;
+  offeredById: string;
+  offeredAmount: number;
+  tenureMonths: number;
+  interestRate: number;
+  processingFee: number;
+  emiAmount: number | null;
+  totalInterest: number | null;
+  totalAmount: number | null;
+  emiSchedule: JsonValue | null;
+  penaltyPercentage: number;
+  lateFeePercentage: number;
+  status: string;  // OfferStatus enum value
+  expiresAt: Date | null;
+  respondedAt: Date | null;
+  revision: number;
+  previousOfferId: string | null;
+  notes: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  request?: RequestType;
+  offeredBy?: UserType;
+  previousOffer?: AdminOfferType | null;
 }
 
 export interface LoanType {
@@ -550,6 +896,10 @@ export interface LoanType {
   // Closure Details
   closedDate: Date | null;
   closureType: string | null;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
   
   createdAt: Date;
   updatedAt: Date;
@@ -648,36 +998,6 @@ export interface PaymentOrderType {
   emiSchedule?: EMIScheduleType;
 }
 
-export interface DocumentType {
-  id: string;
-  fileKey: string; // Required - no default empty string
-  fileName: string; // Required
-  fileSize: number; // Required
-  fileType: string; // Required
-  documentType: string;
-  documentCategory: string;
-  requestId: string | null;
-  uploadedBy: string;
-  uploaderRole?: string | null; // DOCUMENT_UPLOADER_ROLE enum
-  isPublic: boolean;
-  isVerified: boolean;
-  verifiedBy: string | null;
-  verifiedAt: Date | null;
-  status: string;
-  description: string | null;
-  displayOrder: number | null;
-  metadata: JsonValue | null;
-  createdAt: Date;
-  updatedAt: Date;
-  // Optional signed URL (runtime) for direct access to the file. Not stored in DB.
-  url?: string | null;
-  // When `url` is present this indicates the signed URL expiry timestamp (ISO string)
-  urlExpiresAt?: string | null;
-  
-  // Relations
-  request?: RequestType | null;
-}
-
 export interface CommentType {
   id: string;
   requestId: string;
@@ -685,6 +1005,11 @@ export interface CommentType {
   content: string;
   isInternal: boolean;
   commentType: string;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
   createdAt: Date;
   updatedAt: Date;
   
@@ -704,12 +1029,49 @@ export interface InspectionType {
   estimatedValue: number | null;
   notes: string | null;
   recommendApprove: boolean | null;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
   createdAt: Date;
   updatedAt: Date;
   
   // Relations
   request?: RequestType;
   agent?: UserType | null;
+}
+
+export interface DocumentType {
+  id: string;
+  fileKey: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  documentType: string;
+  documentCategory: string;
+  requestId: string | null;
+  uploadedBy: string;
+  uploaderRole?: string | null;
+  isPublic: boolean;
+  status: string;
+  description: string | null;
+  displayOrder: number | null;
+  metadata: JsonValue | null;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Runtime fields (not stored in DB)
+  url?: string | null;
+  urlExpiresAt?: string | null;
+  
+  // Relations
+  request?: RequestType | null;
 }
 
 // ------- REQUEST & LOAN TYPES END ----------

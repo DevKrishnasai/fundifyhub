@@ -1,10 +1,42 @@
 
+// ============================================
+// USER ROLES - Single role per user
+// ============================================
+
 export const ROLES = {
   CUSTOMER: "CUSTOMER",
-  DISTRICT_ADMIN: "DISTRICT_ADMIN",
-  SUPER_ADMIN: "SUPER_ADMIN",
   AGENT: "AGENT",
+  DISTRICT_ADMIN: "DISTRICT_ADMIN",
+  STATE_ADMIN: "STATE_ADMIN",
+  SUPER_ADMIN: "SUPER_ADMIN",
 } as const;
+
+// Type for role values
+export type UserRole = typeof ROLES[keyof typeof ROLES];
+
+// Role hierarchy levels (higher = more access)
+export const ROLE_HIERARCHY: Record<UserRole, number> = {
+  [ROLES.CUSTOMER]: 1,
+  [ROLES.AGENT]: 2,
+  [ROLES.DISTRICT_ADMIN]: 3,
+  [ROLES.STATE_ADMIN]: 4,
+  [ROLES.SUPER_ADMIN]: 5,
+};
+
+// Role display labels
+export const ROLE_LABELS: Record<UserRole, string> = {
+  [ROLES.CUSTOMER]: 'Customer',
+  [ROLES.AGENT]: 'Agent',
+  [ROLES.DISTRICT_ADMIN]: 'District Admin',
+  [ROLES.STATE_ADMIN]: 'State Admin',
+  [ROLES.SUPER_ADMIN]: 'Super Admin',
+};
+
+// Roles that have admin capabilities
+export const ADMIN_ROLES = [ROLES.DISTRICT_ADMIN, ROLES.STATE_ADMIN, ROLES.SUPER_ADMIN] as const;
+
+// Roles that can manage requests
+export const REQUEST_MANAGER_ROLES = [ROLES.AGENT, ROLES.DISTRICT_ADMIN, ROLES.STATE_ADMIN, ROLES.SUPER_ADMIN] as const;
 
 export enum SERVICE_NAMES {
   WHATSAPP = 'WHATSAPP',
@@ -135,8 +167,86 @@ export enum ASSET_CONDITION {
   EXCELLENT = "EXCELLENT",
   GOOD = "GOOD",
   FAIR = "FAIR",
-  POOR = "POOR"
+  POOR = "POOR",
+  DAMAGED = "DAMAGED"
 }
+
+// ============================================
+// AUCTION ENUMS
+// ============================================
+
+export enum AUCTION_STATUS {
+  DRAFT = "DRAFT",           // Listing being prepared
+  SCHEDULED = "SCHEDULED",   // Auction scheduled for future
+  ACTIVE = "ACTIVE",         // Bidding is open
+  EXTENDED = "EXTENDED",     // Bidding extended due to last-minute activity
+  ENDED = "ENDED",           // Bidding closed, winner determined
+  SOLD = "SOLD",             // Payment received, asset transferred
+  UNSOLD = "UNSOLD",         // No valid bids received
+  CANCELLED = "CANCELLED"    // Auction cancelled by admin
+}
+
+export enum BID_STATUS {
+  ACTIVE = "ACTIVE",         // Valid, active bid
+  OUTBID = "OUTBID",         // Superseded by higher bid
+  WINNING = "WINNING",       // Currently the highest bid
+  WON = "WON",               // Won the auction
+  WITHDRAWN = "WITHDRAWN",   // Bidder withdrew the bid
+  REJECTED = "REJECTED",     // Bid rejected by admin (suspicious activity)
+  CANCELLED = "CANCELLED"    // Bid cancelled when auction is cancelled
+}
+
+export enum MOVEMENT_TYPE {
+  INTAKE = "INTAKE",         // Asset received from customer
+  TRANSFER = "TRANSFER",     // Moved between warehouses
+  AUCTION = "AUCTION",       // Moved for auction
+  RELEASE = "RELEASE",       // Returned to customer
+  DISPOSAL = "DISPOSAL"      // Asset disposed/scrapped
+}
+
+// Auction status display labels
+export const AUCTION_STATUS_LABELS: Record<AUCTION_STATUS, string> = {
+  [AUCTION_STATUS.DRAFT]: 'Draft',
+  [AUCTION_STATUS.SCHEDULED]: 'Scheduled',
+  [AUCTION_STATUS.ACTIVE]: 'Active',
+  [AUCTION_STATUS.EXTENDED]: 'Extended',
+  [AUCTION_STATUS.ENDED]: 'Ended',
+  [AUCTION_STATUS.SOLD]: 'Sold',
+  [AUCTION_STATUS.UNSOLD]: 'Unsold',
+  [AUCTION_STATUS.CANCELLED]: 'Cancelled',
+};
+
+// Auction status colors for UI
+export const AUCTION_STATUS_COLORS: Record<AUCTION_STATUS, { bg: string; text: string; border: string }> = {
+  [AUCTION_STATUS.DRAFT]: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-400', border: 'border-gray-300' },
+  [AUCTION_STATUS.SCHEDULED]: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-300' },
+  [AUCTION_STATUS.ACTIVE]: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-300' },
+  [AUCTION_STATUS.EXTENDED]: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-300' },
+  [AUCTION_STATUS.ENDED]: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-300' },
+  [AUCTION_STATUS.SOLD]: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-300' },
+  [AUCTION_STATUS.UNSOLD]: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-300' },
+  [AUCTION_STATUS.CANCELLED]: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-300' },
+};
+
+// Bid status labels
+export const BID_STATUS_LABELS: Record<BID_STATUS, string> = {
+  [BID_STATUS.ACTIVE]: 'Active',
+  [BID_STATUS.OUTBID]: 'Outbid',
+  [BID_STATUS.WINNING]: 'Winning',
+  [BID_STATUS.WON]: 'Won',
+  [BID_STATUS.WITHDRAWN]: 'Withdrawn',
+  [BID_STATUS.REJECTED]: 'Rejected',
+  [BID_STATUS.CANCELLED]: 'Cancelled',
+};
+
+// Movement type labels
+export const MOVEMENT_TYPE_LABELS: Record<MOVEMENT_TYPE, string> = {
+  [MOVEMENT_TYPE.INTAKE]: 'Received from Customer',
+  [MOVEMENT_TYPE.TRANSFER]: 'Warehouse Transfer',
+  [MOVEMENT_TYPE.AUCTION]: 'Moved to Auction',
+  [MOVEMENT_TYPE.RELEASE]: 'Released to Customer',
+  [MOVEMENT_TYPE.DISPOSAL]: 'Disposed',
+};
 
 // Client / frontend shared constants
 export const CLIENT_CONSTANTS = {
@@ -181,6 +291,10 @@ export const ASSET_CONDITION_OPTIONS = [
   { value: "POOR", label: "Poor - Significant wear" },
 ]
 
+/**
+ * @deprecated Use geography hierarchy from database (Country → State → District)
+ * This is kept for backward compatibility during migration.
+ */
 export const DISTRICTS = [
   "Hyderabad",
   "Warangal",
@@ -214,9 +328,9 @@ export const DISTRICTS = [
   "Mulugu",
   "Narayanpet",
   "Vikarabad",
-]
+];
 
-export const ADMIN_AGENT_ROLES = [ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN, ROLES.AGENT];
+export const ADMIN_AGENT_ROLES = [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN, ROLES.AGENT] as const;
 
 export const ALLOWED_UPDATE_STATUSES = [
   REQUEST_STATUS.PENDING,
@@ -617,8 +731,10 @@ export enum PAYMENT_ORDER_STATUS {
 export enum ASSET_STATUS {
   PLEDGED = "PLEDGED",           // Asset is currently pledged against a loan
   RELEASED = "RELEASED",         // Asset returned to customer after loan completion
-  IN_AUCTION = "IN_AUCTION",     // Asset is in auction process (future)
-  SOLD = "SOLD"                  // Asset was sold in auction (future)
+  IN_AUCTION = "IN_AUCTION",     // Asset is in auction process
+  FORFEITED = "FORFEITED",       // Asset forfeited due to loan default
+  AUCTIONED = "AUCTIONED",       // Asset sold through auction
+  SOLD = "SOLD"                  // Asset was sold in auction
 }
 
 // Offer Status - Admin offer lifecycle
@@ -955,6 +1071,31 @@ export const ROLE_PERMISSIONS: Record<string, PERMISSION[]> = {
     PERMISSION.ADD_COMMENT,
     PERMISSION.VIEW_INTERNAL_COMMENTS,
   ],
+  [ROLES.STATE_ADMIN]: [
+    // State admin has all district admin permissions plus state-level management
+    PERMISSION.VIEW_DISTRICT_REQUESTS,
+    PERMISSION.VIEW_ALL_REQUESTS,
+    PERMISSION.UPDATE_REQUEST_STATUS,
+    PERMISSION.ASSIGN_AGENT,
+    PERMISSION.CREATE_OFFER,
+    PERMISSION.VIEW_OWN_PROFILE,
+    PERMISSION.UPDATE_OWN_PROFILE,
+    PERMISSION.VIEW_ALL_USERS,
+    PERMISSION.CREATE_USER,
+    PERMISSION.UPDATE_USER,
+    PERMISSION.UPLOAD_DOCUMENT,
+    PERMISSION.VIEW_DOCUMENT,
+    PERMISSION.VERIFY_DOCUMENT,
+    PERMISSION.VIEW_ALL_LOANS,
+    PERMISSION.CREATE_LOAN,
+    PERMISSION.DISBURSE_LOAN,
+    PERMISSION.VIEW_ALL_PAYMENTS,
+    PERMISSION.RECORD_PAYMENT,
+    PERMISSION.VIEW_ANALYTICS,
+    PERMISSION.VIEW_AUDIT_LOGS,
+    PERMISSION.ADD_COMMENT,
+    PERMISSION.VIEW_INTERNAL_COMMENTS,
+  ],
   [ROLES.SUPER_ADMIN]: [
     // Super admin has all permissions
     ...Object.values(PERMISSION),
@@ -1012,21 +1153,33 @@ export const NAV_ITEMS: NavMenuItem[] = [
     label: 'Users', 
     href: '/users', 
     icon: 'Users',
-    roles: [ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN],
+    roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN],
     permissions: [PERMISSION.VIEW_ALL_USERS],
+  },
+  { 
+    label: 'Geography', 
+    href: '/geography', 
+    icon: 'MapPin',
+    roles: [ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN],
+  },
+  { 
+    label: 'Assets', 
+    href: '/assets', 
+    icon: 'Package',
+    roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN],
   },
   { 
     label: 'Analytics', 
     href: '/analytics', 
     icon: 'BarChart3',
-    roles: [ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN],
+    roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN],
     permissions: [PERMISSION.VIEW_ANALYTICS],
   },
   { 
     label: 'Audit Logs', 
     href: '/audit-logs', 
     icon: 'ScrollText',
-    roles: [ROLES.SUPER_ADMIN],
+    roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN],
     permissions: [PERMISSION.VIEW_AUDIT_LOGS],
   },
   { 

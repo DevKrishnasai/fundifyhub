@@ -1,10 +1,14 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AppLayout, PageContainer, PageHeader } from "@/components/layout/AppLayout"
 import { PERMISSION, hasPermission, DISTRICTS } from "@fundifyhub/types"
+import { 
+  useAnalyticsSummary, 
+  useDistrictBreakdown 
+} from "@/hooks/queries/useAnalytics"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,8 +19,6 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { apiClient } from "@/lib/api-client"
-import { BACKEND_API_CONFIG } from "@/lib/urls"
 import { redirect } from "next/navigation"
 import { 
   RefreshCw, 
@@ -32,33 +34,6 @@ import {
   PieChart as PieChartIcon,
   Calendar
 } from "lucide-react"
-
-interface AnalyticsSummary {
-  totalRequests: number
-  totalLoans: number
-  totalDisbursed: number
-  totalCollected: number
-  activeLoans: number
-  pendingRequests: number
-  overdueEMIs: number
-  totalUsers: number
-  conversionRate: number
-  avgLoanAmount: number
-  trends?: {
-    requests: number
-    disbursed: number
-    collected: number
-    users: number
-  }
-}
-
-interface DistrictBreakdown {
-  district: string
-  requests: number
-  loans: number
-  disbursed: number
-  collected: number
-}
 
 function AnalyticsSkeleton() {
   return (
@@ -135,10 +110,6 @@ function formatCurrency(amount: number): string {
 
 function AnalyticsContent() {
   const { user, isLoading: authLoading } = useAuth()
-  const [summary, setSummary] = useState<AnalyticsSummary | null>(null)
-  const [districtData, setDistrictData] = useState<DistrictBreakdown[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   
   // Filters
   const [dateRange, setDateRange] = useState<string>("30d")
@@ -152,47 +123,29 @@ function AnalyticsContent() {
     redirect("/dashboard")
   }
 
-  const fetchAnalytics = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
+  // React Query hooks
+  const { 
+    data: summary, 
+    isLoading: summaryLoading, 
+    isError: summaryError,
+    refetch: refetchSummary,
+    isFetching: summaryFetching
+  } = useAnalyticsSummary({ enabled: !!user && canViewAnalytics })
 
-      const params = new URLSearchParams()
-      params.append("dateRange", dateRange)
-      if (districtFilter !== "all") {
-        params.append("district", districtFilter)
-      }
+  const { 
+    data: districtData, 
+    isLoading: districtLoading,
+    refetch: refetchDistrict,
+    isFetching: districtFetching
+  } = useDistrictBreakdown({ enabled: !!user && canViewAnalytics })
 
-      // Fetch summary
-      const summaryRes = await apiClient.get(
-        `${BACKEND_API_CONFIG.ENDPOINTS.ADMIN.ANALYTICS_SUMMARY}?${params.toString()}`
-      )
-      
-      if (summaryRes.data?.success) {
-        setSummary(summaryRes.data.data)
-      }
+  const isLoading = summaryLoading || districtLoading
+  const isFetching = summaryFetching || districtFetching
 
-      // Fetch district breakdown
-      const districtRes = await apiClient.get(
-        `${BACKEND_API_CONFIG.ENDPOINTS.ADMIN.ANALYTICS_DISTRICT_BREAKDOWN}?${params.toString()}`
-      )
-      
-      if (districtRes.data?.success) {
-        setDistrictData(districtRes.data.data || [])
-      }
-    } catch (err) {
-      console.error("Failed to fetch analytics:", err)
-      setError("Failed to load analytics data")
-    } finally {
-      setLoading(false)
-    }
-  }, [dateRange, districtFilter])
-
-  useEffect(() => {
-    if (user && !authLoading && canViewAnalytics) {
-      fetchAnalytics()
-    }
-  }, [user, authLoading, canViewAnalytics, fetchAnalytics])
+  const handleRefresh = () => {
+    refetchSummary()
+    refetchDistrict()
+  }
 
   if (authLoading) {
     return <AnalyticsSkeleton />
@@ -210,6 +163,12 @@ function AnalyticsContent() {
     { value: "all", label: "All Time" },
   ]
 
+  // Calculate trend helpers
+  const getTrend = (change?: { change: number; trend: 'up' | 'down' | 'same' }) => {
+    if (!change) return undefined
+    return { value: Math.abs(change.change), isPositive: change.trend === 'up' }
+  }
+
   return (
     <AppLayout>
       <PageContainer>
@@ -217,8 +176,8 @@ function AnalyticsContent() {
           title="Analytics"
           description="Platform performance metrics and insights."
           actions={
-            <Button variant="outline" size="sm" onClick={fetchAnalytics} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isFetching}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
           }
@@ -256,16 +215,16 @@ function AnalyticsContent() {
         </div>
 
         {/* Error State */}
-        {error && (
+        {summaryError && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive mb-6">
-            {error}
-            <Button variant="link" className="ml-2 p-0 h-auto" onClick={fetchAnalytics}>
+            Failed to load analytics data
+            <Button variant="link" className="ml-2 p-0 h-auto" onClick={handleRefresh}>
               Try again
             </Button>
           </div>
         )}
 
-        {loading ? (
+        {isLoading ? (
           <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               {[...Array(8)].map((_, i) => (
@@ -282,57 +241,57 @@ function AnalyticsContent() {
                 value={summary?.totalRequests ?? 0}
                 icon={<FileText className="h-5 w-5" />}
                 iconColor="text-blue-500"
-                trend={summary?.trends?.requests ? { value: summary.trends.requests, isPositive: summary.trends.requests > 0 } : undefined}
+                trend={getTrend(summary?.comparison?.totalRequests)}
               />
               <StatCard
                 title="Active Loans"
                 value={summary?.activeLoans ?? 0}
                 icon={<CheckCircle className="h-5 w-5" />}
                 iconColor="text-green-500"
+                trend={getTrend(summary?.comparison?.activeLoans)}
               />
               <StatCard
                 title="Total Disbursed"
                 value={formatCurrency(summary?.totalDisbursed ?? 0)}
                 icon={<IndianRupee className="h-5 w-5" />}
                 iconColor="text-emerald-500"
-                trend={summary?.trends?.disbursed ? { value: summary.trends.disbursed, isPositive: summary.trends.disbursed > 0 } : undefined}
+                trend={getTrend(summary?.comparison?.totalDisbursed)}
               />
               <StatCard
-                title="Total Collected"
-                value={formatCurrency(summary?.totalCollected ?? 0)}
+                title="Total Repaid"
+                value={formatCurrency(summary?.totalRepaid ?? 0)}
                 icon={<TrendingUp className="h-5 w-5" />}
                 iconColor="text-purple-500"
-                trend={summary?.trends?.collected ? { value: summary.trends.collected, isPositive: summary.trends.collected > 0 } : undefined}
               />
             </div>
 
             {/* Secondary Metrics */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <StatCard
-                title="Pending Requests"
-                value={summary?.pendingRequests ?? 0}
+                title="Completed Loans"
+                value={summary?.completedLoans ?? 0}
                 icon={<Clock className="h-5 w-5" />}
                 iconColor="text-yellow-500"
               />
               <StatCard
-                title="Overdue EMIs"
-                value={summary?.overdueEMIs ?? 0}
+                title="Overdue Amount"
+                value={formatCurrency(summary?.overdueAmount ?? 0)}
                 icon={<AlertCircle className="h-5 w-5" />}
                 iconColor="text-red-500"
               />
               <StatCard
-                title="Total Users"
-                value={summary?.totalUsers ?? 0}
+                title="Approval Rate"
+                value={`${(summary?.approvalRate ?? 0).toFixed(1)}%`}
                 icon={<Users className="h-5 w-5" />}
                 iconColor="text-indigo-500"
-                trend={summary?.trends?.users ? { value: summary.trends.users, isPositive: summary.trends.users > 0 } : undefined}
+                trend={getTrend(summary?.comparison?.approvalRate)}
               />
               <StatCard
-                title="Conversion Rate"
-                value={`${(summary?.conversionRate ?? 0).toFixed(1)}%`}
+                title="Default Rate"
+                value={`${(summary?.defaultRate ?? 0).toFixed(1)}%`}
                 icon={<BarChart3 className="h-5 w-5" />}
                 iconColor="text-cyan-500"
-                subtitle={`Avg loan: ${formatCurrency(summary?.avgLoanAmount ?? 0)}`}
+                subtitle={`Avg loan: ${formatCurrency(summary?.averageLoanAmount ?? 0)}`}
               />
             </div>
 
@@ -347,23 +306,23 @@ function AnalyticsContent() {
                   <CardDescription>Loan distribution by district</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {districtData.length > 0 ? (
+                  {districtData && districtData.length > 0 ? (
                     <div className="space-y-4">
-                      {districtData.slice(0, 6).map((d, i) => (
-                        <div key={d.district} className="flex items-center gap-4">
-                          <div className="w-24 text-sm font-medium truncate">{d.district}</div>
+                      {districtData.slice(0, 6).map((d) => (
+                        <div key={d.districtId} className="flex items-center gap-4">
+                          <div className="w-24 text-sm font-medium truncate">{d.districtName}</div>
                           <div className="flex-1">
                             <div className="h-2 bg-muted rounded-full overflow-hidden">
                               <div 
                                 className="h-full bg-primary rounded-full"
                                 style={{ 
-                                  width: `${Math.min(100, (d.disbursed / (summary?.totalDisbursed || 1)) * 100)}%` 
+                                  width: `${Math.min(100, (d.totalDisbursed / (summary?.totalDisbursed || 1)) * 100)}%` 
                                 }}
                               />
                             </div>
                           </div>
                           <div className="w-20 text-sm text-right text-muted-foreground">
-                            {formatCurrency(d.disbursed)}
+                            {formatCurrency(d.totalDisbursed)}
                           </div>
                         </div>
                       ))}
@@ -380,25 +339,25 @@ function AnalyticsContent() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <PieChartIcon className="h-5 w-5" />
-                    Request Status Distribution
+                    Loan Status Overview
                   </CardTitle>
-                  <CardDescription>Current status of all requests</CardDescription>
+                  <CardDescription>Current status of all loans</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
                       <div className="flex items-center gap-2">
                         <CheckCircle className="h-4 w-4 text-green-600" />
-                        <span className="text-sm">Approved / Disbursed</span>
+                        <span className="text-sm">Active Loans</span>
                       </div>
-                      <span className="font-semibold">{summary?.totalLoans ?? 0}</span>
+                      <span className="font-semibold">{summary?.activeLoans ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-yellow-600" />
-                        <span className="text-sm">Pending Review</span>
+                        <span className="text-sm">Completed</span>
                       </div>
-                      <span className="font-semibold">{summary?.pendingRequests ?? 0}</span>
+                      <span className="font-semibold">{summary?.completedLoans ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20">
                       <div className="flex items-center gap-2">
@@ -410,9 +369,9 @@ function AnalyticsContent() {
                     <div className="flex items-center justify-between p-3 rounded-lg bg-red-50 dark:bg-red-900/20">
                       <div className="flex items-center gap-2">
                         <AlertCircle className="h-4 w-4 text-red-600" />
-                        <span className="text-sm">Overdue EMIs</span>
+                        <span className="text-sm">Overdue Amount</span>
                       </div>
-                      <span className="font-semibold">{summary?.overdueEMIs ?? 0}</span>
+                      <span className="font-semibold">{formatCurrency(summary?.overdueAmount ?? 0)}</span>
                     </div>
                   </div>
                 </CardContent>

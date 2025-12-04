@@ -1,18 +1,17 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AppLayout, PageContainer } from "@/components/layout/AppLayout"
 import { StatsCard } from "@/components/dashboard/StatsCard"
 import { RequestCardList } from "@/components/dashboard/RequestCard"
 import { ROLES } from "@fundifyhub/types"
-import type { RequestType } from "@fundifyhub/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { apiClient } from "@/lib/api-client"
-import { BACKEND_API_CONFIG } from "@/lib/urls"
+import { useUserDashboardStats } from "@/hooks/queries/useDashboard"
+import { useRequests, useUserRequests, useAssignedRequests } from "@/hooks/queries"
 import Link from "next/link"
 import { 
   FileText, 
@@ -20,7 +19,6 @@ import {
   Clock, 
   CheckCircle,
   ClipboardList,
-  AlertCircle,
   Users,
   TrendingUp,
   Plus,
@@ -28,17 +26,21 @@ import {
   RefreshCw
 } from "lucide-react"
 
-interface DashboardStats {
-  totalRequests: number
-  activeLoans: number
-  totalDisbursed: number
-  pendingCount: number
+// Dashboard stats type - combining all possible fields from different API responses
+interface DashboardStatsData {
+  totalRequests?: number
+  activeLoans?: number
+  pendingRequests?: number
+  totalDisbursed?: number
+  pendingCount?: number
   completedToday?: number
   overdueEMIs?: number
   pendingInspections?: number
   completedInspections?: number
   totalUsers?: number
   totalCollected?: number
+  totalBorrowed?: number
+  totalRepaid?: number
 }
 
 function DashboardSkeleton() {
@@ -67,54 +69,56 @@ function DashboardSkeleton() {
 
 function DashboardContent() {
   const { user, isLoading: authLoading } = useAuth()
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [recentRequests, setRecentRequests] = useState<RequestType[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
+  // Determine user roles
   const userRoles = user?.roles?.map((r: string) => r.toUpperCase()) || []
-  const isCustomer = userRoles.includes(ROLES.CUSTOMER)
-  const isAgent = userRoles.includes(ROLES.AGENT)
+  const isCustomer = userRoles.includes(ROLES.CUSTOMER) && !userRoles.includes(ROLES.SUPER_ADMIN) && !userRoles.includes(ROLES.DISTRICT_ADMIN) && !userRoles.includes(ROLES.AGENT)
+  const isAgent = userRoles.includes(ROLES.AGENT) && !userRoles.includes(ROLES.SUPER_ADMIN) && !userRoles.includes(ROLES.DISTRICT_ADMIN)
   const isAdmin = userRoles.includes(ROLES.SUPER_ADMIN) || userRoles.includes(ROLES.DISTRICT_ADMIN)
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
+  // Fetch dashboard stats
+  const statsQuery = useUserDashboardStats({ enabled: !!user && !authLoading })
 
-      // Fetch stats
-      const statsRes = await apiClient.get(BACKEND_API_CONFIG.ENDPOINTS.USER.DASHBOARD_STATS)
-      if (statsRes.data?.success) {
-        setStats(statsRes.data.data)
-      }
+  // Fetch recent requests based on role
+  const adminRequestsQuery = useRequests(
+    { limit: 5, sortBy: 'createdAt', sortOrder: 'desc' },
+    { enabled: isAdmin && !!user && !authLoading }
+  )
+  const agentRequestsQuery = useAssignedRequests({ enabled: isAgent && !!user && !authLoading })
+  const customerRequestsQuery = useUserRequests({ enabled: isCustomer && !!user && !authLoading })
 
-      // Fetch recent requests based on role
-      let requestsEndpoint = BACKEND_API_CONFIG.ENDPOINTS.USER.LIST_REQUESTS
-      if (isAdmin) {
-        requestsEndpoint = BACKEND_API_CONFIG.ENDPOINTS.ADMIN.REQUESTS_LIST
-      } else if (isAgent) {
-        requestsEndpoint = BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ASSIGNED_REQUESTS
-      }
+  // Get the active requests query based on role
+  const activeRequestsQuery = isAdmin ? adminRequestsQuery : isAgent ? agentRequestsQuery : customerRequestsQuery
 
-      const requestsRes = await apiClient.get(`${requestsEndpoint}?limit=5&sortBy=createdAt&sortOrder=desc`)
-      if (requestsRes.data?.success) {
-        setRecentRequests(requestsRes.data.data?.requests || requestsRes.data.data || [])
-      }
-    } catch (err) {
-      console.error("Failed to fetch dashboard data:", err)
-      setError("Failed to load dashboard data")
-    } finally {
-      setLoading(false)
+  // Normalize stats data - cast to our local type that accepts all possible fields
+  const stats = statsQuery.data as DashboardStatsData | undefined
+
+  // Get recent requests array
+  const recentRequests = useMemo(() => {
+    if (isAdmin && adminRequestsQuery.data) {
+      return adminRequestsQuery.data.requests?.slice(0, 5) ?? []
     }
+    if (isAgent && agentRequestsQuery.data) {
+      return agentRequestsQuery.data.slice(0, 5)
+    }
+    if (customerRequestsQuery.data) {
+      return customerRequestsQuery.data.slice(0, 5)
+    }
+    return []
+  }, [isAdmin, isAgent, adminRequestsQuery.data, agentRequestsQuery.data, customerRequestsQuery.data])
+
+  // Compute loading state
+  const isLoading = statsQuery.isLoading || activeRequestsQuery.isLoading
+  const isFetching = statsQuery.isFetching || activeRequestsQuery.isFetching
+  const error = statsQuery.error?.message || activeRequestsQuery.error?.message
+
+  // Handle refresh
+  const handleRefresh = () => {
+    statsQuery.refetch()
+    activeRequestsQuery.refetch()
   }
 
-  useEffect(() => {
-    if (user && !authLoading) {
-      fetchDashboardData()
-    }
-  }, [user, authLoading])
-
-  if (authLoading || loading) {
+  if (authLoading || isLoading) {
     return <DashboardSkeleton />
   }
 
@@ -134,7 +138,7 @@ function DashboardContent() {
         },
         { 
           title: "Pending Review", 
-          value: stats?.pendingCount ?? 0, 
+          value: stats?.pendingRequests ?? stats?.pendingCount ?? 0, 
           icon: <Clock className="h-5 w-5" />, 
           iconColor: "text-yellow-500" 
         },
@@ -146,7 +150,7 @@ function DashboardContent() {
         },
         { 
           title: "Total Disbursed", 
-          value: `₹${((stats?.totalDisbursed ?? 0) / 100000).toFixed(1)}L`, 
+          value: `₹${((stats?.totalDisbursed ?? stats?.totalBorrowed ?? 0) / 100000).toFixed(1)}L`, 
           icon: <TrendingUp className="h-5 w-5" />, 
           iconColor: "text-purple-500" 
         },
@@ -196,13 +200,13 @@ function DashboardContent() {
       },
       { 
         title: "Pending", 
-        value: stats?.pendingCount ?? 0, 
+        value: stats?.pendingRequests ?? stats?.pendingCount ?? 0, 
         icon: <Clock className="h-5 w-5" />, 
         iconColor: "text-yellow-500" 
       },
       { 
         title: "Total Borrowed", 
-        value: `₹${((stats?.totalDisbursed ?? 0) / 1000).toFixed(0)}K`, 
+        value: `₹${((stats?.totalBorrowed ?? stats?.totalDisbursed ?? 0) / 1000).toFixed(0)}K`, 
         icon: <TrendingUp className="h-5 w-5" />, 
         iconColor: "text-emerald-500" 
       },
@@ -228,8 +232,13 @@ function DashboardContent() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={fetchDashboardData}>
-                <RefreshCw className="h-4 w-4 mr-2" />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRefresh}
+                disabled={isFetching}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
               {isCustomer && (
@@ -247,6 +256,9 @@ function DashboardContent() {
           {error && (
             <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
               {error}
+              <Button variant="link" className="ml-2 p-0 h-auto" onClick={handleRefresh}>
+                Try again
+              </Button>
             </div>
           )}
 
@@ -259,7 +271,7 @@ function DashboardContent() {
                 value={stat.value}
                 icon={stat.icon}
                 iconColor={stat.iconColor}
-                loading={loading}
+                loading={statsQuery.isLoading}
               />
             ))}
           </div>
@@ -282,7 +294,7 @@ function DashboardContent() {
               <CardContent>
                 {recentRequests.length > 0 ? (
                   <RequestCardList 
-                    requests={recentRequests.slice(0, 5)} 
+                    requests={recentRequests} 
                     variant="compact"
                     baseUrl="/requests"
                   />
@@ -336,6 +348,12 @@ function DashboardContent() {
                       <Link href="/users">
                         <Users className="h-4 w-4 mr-2" />
                         Manage Users
+                      </Link>
+                    </Button>
+                    <Button variant="outline" className="w-full justify-start" asChild>
+                      <Link href="/geography">
+                        <ClipboardList className="h-4 w-4 mr-2" />
+                        Manage Geography
                       </Link>
                     </Button>
                     <Button variant="outline" className="w-full justify-start" asChild>

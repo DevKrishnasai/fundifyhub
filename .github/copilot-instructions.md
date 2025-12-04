@@ -636,6 +636,45 @@ Before marking any task complete, verify:
 
 ---
 
+---
+
+## 🔧 Engineering Standards & Best Practices
+
+These are additional, mandatory engineering standards to ensure code quality, scalability, maintainability, and auditability across all services (frontend, main-backend, job-worker, and packages).
+
+- **Centralized Types & Constants:** All enums, types, Zod schemas, and constants MUST live in `@fundifyhub/types`. No duplication or local hardcoded constants.
+- **No Hardcoding:** Configuration values, feature flags, and secrets MUST come from environment variables validated by `@fundifyhub/utils/env-validation.ts`. Do not embed URLs, credentials, or magic numbers in code.
+- **Logging:** Use a single logger factory in `@fundifyhub/logger` that exports a service-scoped logger (e.g., `getLogger('main-backend')`). Each application must:
+  - Initialize its logger once (in its `src/server.ts` or app entrypoint) and export it for reuse.
+  - Create child loggers per module/request with contextual fields (`requestId`, `userId`, `service`).
+  - Write structured JSON logs to stdout and also to a rotating file per application (e.g., `logs/main-backend.log`). Use `pino` + `pino.destination` or an equivalent structured logger.
+- **Audit Trail:** All state-changing API endpoints MUST emit audit events persisted to an `audit_logs` table (or dedicated audit store). Audit entries include: `actorId`, `actorRole`, `action`, `resourceType`, `resourceId`, `before`, `after`, `ip`, `userAgent`, `timestamp`.
+- **Comments & Docs:** Use JSDoc for public functions and modules. Remove legacy or inaccurate inline comments; replace them with concise JSDoc above the function or a short comment block at the top of the file describing intent.
+- **Code Structure & Restructuring:** Prefer small files and single-responsibility modules. When adding new features, prefer adding to shared packages (`@fundifyhub/utils`, `@fundifyhub/types`, `@fundifyhub/logger`) first.
+- **Remove Dead Code:** We do not maintain backward compatibility for this migration. Remove old, unused files and exports. If uncertain, create a short migration/cleanup PR with a changelog entry.
+- **Performance & Optimizations:**
+  - Use cursor-based pagination for large lists.
+  - Use `select` and `include` in Prisma to fetch only necessary fields.
+  - Add DB indexes for frequently filtered columns (districtId, stateId, requestStatus, createdAt).
+  - Cache read-heavy endpoints with Redis where appropriate and add proper invalidation.
+  - Batch work into background jobs (BullMQ) — never perform long-running IO in request handlers.
+- **WebSocket Scaling:** Use `socket.io-redis` adapter (or `@socket.io/redis-adapter`) and `ioredis` for pub/sub across nodes.
+- **Frontend Data Fetching:** Use `@tanstack/react-query` (React Query) for caching, background refetch, pagination, and optimistic updates.
+- **Dependencies:** Prefer battle-tested libraries: `pino` (logging), `ioredis`, `bullmq`, `@socket.io/redis-adapter`, `@tanstack/react-query`, `clsx`, `date-fns` or `dayjs`.
+- **Security:** Sanitize user input, rate-limit endpoints, validate auth tokens, rotate secrets, and avoid logging PII. Follow OWASP basics for API endpoints.
+- **Testing & CI:** All changes must include unit tests and integration tests where applicable. Add job entries to CI to run `pnpm build`, `pnpm lint`, `pnpm test`.
+- **Observability:** Add metrics (Prometheus-friendly) for key operations: request latency, job queue lengths, failed jobs, socket connections, and auction/bid activity.
+
+**Recommended Install Commands** (run in the monorepo root):
+
+```powershell
+pnpm -w add pino pino-pretty pino-multi-stream ioredis bullmq @socket.io/redis-adapter @tanstack/react-query
+```
+
+Add these only when implementing the related feature and update `package.json` in the specific package/app.
+
+---
+
 ## 📋 Development Workflow
 
 1. **Before coding:**
@@ -684,7 +723,7 @@ Before marking any task complete, verify:
 | Socket Types | `packages/types/src/socket-types.ts` |
 | API Endpoints | `apps/frontend/src/lib/urls.ts` |
 | Server Setup | `apps/main-backend/src/server.ts` |
-| Task Tracker | `ARCHITECTURE_IMPROVEMENT_PLAN.md` |
+| **TODO Tracker** | `TODO_GEOGRAPHY_HIERARCHY.md` |
 
 ---
 

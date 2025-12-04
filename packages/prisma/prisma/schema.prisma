@@ -13,19 +13,69 @@ datasource db {
 // ENUMS - Centralized status definitions
 // ============================================
 
+// User roles - Single role per user (not array)
+enum UserRole {
+  CUSTOMER
+  AGENT
+  DISTRICT_ADMIN
+  STATE_ADMIN
+  SUPER_ADMIN
+}
+
+// Asset condition for depreciation tracking
+enum AssetCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+}
+
+// Auction listing status
+enum AuctionStatus {
+  DRAFT // Listing being prepared
+  SCHEDULED // Auction scheduled for future
+  ACTIVE // Bidding is open
+  EXTENDED // Bidding extended due to last-minute activity
+  ENDED // Bidding closed, winner determined
+  SOLD // Payment received, asset transferred
+  UNSOLD // No valid bids received
+  CANCELLED // Auction cancelled by admin
+}
+
+// Auction bid status
+enum BidStatus {
+  ACTIVE // Valid, active bid
+  OUTBID // Superseded by higher bid
+  WINNING // Currently the highest bid
+  WON // Won the auction
+  WITHDRAWN // Bidder withdrew the bid
+  REJECTED // Bid rejected by admin (suspicious activity)
+  CANCELLED // Bid cancelled when auction is cancelled
+}
+
+// Asset movement type
+enum MovementType {
+  INTAKE // Asset received from customer
+  TRANSFER // Moved between warehouses
+  AUCTION // Moved for auction
+  RELEASE // Returned to customer
+  DISPOSAL // Asset disposed/scrapped
+}
+
 // Request lifecycle states (28 total)
 enum RequestStatus {
   // PHASE 1: SUBMISSION & REVIEW
   PENDING
   UNDER_REVIEW
   MORE_INFO_REQUIRED
-  
+
   // PHASE 2: OFFER & NEGOTIATION
   OFFER_SENT
   OFFER_ACCEPTED
   OFFER_DECLINED
   OFFER_EXPIRED
-  
+
   // PHASE 3: INSPECTION
   INSPECTION_SCHEDULED
   INSPECTION_RESCHEDULE_REQUESTED
@@ -34,23 +84,23 @@ enum RequestStatus {
   CUSTOMER_NOT_AVAILABLE
   ASSET_MISMATCH
   AGENT_NOT_AVAILABLE
-  
+
   // PHASE 4: APPROVAL & DOCUMENTATION
   APPROVED
   PENDING_SIGNATURE
   PENDING_BANK_DETAILS
-  
+
   // PHASE 5: LOAN PROCESSING & DISBURSEMENT
   BANK_DETAILS_SUBMITTED
   TRANSFER_FAILED
   AMOUNT_DISBURSED
-  
+
   // PHASE 6: ACTIVE LOAN
   ACTIVE
   PAYMENT_OVERDUE
   DEFAULTED
   COMPLETED
-  
+
   // TERMINAL STATES
   REJECTED
   CANCELLED
@@ -98,81 +148,278 @@ enum DocumentStatus {
 
 // Asset lifecycle states
 enum AssetStatus {
-  PLEDGED        // Asset is currently pledged against a loan
-  RELEASED       // Asset returned to customer after loan completion
-  IN_AUCTION     // Asset is in auction process (future)
-  SOLD           // Asset was sold in auction (future)
+  PLEDGED // Asset is currently pledged against a loan
+  RELEASED // Asset returned to customer after loan completion
+  IN_AUCTION // Asset is in auction process
+  FORFEITED // Asset forfeited due to loan default
+  AUCTIONED // Asset sold through auction
+  SOLD // Asset was sold in auction
 }
 
 // Admin offer status
 enum OfferStatus {
-  PENDING        // Offer sent, awaiting customer response
-  ACCEPTED       // Customer accepted the offer
-  DECLINED       // Customer declined the offer
-  EXPIRED        // Offer expired without response
-  REVISED        // Offer was superseded by a new offer
-  CANCELLED      // Admin cancelled the offer
+  PENDING // Offer sent, awaiting customer response
+  ACCEPTED // Customer accepted the offer
+  DECLINED // Customer declined the offer
+  EXPIRED // Offer expired without response
+  REVISED // Offer was superseded by a new offer
+  CANCELLED // Admin cancelled the offer
+}
+
+// ============================================
+// GEOGRAPHY HIERARCHY MODELS
+// ============================================
+
+// Country model - Top level geography
+model Country {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  code     String  @unique // ISO 3166-1 alpha-2 (e.g., "IN" for India)
+  isActive Boolean @default(true)
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  states State[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("countries")
+}
+
+// State model - Second level geography
+model State {
+  id        String  @id @default(cuid())
+  name      String
+  code      String // State code (e.g., "TN" for Tamil Nadu)
+  countryId String
+  isActive  Boolean @default(true)
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  country         Country               @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  districts       District[]
+  userAssignments UserStateAssignment[]
+
+  @@unique([countryId, code])
+  @@unique([countryId, name])
+  @@index([countryId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("states")
+}
+
+// District model - Third level geography (operational unit)
+model District {
+  id       String  @id @default(cuid())
+  name     String
+  code     String // District code
+  stateId  String
+  isActive Boolean @default(true)
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  state           State                    @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  warehouses      Warehouse[]
+  userAssignments UserDistrictAssignment[]
+  homeUsers       User[]                   @relation("HomeDistrict") // Users whose home district is this
+  requests        Request[]                @relation("RequestDistrict")
+
+  @@unique([stateId, code])
+  @@unique([stateId, name])
+  @@index([stateId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("districts")
+}
+
+// Warehouse model - Storage locations within districts
+model Warehouse {
+  id         String  @id @default(cuid())
+  name       String
+  code       String  @unique // Unique warehouse code
+  districtId String
+  address    String?
+
+  // Geolocation for maps/logistics
+  latitude  Float?
+  longitude Float?
+
+  // Contact info
+  contactPerson String?
+  contactPhone  String?
+
+  // Capacity tracking
+  capacity     Int? // Max items that can be stored
+  currentCount Int  @default(0) // Current items stored
+
+  isActive Boolean @default(true)
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  district District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  assets   Asset[]  @relation("AssetCurrentWarehouse")
+
+  // Asset movements (from and to this warehouse)
+  movementsFrom AssetMovement[] @relation("MovementFromWarehouse")
+  movementsTo   AssetMovement[] @relation("MovementToWarehouse")
+
+  @@index([districtId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([latitude, longitude])
+  @@map("warehouses")
+}
+
+// ============================================
+// USER ASSIGNMENT MODELS (Many-to-Many for geographic scope)
+// ============================================
+
+// User-State assignments (for STATE_ADMIN role)
+model UserStateAssignment {
+  id        String  @id @default(cuid())
+  userId    String
+  stateId   String
+  isPrimary Boolean @default(false) // Primary state for this user
+
+  assignedAt DateTime @default(now())
+  assignedBy String? // Admin who made the assignment
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state State @relation(fields: [stateId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stateId])
+  @@index([userId])
+  @@index([stateId])
+  @@index([deletedAt])
+  @@map("user_state_assignments")
+}
+
+// User-District assignments (for DISTRICT_ADMIN and AGENT roles)
+model UserDistrictAssignment {
+  id         String  @id @default(cuid())
+  userId     String
+  districtId String
+  isPrimary  Boolean @default(false) // Primary district for this user
+
+  assignedAt DateTime @default(now())
+  assignedBy String? // Admin who made the assignment
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  district District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, districtId])
+  @@index([userId])
+  @@index([districtId])
+  @@index([deletedAt])
+  @@map("user_district_assignments")
 }
 
 // ============================================
 // MODELS
 // ============================================
 
-// User model shd add username and Legal names as 2 diff columns instead of id and name to better identify.
-// Phone is mandatory to contact with the user.
+// User model - Multiple roles per user with geographic assignments
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  firstName       String
-  lastName        String
-  phoneNumber     String  @unique
-  password        String  // Hashed password for email/password login
-  roles           String[] @default(["CUSTOMER"]) // Array of roles: CUSTOMER, AGENT, ADMIN
-  // Support multiple districts per user. This replaces the legacy single-string
-  // district column and stores an array of strings. Default to empty array.
-  district        String[] @default([])
-  isActive        Boolean  @default(true)
-  emailVerified   Boolean  @default(false)
-  phoneVerified   Boolean  @default(false)
-  // Address stored as a simple string. Keep city/state/pincode fields for
-  // compatibility if you want to store separate pieces, but primary address
-  // should be a human-friendly string (e.g., "123 ABC St, Area, City, State - 560001").
-  address         String?
-  city            String?
-  state           String?
-  pincode         String?
-  
+  id          String @id @default(cuid())
+  email       String @unique
+  firstName   String
+  lastName    String
+  phoneNumber String @unique
+  password    String // Hashed password for email/password login
+
+  // Multiple roles (users can have multiple roles, e.g., CUSTOMER + AGENT)
+  roles UserRole[] @default([CUSTOMER])
+
+  // Home district for customers (where they submit requests)
+  homeDistrictId String?
+
+  isActive      Boolean @default(true)
+  emailVerified Boolean @default(false)
+  phoneVerified Boolean @default(false)
+
+  // Address stored as a simple string
+  address String?
+  city    String?
+  state   String?
+  pincode String?
+
   // Auth related fields
-  lastLoginAt     DateTime?
-  resetToken      String?  // For password reset
+  lastLoginAt      DateTime?
+  resetToken       String? // For password reset
   resetTokenExpiry DateTime?
-  refreshToken    String?  // For JWT refresh
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  refreshToken     String? // For JWT refresh
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  requests        Request[] @relation("CustomerRequests")
-  assignedRequests Request[] @relation("AgentAssignments")
-  adminAssignedRequests Request[] @relation("AdminAssignments")
-  comments        Comment[]
-  inspections     Inspection[]
-  otpVerifications OTPVerification[]
-  inAppNotifications InAppNotification[]
+  homeDistrict        District?                @relation("HomeDistrict", fields: [homeDistrictId], references: [id], onDelete: SetNull)
+  stateAssignments    UserStateAssignment[]
+  districtAssignments UserDistrictAssignment[]
+
+  requests                Request[]                @relation("CustomerRequests")
+  assignedRequests        Request[]                @relation("AgentAssignments")
+  adminAssignedRequests   Request[]                @relation("AdminAssignments")
+  comments                Comment[]
+  inspections             Inspection[]
+  otpVerifications        OTPVerification[]
+  inAppNotifications      InAppNotification[]
   notificationPreferences NotificationPreference[]
-  auditLogs       AuditLog[]
-  sessions        Session[]
-  adminOffers     AdminOffer[] @relation("AdminOffers") // Offers made by this admin
+  auditLogs               AuditLog[]
+  sessions                Session[]
+  adminOffers             AdminOffer[]             @relation("AdminOffers") // Offers made by this admin
+  bankDetails             BankDetails[] // Users can have multiple bank accounts
 
-  // NOTE: we removed the separate UserDistrict join table and use the
-  // `district` string array directly on User to simplify queries and indexes.
-
-  bankDetails     BankDetails[]  // Users can have multiple bank accounts
+  // Auction relations
+  auctionBids     AuctionBid[]
+  wonAuctions     AuctionListing[] @relation("AuctionWinner")
+  createdAuctions AuctionListing[] @relation("AuctionCreator")
 
   @@index([email])
   @@index([phoneNumber])
   @@index([roles])
-  @@index([district])
+  @@index([homeDistrictId])
+  @@index([isActive])
+  @@index([deletedAt])
   @@map("users")
 }
 
@@ -180,36 +427,41 @@ model User {
 // BANK DETAILS MODEL - User bank accounts for disbursement
 // ============================================
 model BankDetails {
-  id              String    @id @default(cuid())
-  userId          String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Bank account information
-  accountNumber   String    // Bank account number
-  ifscCode        String    // Bank IFSC code
-  accountName     String    // Account holder name (as per bank records)
-  bankName        String?   // Bank name (optional, can be derived from IFSC)
-  branchName      String?   // Branch name (optional)
-  
+  accountNumber String // Bank account number
+  ifscCode      String // Bank IFSC code
+  accountName   String // Account holder name (as per bank records)
+  bankName      String? // Bank name (optional, can be derived from IFSC)
+  branchName    String? // Branch name (optional)
+
   // UPI (alternative payment method)
-  upiId           String?   // UPI ID (e.g., name@bank)
-  
+  upiId String? // UPI ID (e.g., name@bank)
+
   // Verification status
-  isVerified      Boolean   @default(false)
-  verifiedAt      DateTime?
-  
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
+
   // Primary account flag (only one account can be primary per user)
-  isPrimary       Boolean   @default(false)
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
+  isPrimary Boolean @default(false)
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  requests        Request[] @relation("DisbursementAccount") // Requests using this account for disbursement
-  
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests Request[] @relation("DisbursementAccount") // Requests using this account for disbursement
+
   @@unique([userId, accountNumber]) // Prevent duplicate accounts per user
   @@index([userId])
   @@index([isPrimary])
+  @@index([deletedAt])
   @@map("bank_details")
 }
 
@@ -217,49 +469,54 @@ model BankDetails {
 // ADMIN OFFER MODEL - Tracks offer history and revisions
 // ============================================
 model AdminOffer {
-  id              String      @id @default(cuid())
-  requestId       String
-  offeredById     String      // Admin who made the offer
-  
+  id          String @id @default(cuid())
+  requestId   String
+  offeredById String // Admin who made the offer
+
   // Offer terms
-  offeredAmount   Float       // Loan amount offered
-  tenureMonths    Int         // Repayment tenure in months
-  interestRate    Float       // Annual interest rate percentage
-  processingFee   Float       @default(0) // Processing fee amount
-  
+  offeredAmount Float // Loan amount offered
+  tenureMonths  Int // Repayment tenure in months
+  interestRate  Float // Annual interest rate percentage
+  processingFee Float @default(0) // Processing fee amount
+
   // EMI calculation snapshot
-  emiAmount       Float?      // Monthly EMI amount
-  totalInterest   Float?      // Total interest over tenure
-  totalAmount     Float?      // Total repayable amount
-  emiSchedule     Json?       // Detailed EMI schedule snapshot
-  
+  emiAmount     Float? // Monthly EMI amount
+  totalInterest Float? // Total interest over tenure
+  totalAmount   Float? // Total repayable amount
+  emiSchedule   Json? // Detailed EMI schedule snapshot
+
   // Penalty settings
-  penaltyPercentage Float     @default(4)     // Penalty for late payment
-  lateFeePercentage Float     @default(0.01)  // Late fee for overdue
-  
+  penaltyPercentage Float @default(4) // Penalty for late payment
+  lateFeePercentage Float @default(0.01) // Late fee for overdue
+
   // Status and dates
-  status          OfferStatus @default(PENDING)
-  expiresAt       DateTime?   // When the offer expires
-  respondedAt     DateTime?   // When customer responded
-  
+  status      OfferStatus @default(PENDING)
+  expiresAt   DateTime? // When the offer expires
+  respondedAt DateTime? // When customer responded
+
   // Revision tracking
-  revision        Int         @default(1)     // Offer revision number
-  previousOfferId String?     // Reference to previous offer (for revision chain)
-  notes           String?     // Admin notes about the offer
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
+  revision        Int     @default(1) // Offer revision number
+  previousOfferId String? // Reference to previous offer (for revision chain)
+  notes           String? // Admin notes about the offer
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  request         Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  offeredBy       User        @relation("AdminOffers", fields: [offeredById], references: [id], onDelete: Restrict)
-  previousOffer   AdminOffer? @relation("OfferRevisions", fields: [previousOfferId], references: [id], onDelete: SetNull)
-  revisions       AdminOffer[] @relation("OfferRevisions")
-  
+  request       Request      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  offeredBy     User         @relation("AdminOffers", fields: [offeredById], references: [id], onDelete: Restrict)
+  previousOffer AdminOffer?  @relation("OfferRevisions", fields: [previousOfferId], references: [id], onDelete: SetNull)
+  revisions     AdminOffer[] @relation("OfferRevisions")
+
   @@index([requestId])
   @@index([offeredById])
   @@index([status])
   @@index([requestId, status])
+  @@index([deletedAt])
   @@map("admin_offers")
 }
 
@@ -267,38 +524,38 @@ model AdminOffer {
 // SESSION MODEL - Tracks user login sessions for security
 // ============================================
 model Session {
-  id              String    @id @default(cuid())
-  userId          String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Token for session identification (hashed JWT ID or session token)
-  tokenHash       String    @unique
-  
+  tokenHash String @unique
+
   // Device information for "Manage Sessions" feature
-  deviceName      String?   // e.g., "Chrome on Windows", "Safari on iPhone"
-  deviceType      String?   // "desktop", "mobile", "tablet"
-  browser         String?   // e.g., "Chrome 120", "Safari 17"
-  os              String?   // e.g., "Windows 11", "iOS 17"
-  
+  deviceName String? // e.g., "Chrome on Windows", "Safari on iPhone"
+  deviceType String? // "desktop", "mobile", "tablet"
+  browser    String? // e.g., "Chrome 120", "Safari 17"
+  os         String? // e.g., "Windows 11", "iOS 17"
+
   // Location information (from IP geolocation)
-  ipAddress       String?
-  city            String?
-  country         String?
-  
+  ipAddress String?
+  city      String?
+  country   String?
+
   // Session status
-  isActive        Boolean   @default(true)
-  lastActivityAt  DateTime  @default(now())
-  expiresAt       DateTime
-  
+  isActive       Boolean  @default(true)
+  lastActivityAt DateTime @default(now())
+  expiresAt      DateTime
+
   // Revocation tracking
-  revokedAt       DateTime?
-  revokedReason   String?   // "user_logout", "admin_revoke", "password_change", "security_concern"
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
+  revokedAt     DateTime?
+  revokedReason String? // "user_logout", "admin_revoke", "password_change", "security_concern"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([tokenHash])
   @@index([isActive])
@@ -308,166 +565,350 @@ model Session {
 }
 
 // ============================================
-// ASSET MODEL - Collateral for loans
+// ASSET MODEL - Collateral for loans with depreciation tracking
 // ============================================
 model Asset {
-  id              String      @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Asset identification
-  assetType       String      // "GOLD", "SILVER", "ELECTRONICS", "VEHICLE", etc.
-  brand           String      // Brand name
-  model           String      // Model name/number
-  condition       String      // "EXCELLENT", "GOOD", "FAIR", "POOR"
-  purchaseYear    Int         // Year of purchase
-  description     String      @default("") // Additional description
-  
+  assetType    String // "GOLD", "SILVER", "ELECTRONICS", "VEHICLE", etc.
+  brand        String // Brand name
+  model        String // Model name/number
+  condition    AssetCondition @default(GOOD)
+  purchaseYear Int // Year of purchase
+  description  String         @default("") // Additional description
+
   // Valuation
-  estimatedValue  Float?      // Customer's estimated value
-  inspectedValue  Float?      // Value determined during inspection
-  
+  estimatedValue Float? // Customer's estimated value
+  inspectedValue Float? // Value determined during inspection
+
+  // Depreciation tracking
+  depreciationRate   Float? // Annual depreciation rate (e.g., 0.15 for 15%)
+  lastValuationDate  DateTime? // Last professional valuation date
+  currentMarketValue Float? // Current estimated market value (auto-calculated or manual)
+
   // Status
-  status          AssetStatus @default(PLEDGED)
-  
+  status AssetStatus @default(PLEDGED)
+
+  // Current storage location
+  warehouseId String?
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
   // Timestamps
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  request         Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId       String      @unique // One asset per request (for now)
-  
+  request   Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId String     @unique // One asset per request (for now)
+  warehouse Warehouse? @relation("AssetCurrentWarehouse", fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  // Movement history
+  movements AssetMovement[]
+
+  // Auction listings
+  auctionListings AuctionListing[]
+
   @@index([assetType])
   @@index([status])
   @@index([requestId])
+  @@index([warehouseId])
+  @@index([condition])
+  @@index([deletedAt])
   @@map("assets")
 }
 
-// Main Request model (simplified)
+// ============================================
+// ASSET MOVEMENT MODEL - Chain of custody tracking
+// ============================================
+model AssetMovement {
+  id      String @id @default(cuid())
+  assetId String
+
+  // Movement details
+  movementType    MovementType
+  fromWarehouseId String? // Null for INTAKE
+  toWarehouseId   String? // Null for RELEASE/DISPOSAL
+
+  // Tracking
+  movementDate DateTime @default(now())
+  movedBy      String // User ID who performed the movement
+
+  // Documentation
+  notes       String?
+  attachments Json? // Array of document references
+
+  // Verification
+  verifiedBy String? // User ID who verified receipt
+  verifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  asset         Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  fromWarehouse Warehouse? @relation("MovementFromWarehouse", fields: [fromWarehouseId], references: [id], onDelete: SetNull)
+  toWarehouse   Warehouse? @relation("MovementToWarehouse", fields: [toWarehouseId], references: [id], onDelete: SetNull)
+
+  @@index([assetId])
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@index([movementType])
+  @@index([movementDate])
+  @@map("asset_movements")
+}
+
+// ============================================
+// AUCTION LISTING MODEL - For defaulted loan assets
+// ============================================
+model AuctionListing {
+  id            String @id @default(cuid())
+  listingNumber String @unique // Human-readable auction number
+  assetId       String
+
+  // Auction timing
+  startTime       DateTime
+  endTime         DateTime
+  extendedEndTime DateTime? // If extended due to last-minute bidding
+
+  // Pricing
+  reservePrice Float // Minimum acceptable price
+  startingBid  Float // Opening bid amount
+  bidIncrement Float // Minimum increment for new bids
+  buyNowPrice  Float? // Optional instant purchase price
+
+  // Current state
+  status         AuctionStatus @default(DRAFT)
+  currentHighBid Float? // Current highest bid amount
+  totalBids      Int           @default(0)
+
+  // Winner (populated when auction ends)
+  winnerId     String?
+  winningBidId String?
+  finalPrice   Float?
+
+  // Description and media
+  title       String
+  description String @db.Text
+  mediaUrls   Json? // Array of image/video URLs
+
+  // Terms
+  termsAndConditions String?   @db.Text
+  pickupLocation     String?
+  pickupDeadline     DateTime?
+
+  // Admin tracking
+  createdById String
+  approvedAt  DateTime?
+  approvedBy  String?
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  asset     Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  winner    User?        @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  createdBy User         @relation("AuctionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  bids      AuctionBid[]
+
+  @@index([assetId])
+  @@index([status])
+  @@index([startTime])
+  @@index([endTime])
+  @@index([winnerId])
+  @@index([createdById])
+  @@index([listingNumber])
+  @@index([deletedAt])
+  @@map("auction_listings")
+}
+
+// ============================================
+// AUCTION BID MODEL - Individual bids on auctions
+// ============================================
+model AuctionBid {
+  id        String @id @default(cuid())
+  auctionId String
+  bidderId  String
+
+  // Bid details
+  amount Float
+  status BidStatus @default(ACTIVE)
+
+  // Auto-bid settings (optional)
+  maxAutoBid Float? // Maximum amount for auto-bidding
+  isAutoBid  Boolean @default(false)
+
+  // Tracking
+  placedAt DateTime  @default(now())
+  outbidAt DateTime? // When this bid was outbid
+
+  // Additional info
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  auction AuctionListing @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder  User           @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId])
+  @@index([bidderId])
+  @@index([status])
+  @@index([amount])
+  @@index([placedAt])
+  @@index([auctionId, amount])
+  @@map("auction_bids")
+}
+
+// Main Request model with workflow tracking
 model Request {
-  id              String        @id @default(cuid())
-  requestNumber   String        @unique
+  id              String @id @default(cuid())
+  requestNumber   String @unique
   customerId      String
   requestedAmount Float
-  district        String
-  currentStatus   RequestStatus @default(PENDING)
-  
+
+  // Geography - FK to District (replaces string district)
+  districtId String
+
+  // Workflow state tracking
+  currentStatus   RequestStatus  @default(PENDING)
+  previousStatus  RequestStatus? // For rollback/audit - tracks last status before current
+  statusChangedAt DateTime? // When status was last changed
+  statusChangedBy String? // User ID who changed the status
+
   // Asset relation (replaces inline fields)
-  asset           Asset?
-  
+  asset Asset?
+
   // Current active offer reference (for quick access to accepted/pending offer)
-  activeOfferId   String?       // Reference to the current active AdminOffer
-  
+  activeOfferId String? // Reference to the current active AdminOffer
+
   // Legacy Admin Offer Details - kept for backward compatibility during migration
   // These will be removed once all offers are migrated to AdminOffer model
-  adminOfferedAmount Float?     // Amount offered by admin
-  adminTenureMonths  Int?       // Tenure offered by admin
-  adminInterestRate  Float?     // Interest rate offered by admin
-  adminEmiSchedule   Json?      // JSON snapshot of EMI schedule/admin offer (immutable snapshot)
-  adminProcessingFee Float @default(0)
-  offerMadeDate      DateTime?  // When admin made the offer
-  offerResponseDate  DateTime?  // When customer responded
-  penaltyPercentage   Float     @default(4)     // Penalty percentage for late payment (default 4%)
-  lateFeePercentage    Float     @default(0.01)  // Late fee percentage for overdue payments (default 0.01%)
-  
+  adminOfferedAmount Float? // Amount offered by admin
+  adminTenureMonths  Int? // Tenure offered by admin
+  adminInterestRate  Float? // Interest rate offered by admin
+  adminEmiSchedule   Json? // JSON snapshot of EMI schedule/admin offer (immutable snapshot)
+  adminProcessingFee Float     @default(0)
+  offerMadeDate      DateTime? // When admin made the offer
+  offerResponseDate  DateTime? // When customer responded
+  penaltyPercentage  Float     @default(4) // Penalty percentage for late payment (default 4%)
+  lateFeePercentage  Float     @default(0.01) // Late fee percentage for overdue payments (default 0.01%)
+
   // Admin requested information (when status is MORE_INFO_REQUIRED)
-  adminRequestedInfo String?    // What additionWal info/documents admin needs
-  
+  adminRequestedInfo String? // What additional info/documents admin needs
+
   // Bank Details (for disbursement) - reference to user's bank account
-  disbursementAccountId String?  // Reference to BankDetails for disbursement
+  disbursementAccountId  String? // Reference to BankDetails for disbursement
   bankDetailsSubmittedAt DateTime? // When bank details were submitted for this request
-  
+
   // Assignment Details
-  assignedAgentId    String?    // Agent assigned for inspection
-  assignedAdminId    String?    // District admin who self-assigned to handle this request
+  assignedAgentId       String? // Agent assigned for inspection
+  assignedAdminId       String? // District admin who self-assigned to handle this request
   inspectionScheduledAt DateTime? // When inspection is scheduled to take place
-  // Generic comments enable/disable flag. Admins can toggle this at any time.
-  // Use a single `commentsEnabled` flag for all comment-related toggles to
-  // avoid duplication. Previously there was a separate
-  // `commentsEnabledAfterRejection` field; that behavior should be controlled
-  // by business logic using this single flag instead of a separate column.
+
+  // Generic comments enable/disable flag
   commentsEnabled Boolean @default(true)
-  
-  submittedDate   DateTime      @default(now())
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
 
-  // Relations. In case, Suppose the assigned agent has left the job the defualt roll back should be to the admin itself.
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
 
-  customer        User          @relation("CustomerRequests", fields: [customerId], references: [id], onDelete: Cascade)
-  assignedAgent   User?         @relation("AgentAssignments", fields: [assignedAgentId], references: [id], onDelete: SetNull)
-  assignedAdmin   User?         @relation("AdminAssignments", fields: [assignedAdminId], references: [id], onDelete: SetNull)
-  disbursementAccount BankDetails? @relation("DisbursementAccount", fields: [disbursementAccountId], references: [id], onDelete: SetNull)
-  offers          AdminOffer[]  // All offers made for this request (history)
-  loan            Loan?
-  comments        Comment[]
-  inspections     Inspection[]
-  emiSchedules    EMISchedule[]
-  payments        Payment[]
-  paymentOrders   PaymentOrder[]
-  documents       Document[]     
-  inAppNotifications InAppNotification[]
+  submittedDate DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  customer            User                @relation("CustomerRequests", fields: [customerId], references: [id], onDelete: Cascade)
+  assignedAgent       User?               @relation("AgentAssignments", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  assignedAdmin       User?               @relation("AdminAssignments", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  district            District            @relation("RequestDistrict", fields: [districtId], references: [id], onDelete: Restrict)
+  disbursementAccount BankDetails?        @relation("DisbursementAccount", fields: [disbursementAccountId], references: [id], onDelete: SetNull)
+  offers              AdminOffer[] // All offers made for this request (history)
+  loan                Loan?
+  comments            Comment[]
+  inspections         Inspection[]
+  emiSchedules        EMISchedule[]
+  payments            Payment[]
+  paymentOrders       PaymentOrder[]
+  documents           Document[]
+  inAppNotifications  InAppNotification[]
 
   @@index([customerId])
   @@index([currentStatus])
-  @@index([district])
+  @@index([districtId])
   @@index([assignedAgentId])
   @@index([assignedAdminId])
   @@index([requestNumber])
   @@index([disbursementAccountId])
   @@index([activeOfferId])
-  @@index([district, currentStatus])
+  @@index([districtId, currentStatus])
   @@index([customerId, currentStatus])
   @@index([assignedAgentId, currentStatus])
+  @@index([deletedAt])
+  @@index([previousStatus])
   @@map("requests")
 }
 
 // Enhanced Loan model for EMI-based fixed loans
 model Loan {
-  id              String     @id @default(cuid())
-  loanNumber      String     @unique
-  requestId       String     @unique
-  
-  // Fixed Loan Terms (Set by Admin - Cannot be changed)
-  approvedAmount  Float      // Final approved amount (fixed)
-  interestRate    Float      // Annual interest rate % (fixed)
-  tenureMonths    Int        // Loan tenure in months (fixed)
-  emiAmount       Float      // Monthly EMI amount (fixed, calculated)
-  
-  // Calculated Totals (can be computed from above)
-  totalInterest   Float      // Total interest to be paid
-  totalAmount     Float      // Total amount to be repaid (principal + interest)
-  
-  // Loan Status & Dates
-  status          LoanStatus @default(ACTIVE)
-  approvedDate    DateTime // When loan was approved by agent
-  disbursedDate   DateTime?  // When amount was transferred to customer
-  firstEMIDate    DateTime // When first EMI is due
-  lastEMIDate     DateTime // When last EMI is due
-  
-  // Payment Tracking
-  totalPaidAmount Float      @default(0) // Total amount paid so far
-  remainingAmount Float      // Remaining amount to be paid
-  paidEMIs        Int        @default(0) // Number of EMIs paid
-  remainingEMIs   Int        // Number of EMIs remaining
-  overdueEMIs     Int        @default(0) // Number of overdue EMIs
-  
-  // Transfer Details (When loan is disbursed)
-  transferMethod    String?    // "BANK_TRANSFER", "UPI", "CASH", etc.
-  transferReference String?    // Transaction reference number
-  transferProof     String?    // Transfer receipt/proof document path
-  
-  // Closure Details What's the purpose?
-  closedDate        DateTime?  // When loan was fully paid/closed
-  closureType       String?    // "NORMAL", "FORECLOSURE", "DEFAULT"
-  
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id         String @id @default(cuid())
+  loanNumber String @unique
+  requestId  String @unique
 
-  // Relations Added created By and updated by relations as well.
-  request         Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  emisSchedule    EMISchedule[]
-  payments        Payment[]
-  paymentOrders   PaymentOrder[]
+  // Fixed Loan Terms (Set by Admin - Cannot be changed)
+  approvedAmount Float // Final approved amount (fixed)
+  interestRate   Float // Annual interest rate % (fixed)
+  tenureMonths   Int // Loan tenure in months (fixed)
+  emiAmount      Float // Monthly EMI amount (fixed, calculated)
+
+  // Calculated Totals (can be computed from above)
+  totalInterest Float // Total interest to be paid
+  totalAmount   Float // Total amount to be repaid (principal + interest)
+
+  // Loan Status & Dates
+  status        LoanStatus @default(ACTIVE)
+  approvedDate  DateTime // When loan was approved by agent
+  disbursedDate DateTime? // When amount was transferred to customer
+  firstEMIDate  DateTime // When first EMI is due
+  lastEMIDate   DateTime // When last EMI is due
+
+  // Payment Tracking
+  totalPaidAmount Float @default(0) // Total amount paid so far
+  remainingAmount Float // Remaining amount to be paid
+  paidEMIs        Int   @default(0) // Number of EMIs paid
+  remainingEMIs   Int // Number of EMIs remaining
+  overdueEMIs     Int   @default(0) // Number of overdue EMIs
+
+  // Transfer Details (When loan is disbursed)
+  transferMethod    String? // "BANK_TRANSFER", "UPI", "CASH", etc.
+  transferReference String? // Transaction reference number
+  transferProof     String? // Transfer receipt/proof document path
+
+  // Closure Details
+  closedDate  DateTime? // When loan was fully paid/closed
+  closureType String? // "NORMAL", "FORECLOSURE", "DEFAULT"
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  request            Request             @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  emisSchedule       EMISchedule[]
+  payments           Payment[]
+  paymentOrders      PaymentOrder[]
   inAppNotifications InAppNotification[]
 
   @@index([requestId])
@@ -475,6 +916,7 @@ model Loan {
   @@index([disbursedDate])
   @@index([loanNumber])
   @@index([status, disbursedDate])
+  @@index([deletedAt])
   @@map("loans")
 }
 
@@ -483,23 +925,23 @@ model EMISchedule {
   id              String    @id @default(cuid())
   loanId          String
   requestId       String
-  emiNumber       Int       // EMI number (1, 2, 3, ...)
-  dueDate         DateTime  // When this EMI is due
-  emiAmount       Float     // Fixed EMI amount
-  principalAmount Float     // Principal component of this EMI
-  interestAmount  Float     // Interest component of this EMI
+  emiNumber       Int // EMI number (1, 2, 3, ...)
+  dueDate         DateTime // When this EMI is due
+  emiAmount       Float // Fixed EMI amount
+  principalAmount Float // Principal component of this EMI
+  interestAmount  Float // Interest component of this EMI
   status          EMIStatus @default(PENDING)
   paidDate        DateTime? // When this EMI was paid
-  paidAmount      Float?    // Amount paid (kept for audit trail, always equals emiAmount + lateFee)
+  paidAmount      Float? // Amount paid (kept for audit trail, always equals emiAmount + lateFee)
   lateFee         Float     @default(0) // Penalty charged (4% of overdue amount)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   // Relations
-  loan            Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  request         Request   @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  payments        Payment[]
-  paymentOrders   PaymentOrder[]
+  loan               Loan                @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  request            Request             @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  payments           Payment[]
+  paymentOrders      PaymentOrder[]
   inAppNotifications InAppNotification[]
 
   @@unique([loanId, emiNumber])
@@ -514,25 +956,25 @@ model EMISchedule {
 
 // Payment model - Individual payments made
 model Payment {
-  id               String     @id @default(cuid())
+  id               String   @id @default(cuid())
   loanId           String
   requestId        String
-  emiScheduleId    String?    // Which EMI this payment is for (if EMI payment)
-  amount           Float      // Full amount paid (no partial payments allowed)
-  paymentType      String     @default("EMI") // "EMI", "ADVANCE", "LATE_FEE" (PARTIAL removed)
-  paymentMethod    String     // "UPI", "BANK_TRANSFER", "CASH", "CARD", "RAZORPAY"
-  paymentReference String     // Transaction ID/reference (Razorpay payment ID) - required for audit
-  paidDate         DateTime   @default(now())
-  processedBy      String     // User ID who processed/verified payment - required for audit
-  remarks          String?    // Any remarks about the payment
-  receiptPath      String?    // Payment receipt/proof document path
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  emiScheduleId    String? // Which EMI this payment is for (if EMI payment)
+  amount           Float // Full amount paid (no partial payments allowed)
+  paymentType      String   @default("EMI") // "EMI", "ADVANCE", "LATE_FEE" (PARTIAL removed)
+  paymentMethod    String // "UPI", "BANK_TRANSFER", "CASH", "CARD", "RAZORPAY"
+  paymentReference String // Transaction ID/reference (Razorpay payment ID) - required for audit
+  paidDate         DateTime @default(now())
+  processedBy      String // User ID who processed/verified payment - required for audit
+  remarks          String? // Any remarks about the payment
+  receiptPath      String? // Payment receipt/proof document path
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   // Relations
-  loan             Loan       @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  request          Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  emiSchedule      EMISchedule? @relation(fields: [emiScheduleId], references: [id], onDelete: SetNull)
+  loan        Loan         @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  request     Request      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  emiSchedule EMISchedule? @relation(fields: [emiScheduleId], references: [id], onDelete: SetNull)
 
   @@index([loanId])
   @@index([requestId])
@@ -545,44 +987,44 @@ model Payment {
 
 // PaymentOrder model - Tracks Razorpay order lifecycle for audit and retry
 model PaymentOrder {
-  id                String    @id @default(cuid())
-  razorpayOrderId   String    @unique
-  loanId            String
-  requestId         String
-  emiScheduleId     String
-  customerId        String    // User ID of the customer initiating payment
-  
+  id              String @id @default(cuid())
+  razorpayOrderId String @unique
+  loanId          String
+  requestId       String
+  emiScheduleId   String
+  customerId      String // User ID of the customer initiating payment
+
   // Amount breakdown (in INR)
-  emiAmount         Float     // Base EMI amount (principal + interest)
-  penalty           Float     @default(0) // Late fee + overdue penalty
-  totalAmount       Float     // emiAmount + penalty
-  
+  emiAmount   Float // Base EMI amount (principal + interest)
+  penalty     Float @default(0) // Late fee + overdue penalty
+  totalAmount Float // emiAmount + penalty
+
   // Status tracking
-  status            PaymentOrderStatus @default(CREATED)
-  attempts          Int       @default(0)
-  lastAttemptAt     DateTime?
-  
+  status        PaymentOrderStatus @default(CREATED)
+  attempts      Int                @default(0)
+  lastAttemptAt DateTime?
+
   // Payment details (populated after success)
-  razorpayPaymentId String?   // Razorpay payment_id when paid
-  razorpaySignature String?   // Signature for verification
-  paymentMethod     String?   // card, upi, netbanking, wallet, etc.
+  razorpayPaymentId String? // Razorpay payment_id when paid
+  razorpaySignature String? // Signature for verification
+  paymentMethod     String? // card, upi, netbanking, wallet, etc.
   paidAt            DateTime?
-  
+
   // Failure tracking
-  failureReason     String?
-  failureCode       String?
-  
+  failureReason String?
+  failureCode   String?
+
   // Metadata
-  notes             Json?     // Copy of Razorpay order notes
-  expiresAt         DateTime  // Razorpay orders expire in ~30 minutes
-  
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  notes     Json? // Copy of Razorpay order notes
+  expiresAt DateTime // Razorpay orders expire in ~30 minutes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  loan              Loan        @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  request           Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  emiSchedule       EMISchedule @relation(fields: [emiScheduleId], references: [id], onDelete: Cascade)
+  loan        Loan        @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  request     Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  emiSchedule EMISchedule @relation(fields: [emiScheduleId], references: [id], onDelete: Cascade)
 
   @@index([razorpayOrderId])
   @@index([loanId])
@@ -595,38 +1037,42 @@ model PaymentOrder {
 
 // Document model - Unified file storage with UploadThing integration
 model Document {
-  id                String    @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // UploadThing Integration
-  fileKey           String    @unique // UploadThing file key (used for signed URL generation) - required
-  fileName          String    // Original file name - required
-  fileSize          Int       // File size in bytes - required
-  fileType          String    // MIME type (image/png, application/pdf, etc.) - required
-  
+  fileKey  String @unique // UploadThing file key (used for signed URL generation) - required
+  fileName String // Original file name - required
+  fileSize Int // File size in bytes - required
+  fileType String // MIME type (image/png, application/pdf, etc.) - required
+
   // Document Classification
-  documentType      String    // "ASSET_PHOTO", "ID_PROOF", "PURCHASE_RECEIPT", "EMI_RECEIPT", "TRANSFER_PROOF", "PROFILE_PICTURE", etc.
-  documentCategory  String    @default("OTHER") // "IDENTITY", "ASSET", "PAYMENT", "LOAN", "PROFILE", "OTHER"
-  
-  requestId         String?   // Direct relation to Request (most common)
-  
+  documentType     String // "ASSET_PHOTO", "ID_PROOF", "PURCHASE_RECEIPT", "EMI_RECEIPT", "TRANSFER_PROOF", "PROFILE_PICTURE", etc.
+  documentCategory String @default("OTHER") // "IDENTITY", "ASSET", "PAYMENT", "LOAN", "PROFILE", "OTHER"
+
+  requestId String? // Direct relation to Request (most common)
+
   // Access Control
-  uploadedBy        String    // User ID who uploaded
-  uploaderRole      String?   // "USER_SUBMITTED", "AGENT_SUBMITTED", "ADMIN_SUBMITTED" - categorizes who uploaded
-  isPublic          Boolean   @default(false) // If true, no auth needed to access
-  
+  uploadedBy   String // User ID who uploaded
+  uploaderRole String? // "USER_SUBMITTED", "AGENT_SUBMITTED", "ADMIN_SUBMITTED" - categorizes who uploaded
+  isPublic     Boolean @default(false) // If true, no auth needed to access
+
   // Status
-  status            DocumentStatus @default(ACTIVE)
-  
+  status DocumentStatus @default(ACTIVE)
+
   // Metadata
-  description       String?   // Optional description/notes
-  displayOrder      Int?      // For ordering multiple documents of same type
-  metadata          Json?     // Additional flexible metadata (dimensions, exif, etc.)
-  
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  description  String? // Optional description/notes
+  displayOrder Int? // For ordering multiple documents of same type
+  metadata     Json? // Additional flexible metadata (dimensions, exif, etc.)
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  request           Request?  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request Request? @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([fileKey])
   @@index([documentType])
@@ -634,27 +1080,34 @@ model Document {
   @@index([requestId])
   @@index([uploadedBy])
   @@index([status])
+  @@index([deletedAt])
   @@map("documents")
 }
-// Need a better understanding of the comments model.
-// Comment model
+
+// Comment model with soft delete
 model Comment {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   requestId   String
   authorId    String
   content     String
-  isInternal  Boolean  @default(false) // Internal comments not visible to customer
-  commentType String   @default("GENERAL") // "GENERAL", "ADMIN_REQUEST", "OFFER_DETAILS", "INSPECTION_NOTES"
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isInternal  Boolean @default(false) // Internal comments not visible to customer
+  commentType String  @default("GENERAL") // "GENERAL", "ADMIN_REQUEST", "OFFER_DETAILS", "INSPECTION_NOTES"
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  request     Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
   @@index([authorId])
   @@index([commentType])
+  @@index([deletedAt])
   @@map("comments")
 }
 
@@ -666,8 +1119,7 @@ model Comment {
 // - IP address tracking for security
 // Run `pnpm db:migrate` to apply this change to the database.
 
-
-// Inspection model
+// Inspection model with soft delete
 model Inspection {
   id               String           @id @default(cuid())
   requestId        String
@@ -679,38 +1131,44 @@ model Inspection {
   estimatedValue   Float?
   notes            String?
   recommendApprove Boolean?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  request          Request          @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  agent            User?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  agent   User?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
   @@index([requestId])
   @@index([agentId])
   @@index([status])
+  @@index([deletedAt])
   @@map("inspections")
 }
 
 // OTP Verification model for email and phone verification
 model OTPVerification {
-  id              String   @id @default(cuid())
-  sessionId       String   @unique
-  userId          String?  // Optional for temporary registration OTPs
-  identifier      String   // email or phone number
-  type            String   // "EMAIL" or "PHONE"
-  code            String   // 6-digit OTP code
-  expiresAt       DateTime // OTP expiry time
-  isUsed          Boolean  @default(false)
-  isVerified      Boolean  @default(false)
-  attempts        Int      @default(0) // Track failed attempts (persisted)
-  resendCount     Int      @default(0) // Track number of resends for audit/forensics
+  id          String   @id @default(cuid())
+  sessionId   String   @unique
+  userId      String? // Optional for temporary registration OTPs
+  identifier  String // email or phone number
+  type        String // "EMAIL" or "PHONE"
+  code        String // 6-digit OTP code
+  expiresAt   DateTime // OTP expiry time
+  isUsed      Boolean  @default(false)
+  isVerified  Boolean  @default(false)
+  attempts    Int      @default(0) // Track failed attempts (persisted)
+  resendCount Int      @default(0) // Track number of resends for audit/forensics
   // Note: previous approach enforced attempt limits in Redis (Policy B). This model now persists attempts/resend counts
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations (optional for temporary OTPs during registration)
-  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([identifier])
@@ -725,27 +1183,27 @@ model OTPVerification {
 
 // Service Configuration model for admin-configurable services
 model ServiceConfig {
-  id              String   @id @default(cuid())
-  serviceName     String   @unique // "WHATSAPP", "EMAIL", "SMS", etc.
-  isEnabled       Boolean  @default(false)
-  isActive        Boolean  @default(false) // If service is currently active/connected
-  
+  id          String  @id @default(cuid())
+  serviceName String  @unique // "WHATSAPP", "EMAIL", "SMS", etc.
+  isEnabled   Boolean @default(false)
+  isActive    Boolean @default(false) // If service is currently active/connected
+
   // Configuration JSON - flexible for different service types
-  config          Json?    // Service-specific configuration
-  
+  config Json? // Service-specific configuration
+
   // Status tracking
-  lastConnectedAt DateTime?
-  lastErrorAt     DateTime?
-  lastError       String?
-  connectionStatus String  @default("DISCONNECTED") // "CONNECTED", "DISCONNECTED", "ERROR", "INITIALIZING"
-  qrCode          String?  @db.Text // Base64 QR code for WhatsApp (large text)
-  
+  lastConnectedAt  DateTime?
+  lastErrorAt      DateTime?
+  lastError        String?
+  connectionStatus String    @default("DISCONNECTED") // "CONNECTED", "DISCONNECTED", "ERROR", "INITIALIZING"
+  qrCode           String?   @db.Text // Base64 QR code for WhatsApp (large text)
+
   // Admin tracking
-  configuredBy    String   // Admin user ID who configured - required for audit
-  configuredAt    DateTime?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  configuredBy String // Admin user ID who configured - required for audit
+  configuredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([serviceName])
   @@index([isEnabled])
@@ -755,8 +1213,8 @@ model ServiceConfig {
 
 // Sequence counters for human-friendly serial numbers
 model SerialCounter {
-  id    String  @id // e.g. "REQUEST", "LOAN"
-  seq   Int     @default(0)
+  id  String @id // e.g. "REQUEST", "LOAN"
+  seq Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -779,41 +1237,41 @@ enum NotificationChannel {
 
 // Notification delivery status
 enum NotificationDeliveryStatus {
-  PENDING           // Created, waiting to be processed
-  PROCESSING        // Currently being sent
-  SENT              // Delivered to provider
-  DELIVERED         // Confirmed delivered to recipient
-  READ              // Recipient opened/read
-  FAILED            // Delivery failed, may retry
+  PENDING // Created, waiting to be processed
+  PROCESSING // Currently being sent
+  SENT // Delivered to provider
+  DELIVERED // Confirmed delivered to recipient
+  READ // Recipient opened/read
+  FAILED // Delivery failed, may retry
   PERMANENTLY_FAILED // All retries exhausted
-  CANCELLED         // Cancelled before delivery
-  SCHEDULED         // Scheduled for future
+  CANCELLED // Cancelled before delivery
+  SCHEDULED // Scheduled for future
 }
 
 // Notification priority levels (1=highest)
 enum NotificationPriorityLevel {
-  CRITICAL  // OTPs, security alerts - immediate
-  HIGH      // Important transactional
-  NORMAL    // Regular transactional
-  LOW       // Reminders
-  BULK      // Marketing, can be batched
+  CRITICAL // OTPs, security alerts - immediate
+  HIGH // Important transactional
+  NORMAL // Regular transactional
+  LOW // Reminders
+  BULK // Marketing, can be batched
 }
 
 // Notification categories
 enum NotificationCategoryType {
-  SECURITY        // OTPs, login alerts, password changes
-  TRANSACTIONAL   // Request updates, payment confirmations
-  REMINDER        // EMI due, inspection scheduled
-  MARKETING       // Promotions, offers
-  SYSTEM          // Maintenance, updates
+  SECURITY // OTPs, login alerts, password changes
+  TRANSACTIONAL // Request updates, payment confirmations
+  REMINDER // EMI due, inspection scheduled
+  MARKETING // Promotions, offers
+  SYSTEM // Maintenance, updates
 }
 
 // Delivery mode for multi-channel notifications
 enum DeliveryModeType {
-  BROADCAST   // Same content to all channels
+  BROADCAST // Same content to all channels
   INDEPENDENT // Different content per channel (e.g., different OTPs)
-  FALLBACK    // Try channels in order until success
-  SINGLE      // Single channel only
+  FALLBACK // Try channels in order until success
+  SINGLE // Single channel only
 }
 
 // Backoff strategy for retries
@@ -827,71 +1285,71 @@ enum BackoffStrategyType {
 // NOTIFICATION LOG - Tracks all notification delivery attempts
 // ============================================
 model NotificationLog {
-  id                String                    @id @default(cuid())
-  correlationId     String                    // Groups related notifications (same request across channels)
-  
+  id            String @id @default(cuid())
+  correlationId String // Groups related notifications (same request across channels)
+
   // Recipient information
-  userId            String?                   // User ID if registered user
-  recipientEmail    String?                   // Email address
-  recipientPhone    String?                   // Phone number
-  recipientName     String?                   // Display name for personalization
-  
+  userId         String? // User ID if registered user
+  recipientEmail String? // Email address
+  recipientPhone String? // Phone number
+  recipientName  String? // Display name for personalization
+
   // Template and content
-  templateName      String                    // Template used
-  variables         Json                      // Template variables snapshot
-  renderedContent   Json?                     // Cached rendered content
-  
+  templateName    String // Template used
+  variables       Json // Template variables snapshot
+  renderedContent Json? // Cached rendered content
+
   // Delivery configuration
-  channel           NotificationChannel
-  deliveryMode      DeliveryModeType          @default(BROADCAST)
-  priority          NotificationPriorityLevel @default(NORMAL)
-  category          NotificationCategoryType  @default(TRANSACTIONAL)
-  
+  channel      NotificationChannel
+  deliveryMode DeliveryModeType          @default(BROADCAST)
+  priority     NotificationPriorityLevel @default(NORMAL)
+  category     NotificationCategoryType  @default(TRANSACTIONAL)
+
   // Channel-specific options (JSON for flexibility)
-  channelOptions    Json?                     // Email subject, WhatsApp media, etc.
-  
+  channelOptions Json? // Email subject, WhatsApp media, etc.
+
   // Status and retry tracking
-  status            NotificationDeliveryStatus @default(PENDING)
-  attempts          Int                       @default(0)
-  maxAttempts       Int                       @default(3)
-  
+  status      NotificationDeliveryStatus @default(PENDING)
+  attempts    Int                        @default(0)
+  maxAttempts Int                        @default(3)
+
   // Retry configuration
-  backoffStrategy   BackoffStrategyType       @default(EXPONENTIAL)
-  initialDelay      Int                       @default(1000)   // milliseconds
-  maxDelay          Int                       @default(300000) // 5 minutes
-  backoffMultiplier Float                     @default(2)
-  
+  backoffStrategy   BackoffStrategyType @default(EXPONENTIAL)
+  initialDelay      Int                 @default(1000) // milliseconds
+  maxDelay          Int                 @default(300000) // 5 minutes
+  backoffMultiplier Float               @default(2)
+
   // Provider information
-  providerMessageId String?                   // ID from email/SMS/WhatsApp provider
-  providerResponse  Json?                     // Full provider response for debugging
-  
+  providerMessageId String? // ID from email/SMS/WhatsApp provider
+  providerResponse  Json? // Full provider response for debugging
+
   // Error tracking
-  lastError         String?                   // Last error message
-  lastErrorCode     String?                   // Error code for categorization
-  errorHistory      Json?                     // Array of all errors for debugging
-  
+  lastError     String? // Last error message
+  lastErrorCode String? // Error code for categorization
+  errorHistory  Json? // Array of all errors for debugging
+
   // Timing
-  lastAttemptAt     DateTime?                 // When last attempt was made
-  nextRetryAt       DateTime?                 // When next retry is scheduled
-  scheduledAt       DateTime?                 // For scheduled notifications
-  expiresAt         DateTime?                 // Don't deliver after this time
-  
+  lastAttemptAt DateTime? // When last attempt was made
+  nextRetryAt   DateTime? // When next retry is scheduled
+  scheduledAt   DateTime? // For scheduled notifications
+  expiresAt     DateTime? // Don't deliver after this time
+
   // Delivery timestamps
-  sentAt            DateTime?                 // When successfully sent to provider
-  deliveredAt       DateTime?                 // When confirmed delivered
-  readAt            DateTime?                 // When recipient read (if trackable)
-  
+  sentAt      DateTime? // When successfully sent to provider
+  deliveredAt DateTime? // When confirmed delivered
+  readAt      DateTime? // When recipient read (if trackable)
+
   // Idempotency and metadata
-  idempotencyKey    String?                   // Prevents duplicate sends
-  metadata          Json?                     // Additional context (requestId, loanId, etc.)
-  
+  idempotencyKey String? // Prevents duplicate sends
+  metadata       Json? // Additional context (requestId, loanId, etc.)
+
   // Related entities for linking
-  requestId         String?
-  loanId            String?
-  
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
-  
+  requestId String?
+  loanId    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([idempotencyKey])
   @@index([correlationId])
   @@index([userId])
@@ -914,27 +1372,27 @@ model NotificationLog {
 // USER NOTIFICATION PREFERENCES
 // ============================================
 model NotificationPreference {
-  id              String                    @id @default(cuid())
-  userId          String
-  channel         NotificationChannel
-  category        NotificationCategoryType
-  
+  id       String                   @id @default(cuid())
+  userId   String
+  channel  NotificationChannel
+  category NotificationCategoryType
+
   // Preference settings
-  enabled         Boolean                   @default(true)
-  
+  enabled Boolean @default(true)
+
   // Quiet hours (don't disturb)
-  quietHoursStart String?                   // HH:mm format (e.g., "22:00")
-  quietHoursEnd   String?                   // HH:mm format (e.g., "08:00")
-  
+  quietHoursStart String? // HH:mm format (e.g., "22:00")
+  quietHoursEnd   String? // HH:mm format (e.g., "08:00")
+
   // Frequency control
-  frequencyLimit  Int?                      // Max notifications per hour (null = unlimited)
-  
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
-  
+  frequencyLimit Int? // Max notifications per hour (null = unlimited)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  user            User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([userId, channel, category])
   @@index([userId])
   @@index([channel])
@@ -946,45 +1404,45 @@ model NotificationPreference {
 // IN-APP NOTIFICATIONS (User notification center)
 // ============================================
 model InAppNotification {
-  id              String                    @id @default(cuid())
-  userId          String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Content
-  title           String
-  message         String
-  actionUrl       String?                   // URL to navigate when clicked
-  icon            String?                   // Icon name or URL
-  
+  title     String
+  message   String
+  actionUrl String? // URL to navigate when clicked
+  icon      String? // Icon name or URL
+
   // Categorization
-  category        NotificationCategoryType  @default(TRANSACTIONAL)
-  priority        NotificationPriorityLevel @default(NORMAL)
-  
+  category NotificationCategoryType  @default(TRANSACTIONAL)
+  priority NotificationPriorityLevel @default(NORMAL)
+
   // State
-  isRead          Boolean                   @default(false)
-  readAt          DateTime?
-  isArchived      Boolean                   @default(false)
-  archivedAt      DateTime?
-  
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  isArchived Boolean   @default(false)
+  archivedAt DateTime?
+
   // Related entities
-  requestId       String?
-  loanId          String?
-  emiScheduleId   String?
-  
+  requestId     String?
+  loanId        String?
+  emiScheduleId String?
+
   // Link to notification log for audit
   notificationLogId String?
-  
+
   // Metadata
-  metadata        Json?
-  
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
-  
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  user            User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  request         Request?                  @relation(fields: [requestId], references: [id], onDelete: SetNull)
-  loan            Loan?                     @relation(fields: [loanId], references: [id], onDelete: SetNull)
-  emiSchedule     EMISchedule?              @relation(fields: [emiScheduleId], references: [id], onDelete: SetNull)
-  
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request     Request?     @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  loan        Loan?        @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  emiSchedule EMISchedule? @relation(fields: [emiScheduleId], references: [id], onDelete: SetNull)
+
   @@index([userId])
   @@index([userId, isRead])
   @@index([userId, createdAt])
@@ -1000,39 +1458,39 @@ model InAppNotification {
 
 // Audit log for tracking all important system actions
 model AuditLog {
-  id              String    @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Who performed the action
-  actorId         String?   // User who performed action (null for system actions)
-  actorEmail      String?   // Snapshot of email at time of action
-  actorRoles      String[]  // Snapshot of roles at time of action
-  
+  actorId    String? // User who performed action (null for system actions)
+  actorEmail String? // Snapshot of email at time of action
+  actorRoles String[] // Snapshot of roles at time of action
+
   // What action was performed
-  action          String    // e.g., "CREATE_REQUEST", "UPDATE_STATUS", "LOGIN"
-  entityType      String    // e.g., "Request", "User", "Loan"
-  entityId        String?   // ID of the affected entity
-  
+  action     String // e.g., "CREATE_REQUEST", "UPDATE_STATUS", "LOGIN"
+  entityType String // e.g., "Request", "User", "Loan"
+  entityId   String? // ID of the affected entity
+
   // Context
-  description     String    // Human-readable description
-  ipAddress       String?   // IP address of the requester
-  userAgent       String?   // Browser/client info
-  
+  description String // Human-readable description
+  ipAddress   String? // IP address of the requester
+  userAgent   String? // Browser/client info
+
   // Change tracking
-  previousValue   Json?     // State before change
-  newValue        Json?     // State after change
-  
+  previousValue Json? // State before change
+  newValue      Json? // State after change
+
   // Additional metadata
-  metadata        Json?     // Any additional context
-  
+  metadata Json? // Any additional context
+
   // Result
-  status          String    @default("SUCCESS") // SUCCESS, FAILURE, PENDING
-  errorMessage    String?   // Error details if status is FAILURE
-  
-  createdAt       DateTime  @default(now())
-  
+  status       String  @default("SUCCESS") // SUCCESS, FAILURE, PENDING
+  errorMessage String? // Error details if status is FAILURE
+
+  createdAt DateTime @default(now())
+
   // Relations
-  actor           User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
   @@index([actorId])
   @@index([action])
   @@index([entityType])
@@ -1041,4 +1499,3 @@ model AuditLog {
   @@index([status])
   @@map("audit_logs")
 }
-

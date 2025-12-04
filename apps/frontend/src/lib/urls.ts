@@ -105,6 +105,66 @@ export const BACKEND_API_CONFIG = {
       ARCHIVE: (id: string) => `/api/v1/notifications/${id}/archive`,
       DELETE: (id: string) => `/api/v1/notifications/${id}`,
     },
+    // Geography management endpoints
+    GEOGRAPHY: {
+      // Countries
+      COUNTRIES: '/api/v1/geography/countries',
+      COUNTRY_BY_ID: (id: string) => `/api/v1/geography/countries/${id}`,
+      // States
+      STATES: '/api/v1/geography/states',
+      STATE_BY_ID: (id: string) => `/api/v1/geography/states/${id}`,
+      STATES_BY_COUNTRY: (countryId: string) => `/api/v1/geography/countries/${countryId}/states`,
+      // Districts
+      DISTRICTS: '/api/v1/geography/districts',
+      DISTRICT_BY_ID: (id: string) => `/api/v1/geography/districts/${id}`,
+      DISTRICTS_BY_STATE: (stateId: string) => `/api/v1/geography/states/${stateId}/districts`,
+      // Warehouses
+      WAREHOUSES: '/api/v1/geography/warehouses',
+      WAREHOUSE_BY_ID: (id: string) => `/api/v1/geography/warehouses/${id}`,
+      WAREHOUSES_BY_DISTRICT: (districtId: string) => `/api/v1/geography/districts/${districtId}/warehouses`,
+    },
+    // User assignment endpoints (state/district admin, agent assignments)
+    ASSIGNMENTS: {
+      // State admin assignments
+      STATE_ADMINS: '/api/v1/assignments/state-admins',
+      ASSIGN_STATE: (userId: string) => `/api/v1/assignments/users/${userId}/states`,
+      REMOVE_STATE_ASSIGNMENT: (userId: string, stateId: string) => `/api/v1/assignments/users/${userId}/states/${stateId}`,
+      // District admin/agent assignments
+      DISTRICT_ADMINS: '/api/v1/assignments/district-admins',
+      ASSIGN_DISTRICT: (userId: string) => `/api/v1/assignments/users/${userId}/districts`,
+      REMOVE_DISTRICT_ASSIGNMENT: (userId: string, districtId: string) => `/api/v1/assignments/users/${userId}/districts/${districtId}`,
+      // Get all assignments for a user
+      USER_ASSIGNMENTS: (userId: string) => `/api/v1/assignments/users/${userId}`,
+      // Get admins/agents for a specific geography
+      ADMINS_BY_STATE: (stateId: string) => `/api/v1/assignments/states/${stateId}/admins`,
+      ADMINS_BY_DISTRICT: (districtId: string) => `/api/v1/assignments/districts/${districtId}/admins`,
+      AGENTS_BY_DISTRICT: (districtId: string) => `/api/v1/assignments/districts/${districtId}/agents`,
+    },
+    // Asset management endpoints
+    ASSETS: {
+      LIST: '/api/v1/assets',
+      STATS: '/api/v1/assets/stats',
+      GET_BY_ID: (id: string) => `/api/v1/assets/${id}`,
+      BY_REQUEST: (requestId: string) => `/api/v1/assets/by-request/${requestId}`,
+      UPDATE: (id: string) => `/api/v1/assets/${id}`,
+      UPDATE_STATUS: (id: string) => `/api/v1/assets/${id}/status`,
+      MOVEMENTS: (assetId: string) => `/api/v1/assets/${assetId}/movements`,
+      CREATE_MOVEMENT: (assetId: string) => `/api/v1/assets/${assetId}/movements`,
+      WAREHOUSE_INVENTORY: (warehouseId: string) => `/api/v1/assets/warehouses/${warehouseId}/inventory`,
+    },
+    // Auction endpoints
+    AUCTIONS: {
+      LIST: '/api/v1/auctions',
+      GET_BY_ID: (id: string) => `/api/v1/auctions/${id}`,
+      CREATE: '/api/v1/auctions',
+      UPDATE: (id: string) => `/api/v1/auctions/${id}`,
+      PLACE_BID: (auctionId: string) => `/api/v1/auctions/${auctionId}/bids`,
+      BID_HISTORY: (auctionId: string) => `/api/v1/auctions/${auctionId}/bids`,
+      MY_BIDS: '/api/v1/auctions/my-bids',
+      MY_WINS: '/api/v1/auctions/my-wins',
+      CANCEL: (id: string) => `/api/v1/auctions/${id}/cancel`,
+      COMPLETE: (id: string) => `/api/v1/auctions/${id}/complete`,
+    },
   }
 }
 

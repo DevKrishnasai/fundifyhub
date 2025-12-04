@@ -12,8 +12,10 @@ export { useRequestSocket } from './useRequestSocket';
 export { useToast } from './use-toast';
 export { useRazorpay } from './use-razorpay';
 
-// Data Fetching
-export { useDashboardStats } from './useDashboardStats';
+// Debounce
+export { useDebounce, useDebouncedState } from './useDebounce';
+
+// Request Actions & Detail
 export { useRequestActions } from './useRequestActions';
 export {
   useRequestDetail,
@@ -38,3 +40,6 @@ export { useFormPersistence, useHasDraft, clearAllDrafts } from './useFormPersis
 // Document Upload
 export { useDocumentUpload } from './useDocumentUpload';
 export type { StagedFile, UploadResult, UseDocumentUploadOptions } from './useDocumentUpload';
+
+// React Query hooks - all data fetching
+export * from './queries';

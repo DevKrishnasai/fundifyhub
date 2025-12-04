@@ -335,8 +335,8 @@ export async function register(
             roles: [ROLES.CUSTOMER],
             emailVerified: true,
             phoneVerified: true,
-            // district is String[] in Prisma schema
-            district: district ? [district] : []
+            // homeDistrictId can be set if district is provided (must be a valid district ID)
+            homeDistrictId: district || null,
           },
         });
 
@@ -387,7 +387,7 @@ export async function register(
             firstName: user.firstName,
             lastName: user.lastName,
             roles: Array.isArray(user.roles) ? user.roles : [ROLES.CUSTOMER],
-            districts: Array.isArray(user.district) ? user.district : (user.district ? [user.district] : []),
+            districts: [], // Customers use homeDistrictId, not district assignments
             isActive: user.isActive ?? true,
           },
         },
@@ -447,6 +447,15 @@ export async function login(
 
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
+      include: {
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            districtId: true,
+            isPrimary: true,
+          }
+        },
+      },
     });
     if (!user || !user.password) {
       // Audit failed login attempt - user not found
@@ -474,13 +483,16 @@ export async function login(
       data: { lastLoginAt: new Date() },
     });
 
+    // Extract district IDs from assignments for JWT payload
+    const userDistrictIds = user.districtAssignments?.map(a => a.districtId) || [];
+
     const token = generateAccessToken({
       id: user.id,
       email: user.email,
       roles: user.roles,
       firstName: user.firstName,
       lastName: user.lastName,
-      districts: user.district, // user.district is String[] in Prisma schema
+      districts: userDistrictIds,
       isActive: user.isActive,
     });
 
@@ -538,7 +550,7 @@ export async function login(
           firstName: user.firstName,
           lastName: user.lastName,
           roles: Array.isArray(user.roles) ? user.roles : [ROLES.CUSTOMER],
-          districts: user.district, // user.district is String[] in Prisma schema
+          districts: userDistrictIds,
           isActive: user.isActive ?? true,
         },
       },

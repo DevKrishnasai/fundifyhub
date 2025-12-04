@@ -911,7 +911,7 @@ export const WORKFLOW_MATRIX: Record<REQUEST_STATUS, WorkflowState> = {
  */
 export interface RequestContext {
   customerId: string;
-  district: string;
+  districtId: string;  // District ID (FK to District model)
   agentId?: string | null;
   adminId?: string | null;
 }
@@ -971,7 +971,7 @@ export function getActionsForUser(
   // Helper to check district access
   const hasDistrictAccess = (): boolean => {
     if (user.roles.includes(ROLES.SUPER_ADMIN)) return true;
-    return user.districts?.includes(request.district) ?? false;
+    return user.districts?.includes(request.districtId) ?? false;
   };
 
   // Helper to check if action passes permission checks
@@ -1065,7 +1065,7 @@ export function canViewRequestDetail(
       return true;
     }
     // Check if request is in their district and unassigned (for any pending status)
-    if (user.districts?.includes(request.district)) {
+    if (user.districts?.includes(request.districtId)) {
       // For pending requests, district admins can see unassigned ones
       if (currentStatus && PENDING_REQUEST_STATUSES.includes(currentStatus) && !request.adminId) {
         return true;

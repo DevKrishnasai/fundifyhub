@@ -6,22 +6,17 @@ import { hasDistrictAccess } from '../../../utils/rbac';
 import { ROLES } from '@fundifyhub/types';
 
 /**
- * GET /admin/agents?district=DistrictName
- * Returns agents filtered by district. If district is not provided, uses
- * the requesting user's district (from auth middleware).
+ * GET /admin/agents?districtId=districtCUID
+ * Returns agents filtered by district. If districtId is not provided, returns agents
+ * for the requesting user's assigned districts.
  */
 export async function getAgentsByDistrictController(req: Request, res: Response): Promise<void> {
   try {
-    const queryDistrict = typeof req.query.district === 'string'
-      ? (req.query.district as string)
-      : (Array.isArray(req.user?.districts) ? req.user!.districts[0] : '');
+    const districtId = typeof req.query.districtId === 'string'
+      ? req.query.districtId
+      : undefined;
 
-    if (!queryDistrict) {
-      res.status(400).json({ success: false, message: 'district query parameter required' } as APIResponseType);
-      return;
-    }
-
-    // Authorization: only SUPER_ADMIN or district admins for that district can list agents
+    // Authorization: only SUPER_ADMIN or district admins can list agents
     const user = req.user;
     if (!isAuthenticated(user)) {
       res.status(401).json({ success: false, message: 'Authentication required' } as APIResponseType);
@@ -29,15 +24,41 @@ export async function getAgentsByDistrictController(req: Request, res: Response)
     }
 
     const isSuper = user.roles.includes(ROLES.SUPER_ADMIN);
-    if (!isSuper && !hasDistrictAccess(user, queryDistrict)) {
-      res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
-      return;
+    
+    // Build the where clause based on district access
+    let districtFilter: string[] = [];
+    
+    if (districtId) {
+      // Specific district requested - check access
+      if (!isSuper && !hasDistrictAccess(user, districtId)) {
+        res.status(403).json({ success: false, message: 'Forbidden' } as APIResponseType);
+        return;
+      }
+      districtFilter = [districtId];
+    } else if (!isSuper) {
+      // Use user's assigned districts
+      districtFilter = user.districts || [];
+      if (districtFilter.length === 0) {
+        res.status(400).json({ success: false, message: 'No district access configured' } as APIResponseType);
+        return;
+      }
     }
 
-    const agentsRaw = await prisma.user.findMany({
+    // Query agents with district assignments
+    const agents = await prisma.user.findMany({
       where: {
         roles: { has: ROLES.AGENT },
-        isActive: true
+        isActive: true,
+        deletedAt: null,
+        // Filter by district assignments if not super admin
+        ...(districtFilter.length > 0 && {
+          districtAssignments: {
+            some: {
+              districtId: { in: districtFilter },
+              deletedAt: null
+            }
+          }
+        })
       },
       select: {
         id: true,
@@ -45,18 +66,40 @@ export async function getAgentsByDistrictController(req: Request, res: Response)
         lastName: true,
         email: true,
         phoneNumber: true,
-        district: true,
         roles: true,
         isActive: true,
-        createdAt: true
+        createdAt: true,
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            districtId: true,
+            isPrimary: true,
+            district: {
+              select: {
+                id: true,
+                name: true,
+                code: true
+              }
+            }
+          }
+        }
       },
       orderBy: { firstName: 'asc' }
     });
 
-    // Filter in JS to avoid TypeScript/Prisma filter typing issues for string[] filters
-    const agents = agentsRaw.filter((a) => Array.isArray(a.district) && a.district.includes(queryDistrict));
+    // Transform to include district names for easier frontend use
+    const transformedAgents = agents.map(agent => ({
+      ...agent,
+      districts: agent.districtAssignments.map(da => da.district.name),
+      districtDetails: agent.districtAssignments.map(da => ({
+        id: da.districtId,
+        name: da.district.name,
+        code: da.district.code,
+        isPrimary: da.isPrimary
+      }))
+    }));
 
-    res.status(200).json({ success: true, message: 'Agents retrieved', data: agents } as APIResponseType);
+    res.status(200).json({ success: true, message: 'Agents retrieved', data: transformedAgents } as APIResponseType);
   } catch (error) {
     logger.error('getAgentsByDistrictController error:', error as Error);
     res.status(500).json({ success: false, message: 'Failed to retrieve agents' } as APIResponseType);

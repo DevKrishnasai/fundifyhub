@@ -1,17 +1,20 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AppLayout, PageContainer, PageHeader } from "@/components/layout/AppLayout"
 import { PERMISSION, hasPermission } from "@fundifyhub/types"
-import { BACKEND_API_CONFIG } from "@/lib/urls"
-import { apiClient } from "@/lib/api-client"
+import { 
+  useAuditLogs, 
+  useAuditLogStats,
+  type AuditLog 
+} from "@/hooks/queries/useAuditLogs"
+import { useDebounce } from "@/hooks/useDebounce"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { 
   Select, 
   SelectContent, 
@@ -43,34 +46,6 @@ import {
   Monitor, Calendar, Hash, Database, Copy, Check
 } from "lucide-react"
 import toast from "@/lib/toast"
-
-interface AuditLog {
-  id: string
-  action: string
-  entityType: string
-  entityId: string
-  userId: string
-  userEmail: string
-  userName: string
-  ipAddress: string
-  userAgent: string
-  metadata: Record<string, unknown>
-  createdAt: string
-}
-
-interface AuditStats {
-  totalLogs: number
-  todayLogs: number
-  uniqueUsers: number
-  topActions: Array<{ action: string; count: number }>
-}
-
-interface PaginationInfo {
-  page: number
-  limit: number
-  total: number
-  totalPages: number
-}
 
 const ACTION_TYPES = [
   { value: "all", label: "All Actions" },
@@ -162,13 +137,14 @@ function formatDate(dateString: string): string {
   })
 }
 
+// Extended AuditLog type for display purposes
+interface DisplayAuditLog extends AuditLog {
+  userEmail: string
+  userName: string
+}
+
 function AuditLogsContent() {
   const { user, isLoading: authLoading } = useAuth()
-  const [logs, setLogs] = useState<AuditLog[]>([])
-  const [stats, setStats] = useState<AuditStats | null>(null)
-  const [pagination, setPagination] = useState<PaginationInfo | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("")
@@ -178,59 +154,52 @@ function AuditLogsContent() {
   const [pageSize, setPageSize] = useState(20)
   
   // View details modal
-  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null)
+  const [selectedLog, setSelectedLog] = useState<DisplayAuditLog | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
-  const fetchLogs = useCallback(async (page = 1) => {
-    setIsLoading(true)
-    try {
-      const params: Record<string, string | number> = { page, limit: pageSize }
-      if (actionFilter !== "all") params.action = actionFilter
-      if (entityFilter !== "all") params.entityType = entityFilter
-      if (searchQuery) params.search = searchQuery
+  // Debounce search
+  const debouncedSearch = useDebounce(searchQuery, 300)
 
-      const response = await apiClient.get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.AUDIT_LOGS, { params })
-      const data = response.data.data || response.data
-      setLogs(data.logs || data || [])
-      setPagination(data.pagination || null)
-    } catch {
-      // Silent fail - show empty state
-      setLogs([])
-    } finally {
-      setIsLoading(false)
-    }
-  }, [actionFilter, entityFilter, searchQuery, pageSize])
-
-  const fetchStats = useCallback(async () => {
-    try {
-      const response = await apiClient.get(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.AUDIT_LOGS_STATS)
-      setStats(response.data.data || response.data)
-    } catch {
-      // Silent fail
-    }
-  }, [])
-
+  // Reset page when filters change
   useEffect(() => {
-    if (user) {
-      fetchLogs(currentPage)
-      fetchStats()
-    }
-  }, [user, currentPage, fetchLogs, fetchStats])
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    await Promise.all([fetchLogs(currentPage), fetchStats()])
-    setIsRefreshing(false)
-  }
-
-  const handleSearch = () => {
     setCurrentPage(1)
-    fetchLogs(1)
+  }, [actionFilter, entityFilter, debouncedSearch, pageSize])
+
+  // React Query hooks
+  const { 
+    data: logsData, 
+    isLoading,
+    refetch: refetchLogs,
+    isFetching 
+  } = useAuditLogs(
+    {
+      page: currentPage,
+      limit: pageSize,
+      action: actionFilter !== "all" ? actionFilter : undefined,
+      entityType: entityFilter !== "all" ? entityFilter : undefined,
+      search: debouncedSearch || undefined,
+    },
+    { enabled: !!user }
+  )
+
+  const { data: stats, refetch: refetchStats } = useAuditLogStats({ enabled: !!user })
+
+  // Transform logs for display (add computed fields)
+  const logs: DisplayAuditLog[] = (logsData?.logs || []).map(log => ({
+    ...log,
+    userEmail: log.actorEmail || 'Unknown',
+    userName: log.actorName || 'Unknown',
+  }))
+  const pagination = logsData?.pagination
+
+  const handleRefresh = () => {
+    refetchLogs()
+    refetchStats()
   }
 
   // Open details modal
-  const openDetailsModal = (log: AuditLog) => {
+  const openDetailsModal = (log: DisplayAuditLog) => {
     setSelectedLog(log)
     setShowDetailsModal(true)
   }
@@ -246,11 +215,6 @@ function AuditLogsContent() {
       toast.error("Failed to copy")
     }
   }
-
-  // Reset page when filters change
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [actionFilter, entityFilter, searchQuery, pageSize])
 
   if (authLoading) {
     return <AuditLogsSkeleton />
@@ -268,6 +232,11 @@ function AuditLogsContent() {
     redirect("/dashboard")
   }
 
+  // Stats display helpers
+  const topAction = stats?.logsByAction 
+    ? Object.entries(stats.logsByAction).sort((a, b) => b[1] - a[1])[0]?.[0]?.toLowerCase() 
+    : "-"
+
   return (
     <AppLayout>
       <PageContainer>
@@ -279,9 +248,9 @@ function AuditLogsContent() {
               variant="outline" 
               size="sm" 
               onClick={handleRefresh}
-              disabled={isRefreshing}
+              disabled={isFetching}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
               Refresh
             </Button>
           }
@@ -296,7 +265,7 @@ function AuditLogsContent() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {stats?.totalLogs?.toLocaleString() || 0}
+                {pagination?.total?.toLocaleString() || 0}
               </div>
             </CardContent>
           </Card>
@@ -307,18 +276,18 @@ function AuditLogsContent() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {stats?.todayLogs?.toLocaleString() || 0}
+                {stats?.recentActivity?.[0]?.count?.toLocaleString() || 0}
               </div>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+              <CardTitle className="text-sm font-medium">Entity Types</CardTitle>
               <User className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {stats?.uniqueUsers || 0}
+                {stats?.logsByEntityType ? Object.keys(stats.logsByEntityType).length : 0}
               </div>
             </CardContent>
           </Card>
@@ -329,7 +298,7 @@ function AuditLogsContent() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold capitalize">
-                {stats?.topActions?.[0]?.action?.toLowerCase() || "-"}
+                {topAction}
               </div>
             </CardContent>
           </Card>
@@ -344,7 +313,6 @@ function AuditLogsContent() {
               className="pl-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             />
           </div>
           <Select value={actionFilter} onValueChange={setActionFilter}>
@@ -372,9 +340,6 @@ function AuditLogsContent() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={handleSearch}>
-            Search
-          </Button>
         </div>
 
         {/* Logs Table */}
@@ -529,13 +494,13 @@ function AuditLogsContent() {
                       <span className="text-muted-foreground">User ID</span>
                       <div className="flex items-center gap-2">
                         <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
-                          {selectedLog.userId}
+                          {selectedLog.actorId}
                         </code>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
-                          onClick={() => copyToClipboard(selectedLog.userId, "userId")}
+                          onClick={() => copyToClipboard(selectedLog.actorId, "userId")}
                         >
                           {copiedField === "userId" ? (
                             <Check className="h-3 w-3 text-green-500" />
@@ -600,7 +565,7 @@ function AuditLogsContent() {
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6"
-                            onClick={() => copyToClipboard(selectedLog.ipAddress, "ip")}
+                            onClick={() => copyToClipboard(selectedLog.ipAddress!, "ip")}
                           >
                             {copiedField === "ip" ? (
                               <Check className="h-3 w-3 text-green-500" />

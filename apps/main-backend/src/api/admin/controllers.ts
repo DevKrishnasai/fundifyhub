@@ -24,7 +24,8 @@ export async function getActiveLoansController(req: Request, res: Response): Pro
                 lastName: true,
                 email: true,
                 phoneNumber: true,
-                district: true,
+                homeDistrictId: true,
+                homeDistrict: { select: { id: true, name: true, code: true } },
               }
             }
           }
@@ -70,7 +71,8 @@ export async function getPendingRequestsController(req: Request, res: Response):
             lastName: true,
             email: true,
             phoneNumber: true,
-            district: true
+            homeDistrictId: true,
+            homeDistrict: { select: { id: true, name: true, code: true } },
           }
         },
         assignedAgent: {
@@ -160,23 +162,23 @@ export async function getRequestsController(req: Request, res: Response): Promis
     }
 
     if (district) {
-      where.district = String(district);
+      where.districtId = String(district);
     }
 
     // If district admin and not super, restrict to their districts + assignment rules
     if (!isSuper && Array.isArray(user.roles) && user.roles.includes(ROLES.DISTRICT_ADMIN)) {
-      // user.districts is string[]
-      const userDistricts = user.districts || [];
+      // user.districts is string[] of district IDs from districtAssignments
+      const userDistrictIds = user.districts || [];
       
       // District admins see:
       // 1. Requests assigned to them (assignedAdminId = their id) - regardless of status
-      // 2. Unassigned requests in their districts in any pending status (assignedAdminId = null AND district in their districts AND currentStatus in PENDING_REQUEST_STATUSES)
+      // 2. Unassigned requests in their districts in any pending status (assignedAdminId = null AND districtId in their districts AND currentStatus in PENDING_REQUEST_STATUSES)
       // Once assigned, only the assigned admin, super admin, assigned agent, and customer can see it
       where.OR = [
         { assignedAdminId: user.id },
         { 
           assignedAdminId: null,
-          district: { in: userDistricts },
+          districtId: { in: userDistrictIds },
           currentStatus: { in: PENDING_REQUEST_STATUSES }
         }
       ];
@@ -189,8 +191,8 @@ export async function getRequestsController(req: Request, res: Response): Promis
         }
         // Override the OR with specific district filter but keep assignment logic
         where.OR = [
-          { assignedAdminId: user.id, district: String(district) },
-          { assignedAdminId: null, district: String(district), currentStatus: { in: PENDING_REQUEST_STATUSES } }
+          { assignedAdminId: user.id, districtId: String(district) },
+          { assignedAdminId: null, districtId: String(district), currentStatus: { in: PENDING_REQUEST_STATUSES } }
         ];
       }
     }
@@ -223,7 +225,8 @@ export async function getRequestsController(req: Request, res: Response): Promis
         id: true,
         requestNumber: true,
         requestedAmount: true,
-        district: true,
+        districtId: true,
+        district: { select: { id: true, name: true, code: true } },
         currentStatus: true,
         assignedAgentId: true,
         assignedAdminId: true,
@@ -253,7 +256,8 @@ export async function getRequestsController(req: Request, res: Response): Promis
             firstName: true,
             lastName: true,
             phoneNumber: true,
-            district: true,
+            homeDistrictId: true,
+            homeDistrict: { select: { id: true, name: true, code: true } },
           }
         }
         ,

@@ -24,10 +24,10 @@ export async function getAnalyticsSummaryController(req: Request, res: Response)
       return;
     }
 
-    // Get district filter for district admins
+    // Get district filter for district admins (now uses districtId FK)
     const districtFilter = req.user.roles.includes(ROLES.SUPER_ADMIN) 
       ? {} 
-      : { district: { in: req.user.districts || [] } };
+      : { districtId: { in: req.user.districts || [] } };
 
     // Execute all queries in parallel
     const [
@@ -222,40 +222,48 @@ export async function getAnalyticsDistrictBreakdownController(req: Request, res:
       return;
     }
 
-    // Get all requests grouped by district
+    // Get all requests grouped by districtId
     const requestsByDistrict = await prisma.request.groupBy({
-      by: ['district'],
+      by: ['districtId'],
       _count: { id: true },
     });
 
     // Get district details with more metrics
     const districtData = await Promise.all(
       requestsByDistrict.map(async (d) => {
+        // Get district name
+        const district = await prisma.district.findUnique({
+          where: { id: d.districtId },
+          select: { name: true, code: true }
+        });
+
         const [
           totalRequests,
           pendingRequests,
           activeLoans,
           disbursedAmount,
         ] = await Promise.all([
-          prisma.request.count({ where: { district: d.district } }),
-          prisma.request.count({ where: { district: d.district, currentStatus: 'PENDING' } }),
+          prisma.request.count({ where: { districtId: d.districtId } }),
+          prisma.request.count({ where: { districtId: d.districtId, currentStatus: 'PENDING' } }),
           prisma.loan.count({
             where: {
               status: 'ACTIVE',
-              request: { district: d.district },
+              request: { districtId: d.districtId },
             },
           }),
           prisma.loan.aggregate({
             _sum: { approvedAmount: true },
             where: {
               disbursedDate: { not: null },
-              request: { district: d.district },
+              request: { districtId: d.districtId },
             },
           }),
         ]);
 
         return {
-          district: d.district,
+          districtId: d.districtId,
+          district: district?.name || 'Unknown',
+          districtCode: district?.code || '',
           totalRequests,
           pendingRequests,
           activeLoans,

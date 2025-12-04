@@ -1,10 +1,13 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AppLayout, PageContainer, PageHeader } from "@/components/layout/AppLayout"
-import { ROLES, PERMISSION, hasPermission, DISTRICTS } from "@fundifyhub/types"
+import { ROLES, PERMISSION, hasPermission } from "@fundifyhub/types"
+import { useDistricts } from "@/hooks/queries"
+import { useUsers, useCreateUser, useUpdateUser, useDeleteUser } from "@/hooks/queries/useUsers"
+import { useDebounce } from "@/hooks/useDebounce"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,8 +37,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { apiClient } from "@/lib/api-client"
-import { BACKEND_API_CONFIG } from "@/lib/urls"
 import { redirect } from "next/navigation"
 import toast from "@/lib/toast"
 import { Pagination } from "@/components/ui/pagination"
@@ -78,8 +79,8 @@ interface UserData {
   districts: string[]
   isActive: boolean
   phoneNumber?: string
-  createdAt: string
-  updatedAt?: string
+  createdAt?: string | Date
+  updatedAt?: string | Date
   _count?: {
     requests?: number
     loans?: number
@@ -126,8 +127,10 @@ function getRoleBadgeVariant(role: string): "default" | "secondary" | "destructi
   }
 }
 
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-IN', {
+function formatDate(date: string | Date | undefined): string {
+  if (!date) return '-'
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric'
@@ -143,9 +146,6 @@ const roleOptions = [
 
 function UsersContent() {
   const { user, isLoading: authLoading } = useAuth()
-  const [users, setUsers] = useState<UserData[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   
   // Filters & Pagination
   const [search, setSearch] = useState("")
@@ -154,12 +154,9 @@ function UsersContent() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0
-  })
+
+  // Debounce search for better performance
+  const debouncedSearch = useDebounce(search, 300)
 
   // Modal states
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null)
@@ -178,72 +175,49 @@ function UsersContent() {
     districts: [] as string[],
     isActive: true
   })
-  const [formLoading, setFormLoading] = useState(false)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   const userRoles = user?.roles || []
   const canViewUsers = hasPermission(userRoles, PERMISSION.VIEW_ALL_USERS)
   const isSuperAdmin = userRoles.map((r: string) => r.toUpperCase()).includes(ROLES.SUPER_ADMIN)
 
+  // Fetch districts from API
+  const { data: districts = [], isLoading: districtsLoading } = useDistricts()
+
+  // Build filter params for React Query
+  const filterParams = useMemo(() => ({
+    page,
+    limit,
+    role: roleFilter !== "all" ? roleFilter : undefined,
+    district: districtFilter !== "all" ? districtFilter : undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    search: debouncedSearch || undefined,
+  }), [page, limit, roleFilter, districtFilter, statusFilter, debouncedSearch])
+
+  // Fetch users with React Query
+  const usersQuery = useUsers(filterParams, { enabled: canViewUsers && !authLoading })
+  
+  // Mutations
+  const createUserMutation = useCreateUser()
+  const updateUserMutation = useUpdateUser()
+  const deleteUserMutation = useDeleteUser()
+
+  // Derived data
+  const users = usersQuery.data?.users ?? []
+  const pagination = usersQuery.data?.pagination ?? { page: 1, limit: 10, total: 0, totalPages: 0 }
+  const loading = usersQuery.isLoading
+  const isRefetching = usersQuery.isFetching && !usersQuery.isLoading
+  const error = usersQuery.error?.message || null
+
   // Only admins can view users
   if (!authLoading && user && !canViewUsers) {
     redirect("/dashboard")
   }
 
-  const fetchUsers = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const params = new URLSearchParams()
-      params.append("page", page.toString())
-      params.append("limit", limit.toString())
-      
-      if (roleFilter !== "all") {
-        params.append("role", roleFilter)
-      }
-      if (districtFilter !== "all") {
-        params.append("district", districtFilter)
-      }
-      if (statusFilter !== "all") {
-        params.append("isActive", statusFilter)
-      }
-      if (search) {
-        params.append("search", search)
-      }
-
-      const res = await apiClient.get(`${BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS}?${params.toString()}`)
-      
-      if (res.data?.success) {
-        const data = res.data.data
-        if (Array.isArray(data)) {
-          setUsers(data)
-          setPagination({ page: 1, limit: 10, total: data.length, totalPages: 1 })
-        } else {
-          setUsers(data.users || [])
-          setPagination(data.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 })
-        }
-      } else {
-        throw new Error(res.data?.message || "Failed to fetch users")
-      }
-    } catch (err) {
-      console.error("Failed to fetch users:", err)
-      setError("Failed to load users. Please try again.")
-    } finally {
-      setLoading(false)
-    }
-  }, [page, limit, roleFilter, districtFilter, statusFilter, search])
-
-  useEffect(() => {
-    if (user && !authLoading && canViewUsers) {
-      fetchUsers()
-    }
-  }, [user, authLoading, canViewUsers, fetchUsers])
-
   // Reset page when filters change
   useEffect(() => {
     setPage(1)
-  }, [roleFilter, districtFilter, statusFilter, search])
+  }, [roleFilter, districtFilter, statusFilter, debouncedSearch])
 
   // Form validation
   const validateForm = (isEdit: boolean = false): boolean => {
@@ -275,36 +249,23 @@ function UsersContent() {
   const handleCreateUser = async () => {
     if (!validateForm()) return
 
-    setFormLoading(true)
     try {
-      const payload = {
+      await createUserMutation.mutateAsync({
         email: formData.email.toLowerCase().trim(),
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
-        phoneNumber: formData.phoneNumber.trim() || undefined,
+        phoneNumber: formData.phoneNumber.trim() || "",
         roles: formData.roles,
-        district: formData.districts,
-        isActive: formData.isActive
-      }
-
-      const res = await apiClient.post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USERS, payload)
+      })
       
-      if (res.data?.success) {
-        toast.success("User created successfully", {
-          description: "A temporary password has been generated."
-        })
-        setShowCreateModal(false)
-        resetForm()
-        fetchUsers()
-      } else {
-        throw new Error(res.data?.message || "Failed to create user")
-      }
+      toast.success("User created successfully", {
+        description: "A temporary password has been generated."
+      })
+      setShowCreateModal(false)
+      resetForm()
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      const message = error.response?.data?.message || error.message || "Failed to create user"
-      toast.error(message)
-    } finally {
-      setFormLoading(false)
+      const error = err as { message?: string }
+      toast.error(error.message || "Failed to create user")
     }
   }
 
@@ -312,53 +273,37 @@ function UsersContent() {
   const handleUpdateUser = async () => {
     if (!selectedUser || !validateForm(true)) return
 
-    setFormLoading(true)
     try {
-      const payload = {
+      await updateUserMutation.mutateAsync({
+        id: selectedUser.id,
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         phoneNumber: formData.phoneNumber.trim() || undefined,
         roles: formData.roles,
-        district: formData.districts,
-        isActive: formData.isActive
-      }
-
-      const res = await apiClient.patch(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USER_BY_ID(selectedUser.id), payload)
+        accountStatus: formData.isActive ? 'ACTIVE' : 'SUSPENDED',
+      })
       
-      if (res.data?.success) {
-        toast.success("User updated successfully")
-        setShowEditModal(false)
-        resetForm()
-        fetchUsers()
-      } else {
-        throw new Error(res.data?.message || "Failed to update user")
-      }
+      toast.success("User updated successfully")
+      setShowEditModal(false)
+      resetForm()
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      const message = error.response?.data?.message || error.message || "Failed to update user"
-      toast.error(message)
-    } finally {
-      setFormLoading(false)
+      const error = err as { message?: string }
+      toast.error(error.message || "Failed to update user")
     }
   }
 
   // Handle toggle active status
   const handleToggleActive = async (userData: UserData) => {
     try {
-      const res = await apiClient.patch(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USER_BY_ID(userData.id), {
-        isActive: !userData.isActive
+      await updateUserMutation.mutateAsync({
+        id: userData.id,
+        accountStatus: userData.isActive ? 'SUSPENDED' : 'ACTIVE',
       })
       
-      if (res.data?.success) {
-        toast.success(`User ${userData.isActive ? 'deactivated' : 'activated'} successfully`)
-        fetchUsers()
-      } else {
-        throw new Error(res.data?.message || "Failed to update user")
-      }
+      toast.success(`User ${userData.isActive ? 'deactivated' : 'activated'} successfully`)
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      const message = error.response?.data?.message || error.message || "Failed to update user"
-      toast.error(message)
+      const error = err as { message?: string }
+      toast.error(error.message || "Failed to update user")
     }
   }
 
@@ -366,26 +311,20 @@ function UsersContent() {
   const handleDeleteUser = async () => {
     if (!selectedUser) return
 
-    setFormLoading(true)
     try {
-      const res = await apiClient.delete(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.USER_BY_ID(selectedUser.id))
+      await deleteUserMutation.mutateAsync(selectedUser.id)
       
-      if (res.data?.success) {
-        toast.success("User deleted successfully")
-        setShowDeleteConfirm(false)
-        setSelectedUser(null)
-        fetchUsers()
-      } else {
-        throw new Error(res.data?.message || "Failed to delete user")
-      }
+      toast.success("User deleted successfully")
+      setShowDeleteConfirm(false)
+      setSelectedUser(null)
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      const message = error.response?.data?.message || error.message || "Failed to delete user"
-      toast.error(message)
-    } finally {
-      setFormLoading(false)
+      const error = err as { message?: string }
+      toast.error(error.message || "Failed to delete user")
     }
   }
+
+  // Mutation loading states
+  const formLoading = createUserMutation.isPending || updateUserMutation.isPending || deleteUserMutation.isPending
 
   // Reset form
   const resetForm = () => {
@@ -472,8 +411,13 @@ function UsersContent() {
           description="View and manage all users on the platform."
           actions={
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={fetchUsers} disabled={loading}>
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => usersQuery.refetch()} 
+                disabled={loading || isRefetching}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isRefetching ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
               {isSuperAdmin && (
@@ -517,15 +461,15 @@ function UsersContent() {
               </Select>
 
               {/* District Filter */}
-              <Select value={districtFilter} onValueChange={setDistrictFilter}>
+              <Select value={districtFilter} onValueChange={setDistrictFilter} disabled={districtsLoading}>
                 <SelectTrigger className="w-full lg:w-[180px]">
-                  <SelectValue placeholder="All Districts" />
+                  <SelectValue placeholder={districtsLoading ? "Loading..." : "All Districts"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Districts</SelectItem>
-                  {DISTRICTS.map(district => (
-                    <SelectItem key={district} value={district}>
-                      {district}
+                  {districts.map(district => (
+                    <SelectItem key={district.id} value={district.id}>
+                      {district.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -550,7 +494,7 @@ function UsersContent() {
         {error && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive mb-6">
             {error}
-            <Button variant="link" className="ml-2 p-0 h-auto" onClick={fetchUsers}>
+            <Button variant="link" className="ml-2 p-0 h-auto" onClick={() => usersQuery.refetch()}>
               Try again
             </Button>
           </div>
@@ -972,19 +916,21 @@ function UsersContent() {
                 <div className="space-y-2">
                   <Label>Assigned Districts</Label>
                   <div className="max-h-40 overflow-y-auto border rounded-md p-3 space-y-2">
-                    {DISTRICTS.map(district => (
-                      <div key={district} className="flex items-center space-x-2">
+                    {districtsLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading districts...</p>
+                    ) : districts.map(district => (
+                      <div key={district.id} className="flex items-center space-x-2">
                         <Checkbox
-                          id={`district-${district}`}
-                          checked={formData.districts.includes(district)}
-                          onCheckedChange={() => toggleDistrict(district)}
+                          id={`district-${district.id}`}
+                          checked={formData.districts.includes(district.id)}
+                          onCheckedChange={() => toggleDistrict(district.id)}
                           disabled={formLoading}
                         />
                         <label
-                          htmlFor={`district-${district}`}
+                          htmlFor={`district-${district.id}`}
                           className="text-sm leading-none cursor-pointer"
                         >
-                          {district}
+                          {district.name}
                         </label>
                       </div>
                     ))}

@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { SocketProvider } from '@/contexts/SocketContext'
+import { QueryProvider } from '@/components/providers'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -65,14 +66,16 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProvider>
-            <SocketProvider>
-              <div className="min-h-screen flex flex-col">
-                <main className="flex-1">{children}</main>
-                <Toaster />
-              </div>
-            </SocketProvider>
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <SocketProvider>
+                <div className="min-h-screen flex flex-col">
+                  <main className="flex-1">{children}</main>
+                  <Toaster />
+                </div>
+              </SocketProvider>
+            </AuthProvider>
+          </QueryProvider>
         </ThemeProvider>
         <Analytics />
       </body>

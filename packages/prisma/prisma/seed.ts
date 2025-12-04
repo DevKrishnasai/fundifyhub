@@ -3,8 +3,8 @@
  * Creates test users and sample data for E2E testing
  *
  * Users:
- * 1. Krishna Sai - Super Admin (all roles)
- * 2. Vishal - District Admin (all roles except Super Admin)
+ * 1. Krishna Sai - Super Admin
+ * 2. Vishal - District Admin
  * 3. Kiran Kumar - Customer only
  */
 
@@ -14,8 +14,9 @@ import {
   LoanStatus, 
   EMIStatus,
   InspectionStatus,
-  DocumentStatus,
-  AssetStatus
+  AssetStatus,
+  UserRole,
+  AssetCondition,
 } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { Pool } from "pg"
@@ -41,15 +42,14 @@ const TELANGANA_DISTRICTS = [
   "Medchal-Malkajgiri",
 ]
 
-// User Data
+// User Data - Multiple roles supported
 const USERS = [
   {
     firstName: "Krishna",
     lastName: "Sai",
     email: "kambati855@gmail.com",
     phoneNumber: "6281839951",
-    roles: ["CUSTOMER", "AGENT", "DISTRICT_ADMIN", "SUPER_ADMIN"],
-    district: TELANGANA_DISTRICTS, // Super Admin has access to all districts
+    roles: [UserRole.SUPER_ADMIN, UserRole.CUSTOMER],
     password: "Admin@123",
   },
   {
@@ -57,8 +57,7 @@ const USERS = [
     lastName: "AKS",
     email: "aks.daytoday@gmail.com",
     phoneNumber: "6301564827",
-    roles: ["CUSTOMER", "AGENT", "DISTRICT_ADMIN"],
-    district: ["Hyderabad", "Warangal", "Rangareddy"], // District Admin for specific districts
+    roles: [UserRole.DISTRICT_ADMIN, UserRole.CUSTOMER],
     password: "Admin@123",
   },
   {
@@ -66,8 +65,7 @@ const USERS = [
     lastName: "Kumar",
     email: "aks.randm@gmail.com",
     phoneNumber: "9299998626",
-    roles: ["CUSTOMER"],
-    district: ["Hyderabad"], // Customer in Hyderabad
+    roles: [UserRole.CUSTOMER],
     password: "Customer@123",
   },
 ]
@@ -182,12 +180,91 @@ async function main() {
   await prisma.oTPVerification.deleteMany()
   await prisma.auditLog.deleteMany()
   await prisma.adminOffer.deleteMany()
+  await prisma.auctionBid.deleteMany()
+  await prisma.auctionListing.deleteMany()
+  await prisma.assetMovement.deleteMany()
   await prisma.asset.deleteMany()
   await prisma.request.deleteMany()
   await prisma.bankDetails.deleteMany()
+  await prisma.session.deleteMany()
+  await prisma.userDistrictAssignment.deleteMany()
+  await prisma.userStateAssignment.deleteMany()
   await prisma.user.deleteMany()
+  await prisma.warehouse.deleteMany()
+  await prisma.district.deleteMany()
+  await prisma.state.deleteMany()
+  await prisma.country.deleteMany()
   await prisma.serviceConfig.deleteMany()
   await prisma.serialCounter.deleteMany()
+
+  // Create Geography Hierarchy
+  console.log("🌍 Creating geography hierarchy...")
+  
+  // Create India
+  const india = await prisma.country.create({
+    data: {
+      name: "India",
+      code: "IN",
+      isActive: true,
+    },
+  })
+  console.log(`  ✅ Created country: ${india.name}`)
+
+  // Create Telangana state
+  const telangana = await prisma.state.create({
+    data: {
+      name: "Telangana",
+      code: "TG",
+      countryId: india.id,
+      isActive: true,
+    },
+  })
+  console.log(`  ✅ Created state: ${telangana.name}`)
+
+  // Create districts
+  const districtData = [
+    { name: "Hyderabad", code: "HYD" },
+    { name: "Warangal", code: "WGL" },
+    { name: "Nizamabad", code: "NZB" },
+    { name: "Karimnagar", code: "KMN" },
+    { name: "Khammam", code: "KHM" },
+    { name: "Rangareddy", code: "RNG" },
+    { name: "Sangareddy", code: "SGR" },
+    { name: "Siddipet", code: "SDP" },
+    { name: "Medchal-Malkajgiri", code: "MCL" },
+  ]
+
+  const createdDistricts: Record<string, string> = {}
+  for (const dist of districtData) {
+    const district = await prisma.district.create({
+      data: {
+        name: dist.name,
+        code: dist.code,
+        stateId: telangana.id,
+        isActive: true,
+      },
+    })
+    createdDistricts[dist.name] = district.id
+    console.log(`  ✅ Created district: ${district.name}`)
+  }
+
+  // Create a warehouse in Hyderabad
+  const warehouse = await prisma.warehouse.create({
+    data: {
+      name: "Hyderabad Central Warehouse",
+      code: "HYD-WH-001",
+      districtId: createdDistricts["Hyderabad"],
+      address: "Plot 123, Industrial Area, Uppal, Hyderabad",
+      latitude: 17.4065,
+      longitude: 78.5595,
+      contactPerson: "Warehouse Manager",
+      contactPhone: "9876543210",
+      capacity: 500,
+      currentCount: 0,
+      isActive: true,
+    },
+  })
+  console.log(`  ✅ Created warehouse: ${warehouse.name}`)
 
   // Create users
   console.log("👤 Creating users...")
@@ -203,7 +280,7 @@ async function main() {
         phoneNumber: userData.phoneNumber,
         password: hashedPassword,
         roles: userData.roles,
-        district: userData.district,
+        homeDistrictId: createdDistricts["Hyderabad"], // All users home district is Hyderabad
         isActive: true,
         emailVerified: true,
         phoneVerified: true,
@@ -214,8 +291,23 @@ async function main() {
       },
     })
     createdUsers[userData.email] = user.id
-    console.log(`  ✅ Created user: ${userData.firstName} ${userData.lastName} (${userData.email})`)
+    console.log(`  ✅ Created user: ${userData.firstName} ${userData.lastName} (${userData.roles.join(", ")})`)
   }
+
+  // Create district assignments for District Admin
+  const vishalId = createdUsers["aks.daytoday@gmail.com"]
+  const hyderabadId = createdDistricts["Hyderabad"]
+  const warangalId = createdDistricts["Warangal"]
+  const rangareddyId = createdDistricts["Rangareddy"]
+
+  await prisma.userDistrictAssignment.createMany({
+    data: [
+      { userId: vishalId, districtId: hyderabadId, isPrimary: true },
+      { userId: vishalId, districtId: warangalId, isPrimary: false },
+      { userId: vishalId, districtId: rangareddyId, isPrimary: false },
+    ],
+  })
+  console.log(`  ✅ Created district assignments for Vishal (District Admin)`)
 
   // Initialize serial counters
   console.log("🔢 Initializing serial counters...")
@@ -223,6 +315,7 @@ async function main() {
     data: [
       { id: "REQUEST", seq: 0 },
       { id: "LOAN", seq: 0 },
+      { id: "AUCTION", seq: 0 },
     ],
   })
 
@@ -259,18 +352,19 @@ async function main() {
       requestNumber: generateRequestNumber(requestSeq),
       customerId,
       requestedAmount: 50000,
-      district: "Hyderabad",
+      districtId: hyderabadId,
       currentStatus: RequestStatus.PENDING,
       asset: {
         create: {
           assetType: "Two Wheeler",
           brand: "Honda",
           model: "Activa 6G",
-          condition: "GOOD",
+          condition: AssetCondition.GOOD,
           purchaseYear: 2022,
           description: "Well maintained scooter with all service records",
           estimatedValue: 50000,
           status: AssetStatus.PLEDGED,
+          warehouseId: warehouse.id,
         }
       }
     },
@@ -284,7 +378,7 @@ async function main() {
       requestNumber: generateRequestNumber(requestSeq),
       customerId,
       requestedAmount: 150000,
-      district: "Hyderabad",
+      districtId: hyderabadId,
       currentStatus: RequestStatus.OFFER_SENT,
       adminOfferedAmount: 120000,
       adminTenureMonths: 12,
@@ -296,7 +390,7 @@ async function main() {
           assetType: "Four Wheeler",
           brand: "Maruti",
           model: "Swift VXI",
-          condition: "EXCELLENT",
+          condition: AssetCondition.EXCELLENT,
           purchaseYear: 2021,
           description: "Single owner car with comprehensive insurance",
           estimatedValue: 150000,
@@ -314,7 +408,7 @@ async function main() {
       requestNumber: generateRequestNumber(requestSeq),
       customerId,
       requestedAmount: 80000,
-      district: "Rangareddy",
+      districtId: rangareddyId,
       currentStatus: RequestStatus.INSPECTION_SCHEDULED,
       adminOfferedAmount: 70000,
       adminTenureMonths: 6,
@@ -329,7 +423,7 @@ async function main() {
           assetType: "Two Wheeler",
           brand: "Royal Enfield",
           model: "Classic 350",
-          condition: "GOOD",
+          condition: AssetCondition.GOOD,
           purchaseYear: 2020,
           description: "Classic bike with custom accessories",
           estimatedValue: 80000,
@@ -360,7 +454,7 @@ async function main() {
       requestNumber: generateRequestNumber(requestSeq),
       customerId,
       requestedAmount: 200000,
-      district: "Hyderabad",
+      districtId: hyderabadId,
       currentStatus: RequestStatus.AMOUNT_DISBURSED,
       adminOfferedAmount: 90000,
       adminTenureMonths: 6,
@@ -376,12 +470,13 @@ async function main() {
           assetType: "Electronics",
           brand: "Apple",
           model: "MacBook Pro M2",
-          condition: "EXCELLENT",
+          condition: AssetCondition.EXCELLENT,
           purchaseYear: 2020,
           description: "Laptop for freelance work",
           estimatedValue: 200000,
           inspectedValue: 95000,
           status: AssetStatus.PLEDGED,
+          warehouseId: warehouse.id,
         }
       }
     },
@@ -487,7 +582,7 @@ async function main() {
       requestNumber: generateRequestNumber(requestSeq),
       customerId,
       requestedAmount: 30000,
-      district: "Hyderabad",
+      districtId: hyderabadId,
       currentStatus: RequestStatus.COMPLETED,
       adminOfferedAmount: 25000,
       adminTenureMonths: 3,
@@ -503,7 +598,7 @@ async function main() {
           assetType: "Two Wheeler",
           brand: "TVS",
           model: "Jupiter",
-          condition: "GOOD",
+          condition: AssetCondition.GOOD,
           purchaseYear: 2022,
           description: "Regular commute vehicle",
           estimatedValue: 30000,
@@ -613,14 +708,14 @@ async function main() {
       requestNumber: generateRequestNumber(requestSeq),
       customerId,
       requestedAmount: 200000,
-      district: "Warangal",
+      districtId: warangalId,
       currentStatus: RequestStatus.REJECTED,
       asset: {
         create: {
           assetType: "Four Wheeler",
           brand: "Tata",
           model: "Nano",
-          condition: "POOR",
+          condition: AssetCondition.POOR,
           purchaseYear: 2018,
           description: "Old car with multiple issues",
           estimatedValue: 200000,

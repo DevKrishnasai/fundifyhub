@@ -1,12 +1,11 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AppLayout, PageContainer, PageHeader } from "@/components/layout/AppLayout"
 import { RequestCardList } from "@/components/dashboard/RequestCard"
-import { ROLES, REQUEST_STATUS, DISTRICTS } from "@fundifyhub/types"
-import type { RequestType } from "@fundifyhub/types"
+import { ROLES, REQUEST_STATUS } from "@fundifyhub/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { 
@@ -20,8 +19,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Pagination } from "@/components/ui/pagination"
 import { RequestsListSkeleton } from "@/components/loading-skeletons"
 import { Skeleton } from "@/components/ui/skeleton"
-import { apiClient } from "@/lib/api-client"
-import { BACKEND_API_CONFIG } from "@/lib/urls"
+import { useRequests, useUserRequests, useAssignedRequests } from "@/hooks/queries"
+import { useDistricts } from "@/hooks/queries/useGeography"
+import { useDebounce } from "@/hooks/useDebounce"
 import Link from "next/link"
 import { 
   Plus, 
@@ -29,16 +29,6 @@ import {
   RefreshCw, 
   FileText,
 } from "lucide-react"
-
-interface RequestsResponse {
-  requests: RequestType[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-  }
-}
 
 function RequestsSkeleton() {
   return (
@@ -63,97 +53,96 @@ function RequestsSkeleton() {
 
 function RequestsContent() {
   const { user, isLoading: authLoading } = useAuth()
-  const [requests, setRequests] = useState<RequestType[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   
-  // Filters & Pagination
+  // Filters & Pagination state
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [districtFilter, setDistrictFilter] = useState<string>("all")
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0
-  })
 
+  // Debounce search for better performance
+  const debouncedSearch = useDebounce(search, 300)
+
+  // Determine user roles
   const userRoles = user?.roles?.map((r: string) => r.toUpperCase()) || []
-  const isCustomer = userRoles.includes(ROLES.CUSTOMER)
-  const isAgent = userRoles.includes(ROLES.AGENT)
+  const isCustomer = userRoles.includes(ROLES.CUSTOMER) && !userRoles.includes(ROLES.SUPER_ADMIN) && !userRoles.includes(ROLES.DISTRICT_ADMIN) && !userRoles.includes(ROLES.AGENT)
+  const isAgent = userRoles.includes(ROLES.AGENT) && !userRoles.includes(ROLES.SUPER_ADMIN) && !userRoles.includes(ROLES.DISTRICT_ADMIN)
   const isSuperAdmin = userRoles.includes(ROLES.SUPER_ADMIN)
   const isDistrictAdmin = userRoles.includes(ROLES.DISTRICT_ADMIN)
   const isAdmin = isSuperAdmin || isDistrictAdmin
+
+  // Fetch districts for admin filter
+  const { data: districts = [] } = useDistricts({ enabled: isAdmin })
   
-  // Get available districts for filtering
-  // Super Admin sees all districts, District Admin sees only their assigned districts
+  // Get available districts for filtering based on role
   const userDistricts = user?.districts || []
-  const availableDistricts = isSuperAdmin ? DISTRICTS : userDistricts
-
-  const fetchRequests = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      // Build query params
-      const params = new URLSearchParams()
-      params.append("page", page.toString())
-      params.append("limit", limit.toString())
-      params.append("sortBy", "createdAt")
-      params.append("sortOrder", "desc")
-      
-      if (statusFilter !== "all") {
-        params.append("status", statusFilter)
-      }
-      if (districtFilter !== "all") {
-        params.append("district", districtFilter)
-      }
-      if (search) {
-        params.append("search", search)
-      }
-
-      // Choose endpoint based on role
-      let endpoint = BACKEND_API_CONFIG.ENDPOINTS.USER.LIST_REQUESTS
-      if (isAdmin) {
-        endpoint = BACKEND_API_CONFIG.ENDPOINTS.ADMIN.REQUESTS_LIST
-      } else if (isAgent) {
-        endpoint = BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.ASSIGNED_REQUESTS
-      }
-
-      const res = await apiClient.get(`${endpoint}?${params.toString()}`)
-      
-      if (res.data?.success) {
-        const data = res.data.data
-        if (Array.isArray(data)) {
-          setRequests(data)
-          setPagination({ page: 1, limit: 10, total: data.length, totalPages: 1 })
-        } else {
-          setRequests(data.requests || [])
-          setPagination(data.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 })
-        }
-      } else {
-        throw new Error(res.data?.message || "Failed to fetch requests")
-      }
-    } catch (err) {
-      console.error("Failed to fetch requests:", err)
-      setError("Failed to load requests. Please try again.")
-    } finally {
-      setLoading(false)
+  const availableDistricts = useMemo(() => {
+    if (isSuperAdmin) {
+      return districts.map(d => d.name)
     }
-  }, [page, limit, statusFilter, districtFilter, search, isAdmin, isAgent])
+    return userDistricts
+  }, [isSuperAdmin, districts, userDistricts])
 
-  useEffect(() => {
-    if (user && !authLoading) {
-      fetchRequests()
+  // Build filter params for React Query
+  const filterParams = useMemo(() => ({
+    page,
+    limit,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    district: districtFilter !== "all" ? districtFilter : undefined,
+    search: debouncedSearch || undefined,
+    sortBy: "createdAt",
+    sortOrder: "desc" as const,
+  }), [page, limit, statusFilter, districtFilter, debouncedSearch])
+
+  // Use appropriate hook based on role
+  const adminQuery = useRequests(filterParams, { enabled: isAdmin && !authLoading })
+  const agentQuery = useAssignedRequests({ enabled: isAgent && !authLoading })
+  const customerQuery = useUserRequests({ enabled: isCustomer && !authLoading })
+
+  // Get active query based on role
+  const activeQuery = isAdmin ? adminQuery : isAgent ? agentQuery : customerQuery
+
+  // Normalize data structure
+  const requests = useMemo(() => {
+    if (isAdmin && adminQuery.data) {
+      return adminQuery.data.requests || []
     }
-  }, [user, authLoading, fetchRequests])
+    if (isAgent && agentQuery.data) {
+      return agentQuery.data || []
+    }
+    if (customerQuery.data) {
+      return customerQuery.data || []
+    }
+    return []
+  }, [isAdmin, isAgent, adminQuery.data, agentQuery.data, customerQuery.data])
+
+  const pagination = useMemo(() => {
+    if (isAdmin && adminQuery.data?.pagination) {
+      return adminQuery.data.pagination
+    }
+    // For non-admin views, create pagination from array length
+    return {
+      page: 1,
+      limit: requests.length || 10,
+      total: requests.length,
+      totalPages: 1,
+    }
+  }, [isAdmin, adminQuery.data, requests.length])
+
+  const isLoading = activeQuery.isLoading
+  const isRefetching = activeQuery.isFetching && !activeQuery.isLoading
+  const error = activeQuery.error?.message || null
 
   // Reset page when filters change
   useEffect(() => {
     setPage(1)
-  }, [statusFilter, districtFilter, search, limit])
+  }, [statusFilter, districtFilter, debouncedSearch, limit])
+
+  // Handle refresh
+  const handleRefresh = () => {
+    activeQuery.refetch()
+  }
 
   if (authLoading) {
     return <RequestsSkeleton />
@@ -199,8 +188,13 @@ function RequestsContent() {
           description={pageInfo.description}
           actions={
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={fetchRequests} disabled={loading}>
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRefresh} 
+                disabled={isLoading || isRefetching}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isRefetching ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
               {isCustomer && (
@@ -269,14 +263,14 @@ function RequestsContent() {
         {error && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive mb-6">
             {error}
-            <Button variant="link" className="ml-2 p-0 h-auto" onClick={fetchRequests}>
+            <Button variant="link" className="ml-2 p-0 h-auto" onClick={handleRefresh}>
               Try again
             </Button>
           </div>
         )}
 
         {/* Loading State */}
-        {loading ? (
+        {isLoading ? (
           <div className="space-y-4">
             {[...Array(5)].map((_, i) => (
               <Skeleton key={i} className="h-28 rounded-lg" />
@@ -291,8 +285,8 @@ function RequestsContent() {
               baseUrl="/requests"
             />
 
-            {/* Pagination */}
-            {pagination.totalPages > 0 && (
+            {/* Pagination (Admin only has server-side pagination) */}
+            {isAdmin && pagination.totalPages > 1 && (
               <div className="mt-6">
                 <Pagination
                   page={page}

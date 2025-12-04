@@ -195,6 +195,23 @@ export const put = async <T, D = unknown>(url: string, data?: D, config?: AxiosR
   return res.data;
 };
 
+export const putWithResult = async <T, D = unknown>(url: string, data?: D, config?: AxiosRequestConfig): Promise<ApiResult<T>> => {
+  try {
+    const res = await api.put<BackendEnvelope<T> | T>(url, data, config)
+    if (res.status !== 200 && res.status !== 201) {
+      const err: ApiError = { message: `Unexpected response status: ${res.status} ${res.statusText}` };
+      return { ok: false, error: err, status: res.status };
+    }
+    // Unwrap backend envelope when present
+    const payload = res.data
+    const unwrapped = isBackendEnvelope<T>(payload) ? payload.data as T : payload as T
+    return { ok: true, data: unwrapped }
+  } catch (err) {
+    const e = extractError(err)
+    return { ok: false, error: e, status: isAxiosError(err) ? err.response?.status : undefined }
+  }
+}
+
 export const del = async <T>(url: string, config?: AxiosRequestConfig): Promise<T> => {
   const res = await api.delete<T>(url, config);
   return res.data;

@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 interface Request {
   id: string;
   currentStatus: REQUEST_STATUS;
-  district: string;
+  districtId: string;  // District ID (FK to District model)
   customerId: string;
   agentId?: string | null;
 }
@@ -46,7 +46,7 @@ export function useRequestActions(request: Request): UseRequestActionsReturn {
     // Build request context
     const requestContext: RequestContext = {
       customerId: request.customerId,
-      district: request.district,
+      districtId: request.districtId,
       agentId: request.agentId,
     };
 

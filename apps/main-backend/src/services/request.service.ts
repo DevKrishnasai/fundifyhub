@@ -41,7 +41,7 @@ export interface UserContext {
 
 export interface RequestAccessContext {
   customerId: string;
-  district: string;
+  districtId: string;
   agentId: string | null;
   adminId: string | null;
 }
@@ -196,7 +196,7 @@ export async function getRequestDetail(
       },
       {
         customerId: request.customerId,
-        district: request.district,
+        districtId: request.districtId,
         agentId: request.assignedAgentId,
         adminId: request.assignedAdminId
       },
@@ -439,16 +439,20 @@ export async function assignAgent(
       return { success: false, error: 'Forbidden', statusCode: 403 };
     }
 
-    if (!isSuper && !user.districts.includes(request.district)) {
+    if (!isSuper && !user.districts.includes(request.districtId)) {
       return { success: false, error: 'Forbidden', statusCode: 403 };
     }
 
     // Validate agent
-    const agent = await prisma.user.findUnique({ where: { id: agentId } });
+    const agent = await prisma.user.findUnique({ 
+      where: { id: agentId },
+      include: { districtAssignments: { where: { deletedAt: null }, select: { districtId: true } } }
+    });
     if (!agent || !Array.isArray(agent.roles) || !agent.roles.includes(ROLES.AGENT) || !agent.isActive) {
       return { success: false, error: 'Invalid agent', statusCode: 400 };
     }
-    if (!Array.isArray(agent.district) || !agent.district.includes(request.district)) {
+    const agentDistrictIds = agent.districtAssignments.map(da => da.districtId);
+    if (!agentDistrictIds.includes(request.districtId)) {
       return { success: false, error: 'Agent not available in request district', statusCode: 400 };
     }
 
@@ -554,7 +558,7 @@ export async function selfAssignAdmin(
       return { success: false, error: 'Only admins can self-assign to requests', statusCode: 403 };
     }
 
-    if (!isSuper && !user.districts.includes(request.district)) {
+    if (!isSuper && !user.districts.includes(request.districtId)) {
       return { success: false, error: 'You do not have access to this district', statusCode: 403 };
     }
 
@@ -646,7 +650,7 @@ async function getFullRequestWithRelations(requestId: string) {
  * Get available agents for a district
  */
 export async function getAvailableAgents(
-  district: string,
+  districtId: string,
   user: UserContext
 ): Promise<{ success: boolean; agents?: unknown[]; error?: string; statusCode: number }> {
   try {
@@ -657,14 +661,16 @@ export async function getAvailableAgents(
       return { success: false, error: 'Forbidden', statusCode: 403 };
     }
 
-    if (!isSuper && !user.districts.includes(district)) {
+    if (!isSuper && !user.districts.includes(districtId)) {
       return { success: false, error: 'Forbidden', statusCode: 403 };
     }
 
     const agents = await prisma.user.findMany({
       where: {
         roles: { has: ROLES.AGENT },
-        district: { has: district },
+        districtAssignments: {
+          some: { districtId, deletedAt: null }
+        },
         isActive: true
       },
       select: {
@@ -673,7 +679,10 @@ export async function getAvailableAgents(
         lastName: true,
         email: true,
         phoneNumber: true,
-        district: true
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: { districtId: true, district: { select: { name: true } } }
+        }
       }
     });
 
@@ -688,7 +697,7 @@ export async function getAvailableAgents(
  * Get available district admins for a district
  */
 export async function getAvailableAdmins(
-  district: string,
+  districtId: string,
   user: UserContext
 ): Promise<{ success: boolean; admins?: unknown[]; error?: string; statusCode: number }> {
   try {
@@ -701,7 +710,9 @@ export async function getAvailableAdmins(
     const admins = await prisma.user.findMany({
       where: {
         roles: { has: ROLES.DISTRICT_ADMIN },
-        district: { has: district },
+        districtAssignments: {
+          some: { districtId, deletedAt: null }
+        },
         isActive: true
       },
       select: {
@@ -710,7 +721,10 @@ export async function getAvailableAdmins(
         lastName: true,
         email: true,
         phoneNumber: true,
-        district: true
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: { districtId: true, district: { select: { name: true } } }
+        }
       }
     });
 

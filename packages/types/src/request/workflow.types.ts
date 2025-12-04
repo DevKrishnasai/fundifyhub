@@ -169,7 +169,7 @@ export interface WorkflowActionConfig {
  */
 export interface RequestContext {
   customerId: string;
-  district: string;
+  districtId: string;  // District ID (FK to District model)
   agentId?: string | null;
   adminId?: string | null;
 }
@@ -1086,7 +1086,7 @@ export function getActionsForUser(
 
   const hasDistrictAccess = (): boolean => {
     if (user.roles.includes(ROLES.SUPER_ADMIN)) return true;
-    return user.districts?.includes(request.district) ?? false;
+    return user.districts?.includes(request.districtId) ?? false;
   };
 
   const canPerformAction = (action: WorkflowAction): boolean => {
@@ -1155,7 +1155,7 @@ export function canViewRequestDetail(
     if (user.id === request.adminId) {
       return true;
     }
-    if (user.districts?.includes(request.district)) {
+    if (user.districts?.includes(request.districtId)) {
       if (currentStatus && PENDING_REQUEST_STATUSES.includes(currentStatus) && !request.adminId) {
         return true;
       }

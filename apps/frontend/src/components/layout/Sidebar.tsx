@@ -25,6 +25,8 @@ import {
   ScrollText,
   Bell,
   Upload,
+  MapPin,
+  Package,
 } from "lucide-react"
 
 // Icon mapping from string to component
@@ -37,6 +39,8 @@ const iconMap: Record<string, React.ElementType> = {
   ScrollText,
   Bell,
   Upload,
+  MapPin,
+  Package,
 }
 
 interface SidebarProps {

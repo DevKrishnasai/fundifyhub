@@ -1,11 +1,15 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AppLayout, PageContainer, PageHeader } from "@/components/layout/AppLayout"
-import { BACKEND_API_CONFIG } from "@/lib/urls"
-import { apiClient } from "@/lib/api-client"
+import { 
+  useNotifications, 
+  useMarkNotificationRead, 
+  useMarkAllNotificationsRead,
+  useDeleteNotification 
+} from "@/hooks/queries/useNotifications"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,25 +23,18 @@ import {
   Clock, CheckCircle, XCircle, Info
 } from "lucide-react"
 
-interface Notification {
+interface NotificationItem {
   id: string
   title: string
   message: string
   type: string
-  isRead: boolean
+  read: boolean
   createdAt: string
-  metadata?: {
+  data?: {
     requestId?: string
     loanId?: string
     actionUrl?: string
   }
-}
-
-interface PaginationInfo {
-  page: number
-  limit: number
-  total: number
-  totalPages: number
 }
 
 function NotificationsSkeleton() {
@@ -100,25 +97,29 @@ function formatTimeAgo(dateString: string): string {
   })
 }
 
-function NotificationItem({ 
+function NotificationItemComponent({ 
   notification, 
   onMarkRead, 
-  onDelete 
+  onDelete,
+  isMarkingRead,
+  isDeleting 
 }: { 
-  notification: Notification
+  notification: NotificationItem
   onMarkRead: (id: string) => void
   onDelete: (id: string) => void
+  isMarkingRead: boolean
+  isDeleting: boolean
 }) {
   return (
     <div 
       className={cn(
         "flex items-start gap-4 p-4 rounded-lg border transition-colors",
-        notification.isRead ? "bg-background" : "bg-muted/50"
+        notification.read ? "bg-background" : "bg-muted/50"
       )}
     >
       <div className={cn(
         "p-2 rounded-lg",
-        notification.isRead ? "bg-muted" : "bg-primary/10"
+        notification.read ? "bg-muted" : "bg-primary/10"
       )}>
         {getNotificationIcon(notification.type)}
       </div>
@@ -127,11 +128,11 @@ function NotificationItem({
         <div className="flex items-center gap-2">
           <p className={cn(
             "font-medium",
-            !notification.isRead && "text-foreground"
+            !notification.read && "text-foreground"
           )}>
             {notification.title}
           </p>
-          {!notification.isRead && (
+          {!notification.read && (
             <Circle className="h-2 w-2 fill-primary text-primary" />
           )}
         </div>
@@ -143,23 +144,28 @@ function NotificationItem({
           <span className="text-xs text-muted-foreground">
             {formatTimeAgo(notification.createdAt)}
           </span>
-          {notification.metadata?.requestId && (
+          {notification.data?.requestId && (
             <Badge variant="outline" className="text-xs">
-              Request #{notification.metadata.requestId.slice(0, 8)}
+              Request #{notification.data.requestId.slice(0, 8)}
             </Badge>
           )}
         </div>
       </div>
 
       <div className="flex items-center gap-1">
-        {!notification.isRead && (
+        {!notification.read && (
           <Button 
             variant="ghost" 
             size="icon" 
             className="h-8 w-8"
             onClick={() => onMarkRead(notification.id)}
+            disabled={isMarkingRead}
           >
-            <CheckCheck className="h-4 w-4" />
+            {isMarkingRead ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCheck className="h-4 w-4" />
+            )}
           </Button>
         )}
         <Button 
@@ -167,8 +173,13 @@ function NotificationItem({
           size="icon" 
           className="h-8 w-8 text-muted-foreground hover:text-destructive"
           onClick={() => onDelete(notification.id)}
+          disabled={isDeleting}
         >
-          <Trash2 className="h-4 w-4" />
+          {isDeleting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
         </Button>
       </div>
     </div>
@@ -177,67 +188,66 @@ function NotificationItem({
 
 function NotificationsContent() {
   const { user, isLoading: authLoading } = useAuth()
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [pagination, setPagination] = useState<PaginationInfo | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isMarkingAll, setIsMarkingAll] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const [markingReadId, setMarkingReadId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const fetchNotifications = useCallback(async (page = 1) => {
-    setIsLoading(true)
-    try {
-      const response = await apiClient.get(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.LIST, {
-        params: { page, limit: pageSize }
-      })
-      const data = response.data.data || response.data
-      setNotifications(data.notifications || data || [])
-      setPagination(data.pagination || null)
-    } catch {
-      toast.error("Failed to load notifications")
-    } finally {
-      setIsLoading(false)
-    }
-  }, [pageSize])
+  // React Query hooks
+  const { 
+    data, 
+    isLoading, 
+    isError 
+  } = useNotifications(
+    { page: currentPage, limit: pageSize },
+    { enabled: !!user }
+  )
 
-  useEffect(() => {
-    if (user) {
-      fetchNotifications(currentPage)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, currentPage])
+  const markReadMutation = useMarkNotificationRead()
+  const markAllReadMutation = useMarkAllNotificationsRead()
+  const deleteMutation = useDeleteNotification()
+
+  // Transform data to match component expectations
+  const notifications: NotificationItem[] = (data?.notifications || []).map(n => ({
+    id: n.id,
+    title: n.title,
+    message: n.message,
+    type: n.type,
+    read: n.read,
+    createdAt: n.createdAt,
+    data: n.data as NotificationItem['data']
+  }))
+  const pagination = data?.pagination
 
   const handleMarkRead = async (id: string) => {
+    setMarkingReadId(id)
     try {
-      await apiClient.put(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.MARK_READ(id))
-      setNotifications(prev => 
-        prev.map(n => n.id === id ? { ...n, isRead: true } : n)
-      )
+      await markReadMutation.mutateAsync(id)
     } catch {
       toast.error("Failed to mark as read")
+    } finally {
+      setMarkingReadId(null)
     }
   }
 
   const handleMarkAllRead = async () => {
-    setIsMarkingAll(true)
     try {
-      await apiClient.put(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.MARK_ALL_READ)
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      await markAllReadMutation.mutateAsync()
       toast.success("All notifications marked as read")
     } catch {
       toast.error("Failed to mark all as read")
-    } finally {
-      setIsMarkingAll(false)
     }
   }
 
   const handleDelete = async (id: string) => {
+    setDeletingId(id)
     try {
-      await apiClient.delete(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.DELETE(id))
-      setNotifications(prev => prev.filter(n => n.id !== id))
+      await deleteMutation.mutateAsync(id)
       toast.success("Notification deleted")
     } catch {
       toast.error("Failed to delete notification")
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -249,7 +259,7 @@ function NotificationsContent() {
     return null
   }
 
-  const unreadCount = notifications.filter(n => !n.isRead).length
+  const unreadCount = notifications.filter(n => !n.read).length
 
   return (
     <AppLayout>
@@ -263,9 +273,9 @@ function NotificationsContent() {
                 variant="outline" 
                 size="sm" 
                 onClick={handleMarkAllRead}
-                disabled={isMarkingAll}
+                disabled={markAllReadMutation.isPending}
               >
-                {isMarkingAll ? (
+                {markAllReadMutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <CheckCheck className="h-4 w-4 mr-2" />
@@ -281,6 +291,11 @@ function NotificationsContent() {
             {[...Array(5)].map((_, i) => (
               <Skeleton key={i} className="h-24 rounded-lg" />
             ))}
+          </div>
+        ) : isError ? (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-8 text-center">
+            <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
+            <p className="text-destructive font-medium">Failed to load notifications</p>
           </div>
         ) : notifications.length === 0 ? (
           <div className="rounded-lg border">
@@ -309,11 +324,13 @@ function NotificationsContent() {
             {/* Notification List */}
             <div className="space-y-3">
               {notifications.map((notification) => (
-                <NotificationItem
+                <NotificationItemComponent
                   key={notification.id}
                   notification={notification}
                   onMarkRead={handleMarkRead}
                   onDelete={handleDelete}
+                  isMarkingRead={markingReadId === notification.id}
+                  isDeleting={deletingId === notification.id}
                 />
               ))}
             </div>

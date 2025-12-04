@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { APIResponseType } from '../../../types';
 import logger from '../../../utils/logger';
-import { Prisma, prisma } from '@fundifyhub/prisma';
+import { Prisma, prisma, UserRole } from '@fundifyhub/prisma';
 import { ROLES } from '@fundifyhub/types';
 import bcrypt from 'bcrypt';
 import { checkUserExists } from './utils';
@@ -51,7 +51,6 @@ export async function createUserController(req: Request, res: Response): Promise
       firstName,
       lastName,
       phoneNumber,
-      district,
       roles: roles || [ROLES.CUSTOMER],
       isActive: isActive !== undefined ? isActive : true,
       password: hashedPassword,
@@ -69,17 +68,38 @@ export async function createUserController(req: Request, res: Response): Promise
         roles: true,
         isActive: true,
         phoneNumber: true,
-        district: true,
         createdAt: true,
         updatedAt: true,
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            districtId: true,
+            isPrimary: true,
+            district: { select: { id: true, name: true, code: true } }
+          }
+        },
       },
     });
+
+    // Create district assignments if provided
+    if (district && Array.isArray(district) && district.length > 0) {
+      await prisma.userDistrictAssignment.createMany({
+        data: district.map((districtId: string, idx: number) => ({
+          userId: user.id,
+          districtId,
+          isPrimary: idx === 0,
+        })),
+      });
+    }
 
     // Get admin name for notification
     const adminUser = req.user;
     const adminName = adminUser 
       ? `${adminUser.firstName || ''} ${adminUser.lastName || ''}`.trim() || adminUser.email
       : 'Administrator';
+
+    // Get district names from assignments for notification
+    const userDistrictNames = user.districtAssignments?.map(a => a.district.name) || [];
 
     // Send notification with credentials to the new user
     sendAdminUserCreatedNotification(
@@ -93,7 +113,7 @@ export async function createUserController(req: Request, res: Response): Promise
         tempPassword,
         createdByAdmin: adminName,
         assignedRoles: user.roles as string[],
-        assignedDistricts: user.district || [],
+        assignedDistricts: userDistrictNames,
       }
     ).catch((err) => {
       logger.error('Failed to send admin user created notification:', err);
@@ -105,7 +125,7 @@ export async function createUserController(req: Request, res: Response): Promise
       firstName: user.firstName,
       lastName: user.lastName,
       roles: user.roles,
-      districts: user.district,
+      districts: userDistrictNames,
       createdByAdmin: true,
     }).catch(() => {});
 
@@ -132,11 +152,17 @@ export async function listUsersController(req: Request, res: Response): Promise<
     const where: Prisma.UserWhereInput = {};
 
     if (role && typeof role === 'string') {
-      where.roles = { has: role };
+      // Cast role string to UserRole enum
+      where.roles = { has: role as UserRole };
     }
 
     if (district && typeof district === 'string') {
-      where.district = { has: district };
+      where.districtAssignments = {
+        some: {
+          districtId: district,
+          deletedAt: null,
+        },
+      };
     }
 
     if (isActive !== undefined && typeof isActive === 'string') {
@@ -166,9 +192,16 @@ export async function listUsersController(req: Request, res: Response): Promise<
           roles: true,
           isActive: true,
           phoneNumber: true,
-          district: true,
           createdAt: true,
           updatedAt: true,
+          districtAssignments: {
+            where: { deletedAt: null },
+            select: {
+              districtId: true,
+              isPrimary: true,
+              district: { select: { id: true, name: true, code: true } }
+            }
+          },
           _count: {
             select: {
               requests: true,
@@ -182,7 +215,7 @@ export async function listUsersController(req: Request, res: Response): Promise<
     // Transform users to include districts array for frontend compatibility
     const transformedUsers = users.map(user => ({
       ...user,
-      districts: user.district || [],
+      districts: user.districtAssignments?.map(a => a.district.name) || [],
     }));
 
     res.status(200).json({
@@ -217,7 +250,21 @@ export async function updateUserController(req: Request, res: Response): Promise
     // Get current user state before update
     const currentUser = await prisma.user.findUnique({
       where: { id },
-      select: { isActive: true, firstName: true, lastName: true, email: true, roles: true, phoneNumber: true, district: true }
+      select: { 
+        isActive: true, 
+        firstName: true, 
+        lastName: true, 
+        email: true, 
+        roles: true, 
+        phoneNumber: true,
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            districtId: true,
+            district: { select: { id: true, name: true } }
+          }
+        },
+      }
     });
 
     if (!currentUser) {
@@ -244,7 +291,6 @@ export async function updateUserController(req: Request, res: Response): Promise
     if (payload.firstName !== undefined) allowed.firstName = payload.firstName;
     if (payload.lastName !== undefined) allowed.lastName = payload.lastName;
     if (payload.phoneNumber !== undefined) allowed.phoneNumber = payload.phoneNumber;
-    if (payload.district !== undefined) allowed.district = payload.district;
 
     const updated = await prisma.user.update({
       where: { id },
@@ -257,11 +303,38 @@ export async function updateUserController(req: Request, res: Response): Promise
         roles: true,
         isActive: true,
         phoneNumber: true,
-        district: true,
         createdAt: true,
         updatedAt: true,
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            districtId: true,
+            isPrimary: true,
+            district: { select: { id: true, name: true, code: true } }
+          }
+        },
       },
     });
+
+    // Handle district assignments update if provided
+    if (payload.district !== undefined && Array.isArray(payload.district)) {
+      // Soft delete existing assignments
+      await prisma.userDistrictAssignment.updateMany({
+        where: { userId: id, deletedAt: null },
+        data: { deletedAt: new Date(), deletedBy: req.user?.id },
+      });
+      // Create new assignments
+      if (payload.district.length > 0) {
+        await prisma.userDistrictAssignment.createMany({
+          data: payload.district.map((districtId: string, idx: number) => ({
+            userId: id,
+            districtId,
+            isPrimary: idx === 0,
+            assignedBy: req.user?.id,
+          })),
+        });
+      }
+    }
 
     // Audit: User updated by admin
     // Track what changed
@@ -290,9 +363,11 @@ export async function updateUserController(req: Request, res: Response): Promise
       changes.phoneNumber = payload.phoneNumber;
       previousValues.phoneNumber = currentUser.phoneNumber;
     }
-    if (payload.district !== undefined && JSON.stringify(payload.district) !== JSON.stringify(currentUser.district)) {
+    // Track district changes
+    const currentDistrictIds = currentUser.districtAssignments?.map(a => a.districtId) || [];
+    if (payload.district !== undefined && JSON.stringify(payload.district) !== JSON.stringify(currentDistrictIds)) {
       changes.district = payload.district;
-      previousValues.district = currentUser.district;
+      previousValues.district = currentDistrictIds;
     }
 
     if (Object.keys(changes).length > 0) {
@@ -323,7 +398,12 @@ export async function deleteUserController(req: Request, res: Response): Promise
         firstName: true,
         lastName: true,
         roles: true,
-        district: true,
+        districtAssignments: {
+          where: { deletedAt: null },
+          select: {
+            district: { select: { name: true } }
+          }
+        },
       },
     });
 
@@ -340,7 +420,7 @@ export async function deleteUserController(req: Request, res: Response): Promise
       firstName: userToDelete.firstName,
       lastName: userToDelete.lastName,
       roles: userToDelete.roles,
-      districts: userToDelete.district,
+      districts: userToDelete.districtAssignments?.map(a => a.district.name) || [],
     }).catch(() => {});
 
     res.status(200).json({ success: true, message: 'User deleted' } as APIResponseType);
