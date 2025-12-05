@@ -2,7 +2,9 @@
   "extends": "../../tsconfig.node.json",
   "compilerOptions": {
     "composite": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "module": "ES2020",
+    "moduleResolution": "bundler"
   },
   "include": ["src/**/*", "src/**/*.json"],
   "exclude": ["node_modules", "dist"],
@@ -11,6 +13,6 @@
     { "path": "../../packages/types" },
     { "path": "../../packages/utils" },
     { "path": "../../packages/prisma" },
-    { "path": "../../packages/notifications" }
+    { "path": "../../packages/providers" }
   ]
 }

@@ -5,10 +5,11 @@
  * - Payments: Razorpay, Manual
  * - Storage: UploadThing
  * - Cache: Redis
- * - Notifications: Email, WhatsApp, In-App (TODO)
+ * - Notifications: Email, WhatsApp, In-App, Push
  * 
  * @module providers
  */
+
 
 // Payment providers
 export {
@@ -42,6 +43,36 @@ export {
 export type {
   RedisCacheProviderConfig,
 } from './cache';
+
+// Notification providers
+export {
+  NotificationService,
+  NotificationOrchestrator,
+  getNotificationService,
+  NotificationBuilder,
+  createNotification,
+  BaseChannelAdapter,
+  EmailAdapter,
+  getEmailAdapter,
+  WhatsAppAdapter,
+  getWhatsAppAdapter,
+  InAppAdapter,
+  getInAppAdapter,
+  PushAdapter,
+  getPushAdapter,
+} from './notifications';
+
+export * from './notifications/channels';
+
+export type {
+  NotificationServiceConfig,
+  IChannelAdapter,
+  ChannelSendParams,
+  ChannelSendResult,
+  PushSubscription,
+  PushPayload,
+  PushAdapterConfig,
+} from './notifications';
 
 // Audit providers
 export {

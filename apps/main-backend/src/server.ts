@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -7,9 +7,8 @@ import mongoSanitize from 'express-mongo-sanitize';
 import xss from 'xss-clean';
 import hpp from 'hpp';
 import compression from 'compression';
-import config from './utils/config';
-import apiRoutes from './api';
-import { razorpayWebhookController } from './api/payments/razorpay';
+import config from './config';
+import { razorpayWebhookController } from './api/http/controllers/payments/razorpay.controller';
 import logger from './utils/logger';
 import { applyRateLimiting } from './utils/rate-limit';
 import { initializeSocketServer, shutdownSocketServer } from './socket';
@@ -17,6 +16,7 @@ import { notFoundHandler, errorHandler } from './utils/error-handler';
 import { metricsHandler, trackHttpMetrics } from './utils/metrics';
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from './utils/swagger';
+import { registerRoutes } from './api/http/routes';
 
 /*
  * server.ts
@@ -72,15 +72,14 @@ app.use(compression({
 // Trust proxy for accurate IP detection behind reverse proxies
 app.set('trust proxy', 1);
 
-// Allow a small whitelist of dev origins. Important: when credentials
-// are enabled, Access-Control-Allow-Origin must not be '*'. We prefer
-// an explicit list that includes common local/dev hosts.
-const allowedOrigins = [
+// Allow a small whitelist of origins driven by configuration. When credentials
+// are enabled, Access-Control-Allow-Origin must not be '*'.
+const allowedOrigins = Array.from(new Set([
+  config.server.frontendUrl,
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  // Add the LAN/dev IP that the frontend runs on (example from the error)
-  'http://192.168.29.97:3000',
-];
+  ...config.server.additionalCorsOrigins,
+].filter(Boolean)));
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -142,9 +141,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Rate limiting middleware
-app.use('/api/v1', applyRateLimiting);
-
 // Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
@@ -155,7 +151,13 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/api/v1', apiRoutes);
+// Rate limiting middleware
+app.use('/api/v1', applyRateLimiting);
+
+// Mount HTTP API routes
+const apiRouter = express.Router();
+registerRoutes(apiRouter);
+app.use('/api/v1', apiRouter);
 
 /* 404 handler - for unmatched routes */
 app.use(notFoundHandler);

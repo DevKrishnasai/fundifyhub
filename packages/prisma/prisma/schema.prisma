@@ -13,7 +13,8 @@ datasource db {
 // ENUMS - Centralized status definitions
 // ============================================
 
-// User roles - Single role per user (not array)
+// User roles - Users can have multiple roles (e.g., CUSTOMER + AGENT)
+// See User.roles field which is UserRole[] array
 enum UserRole {
   CUSTOMER
   AGENT

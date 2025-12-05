@@ -48,6 +48,8 @@ export const mainBackendEnvSchema = z.object({
 
   // CORS configuration
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL'),
+  // Optional comma-separated list of additional allowed origins for CORS/websocket
+  CORS_ORIGINS: z.string().optional(),
 
   // UploadThing configuration
   UPLOADTHING_TOKEN: z.string().min(1, 'UPLOADTHING_TOKEN is required'),

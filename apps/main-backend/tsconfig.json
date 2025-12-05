@@ -2,14 +2,39 @@
   "extends": "../../tsconfig.node.json",
   "compilerOptions": {
     "composite": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "skipLibCheck": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
+  "include": [
+    "src/server.ts",
+    "src/config/**/*",
+    "src/api/http/**/*",
+    // Only new HTTP layer and server entrypoint
+    "src/domain/**/*",
+    "src/infra-adapters/**/*",
+    "src/socket/**/*",
+    "src/types/**/*",
+    "src/utils/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/api/admin/**/*",
+    "src/api/auth/**/*",
+    "src/api/requests/**/*",
+    "src/api/notifications/**/*",
+    "src/api/geography/**/*",
+    "src/api/assets/**/*",
+    "src/api/auctions/**/*",
+    "src/api/payments/**/*",
+    "src/api/user/**/*",
+    "src/api/webhooks/**/*"
+  ],
   "references": [
     { "path": "../../packages/logger" },
     { "path": "../../packages/types" },
     { "path": "../../packages/utils" },
-    { "path": "../../packages/prisma" }
+    { "path": "../../packages/prisma" },
+    { "path": "../../packages/providers" }
   ]
 }

@@ -31,6 +31,9 @@ export * from './stage-workflow-types';
 // Common utilities and base types
 export * from './common';
 
+// API request/response types
+export * from './api-types';
+
 // Authentication & Authorization
 export * from './auth';
 
@@ -68,6 +71,12 @@ export * from './notification-types';
 
 // Email/WhatsApp template types
 export * from './template-types';
+
+// Backend-only Prisma-dependent API types
+export type * from './api-types-prisma';
+
+// Minimal domain model interfaces (backend services)
+export * from './domain-models';
 
 // WebSocket event types
 export * from './socket-types';

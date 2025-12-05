@@ -220,12 +220,12 @@ importers:
       '@fundifyhub/logger':
         specifier: workspace:*
         version: link:../../packages/logger
-      '@fundifyhub/notifications':
-        specifier: workspace:*
-        version: link:../../packages/notifications
       '@fundifyhub/prisma':
         specifier: workspace:*
         version: link:../../packages/prisma
+      '@fundifyhub/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       '@fundifyhub/utils':
         specifier: workspace:*
         version: link:../../packages/utils
@@ -389,25 +389,6 @@ importers:
         specifier: ^6.1.2
         version: 6.1.2
 
-  packages/notifications:
-    dependencies:
-      '@fundifyhub/logger':
-        specifier: workspace:*
-        version: link:../logger
-      '@fundifyhub/prisma':
-        specifier: workspace:*
-        version: link:../prisma
-      '@fundifyhub/templates':
-        specifier: workspace:*
-        version: link:../templates
-      '@fundifyhub/types':
-        specifier: workspace:*
-        version: link:../types
-    devDependencies:
-      typescript:
-        specifier: ^5.8.2
-        version: 5.9.3
-
   packages/prisma:
     dependencies:
       '@fundifyhub/logger':
@@ -447,44 +428,37 @@ importers:
       '@fundifyhub/types':
         specifier: workspace:*
         version: link:../types
+      '@react-email/components':
+        specifier: ^1.0.1
+        version: 1.0.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@react-email/render':
+        specifier: ^1.4.0
+        version: 1.4.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       ioredis:
         specifier: ^5.4.2
         version: 5.8.2
       razorpay:
         specifier: ^2.9.6
         version: 2.9.6
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
       uploadthing:
         specifier: ^7.4.4
         version: 7.7.4(express@4.21.2)(next@15.5.6(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(tailwindcss@4.1.15)
     devDependencies:
+      '@types/react':
+        specifier: ^18.2.20
+        version: 18.3.24
+      '@types/react-dom':
+        specifier: ^18.2.7
+        version: 18.3.7(@types/react@18.3.24)
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
-
-  packages/templates:
-    dependencies:
-      '@fundifyhub/types':
-        specifier: workspace:*
-        version: link:../types
-    devDependencies:
-      '@react-email/components':
-        specifier: ^0.5.7
-        version: 0.5.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@react-email/render':
-        specifier: ^1.4.0
-        version: 1.4.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@types/react':
-        specifier: ^18.3.24
-        version: 18.3.24
-      '@types/react-dom':
-        specifier: ^18.3.7
-        version: 18.3.7(@types/react@18.3.24)
-      react:
-        specifier: ^18.3.1
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.3.1
-        version: 18.3.1(react@18.3.1)
 
   packages/types:
     dependencies:
@@ -494,9 +468,6 @@ importers:
 
   packages/utils:
     dependencies:
-      '@fundifyhub/templates':
-        specifier: workspace:*
-        version: link:../templates
       '@fundifyhub/types':
         specifier: workspace:*
         version: link:../types
@@ -1985,8 +1956,8 @@ packages:
   '@radix-ui/rect@1.1.1':
     resolution: {integrity: sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw==}
 
-  '@react-email/body@0.1.0':
-    resolution: {integrity: sha512-o1bcSAmDYNNHECbkeyceCVPGmVsYvT+O3sSO/Ct7apKUu3JphTi31hu+0Nwqr/pgV5QFqdoT5vdS3SW5DJFHgQ==}
+  '@react-email/body@0.2.0':
+    resolution: {integrity: sha512-9GCWmVmKUAoRfloboCd+RKm6X17xn7eGL7HnpAZUnjBXBilWCxsKnLMTC/ixSHDKS/A/057M1Tx6ZUXd89sVBw==}
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
@@ -1996,9 +1967,9 @@ packages:
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
-  '@react-email/code-block@0.1.0':
-    resolution: {integrity: sha512-jSpHFsgqnQXxDIssE4gvmdtFncaFQz5D6e22BnVjcCPk/udK+0A9jRwGFEG8JD2si9ZXBmU4WsuqQEczuZn4ww==}
-    engines: {node: '>=18.0.0'}
+  '@react-email/code-block@0.2.0':
+    resolution: {integrity: sha512-eIrPW9PIFgDopQU0e/OPpwCW2QWQDtNZDSsiN4sJO8KdMnWWnXJicnRfzrit5rHwFo+Y98i+w/Y5ScnBAFr1dQ==}
+    engines: {node: '>=22.0.0'}
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
@@ -2014,9 +1985,9 @@ packages:
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
-  '@react-email/components@0.5.7':
-    resolution: {integrity: sha512-ECyVoyDcev2FSQ7C0buXaIJ0+6MRDXNUbCOZwBRrlLdCCRjap2b4+MHrYSTXFzo5kqfjjRoyo/2PbJXFQni67g==}
-    engines: {node: '>=18.0.0'}
+  '@react-email/components@1.0.1':
+    resolution: {integrity: sha512-HnL0Y/up61sOBQT2cQg9N/kCoW0bP727gDs2MkFWQYELg6+iIHidMDvENXFC0f1ZE6hTB+4t7sszptvTcJWsDA==}
+    engines: {node: '>=22.0.0'}
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
@@ -2067,9 +2038,9 @@ packages:
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
-  '@react-email/markdown@0.0.16':
-    resolution: {integrity: sha512-KSUHmoBMYhvc6iGwlIDkm0DRGbGQ824iNjLMCJsBVUoKHGQYs7F/N3b1tnS1YzRUX+GwHIexSsHuIUEi1m+8OQ==}
-    engines: {node: '>=18.0.0'}
+  '@react-email/markdown@0.0.17':
+    resolution: {integrity: sha512-6op3AfsBC9BJKkhG+eoMFRFWlr0/f3FYbtQrK+VhGzJocEAY0WINIFN+W8xzXr//3IL0K/aKtnH3FtpIuescQQ==}
+    engines: {node: '>=22.0.0'}
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
@@ -2086,6 +2057,13 @@ packages:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
       react-dom: ^18.0 || ^19.0 || ^19.0.0-rc
 
+  '@react-email/render@2.0.0':
+    resolution: {integrity: sha512-rdjNj6iVzv8kRKDPFas+47nnoe6B40+nwukuXwY4FCwM7XBg6tmYr+chQryCuavUj2J65MMf6fztk1bxOUiSVA==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      react: ^18.0 || ^19.0 || ^19.0.0-rc
+      react-dom: ^18.0 || ^19.0 || ^19.0.0-rc
+
   '@react-email/row@0.0.12':
     resolution: {integrity: sha512-HkCdnEjvK3o+n0y0tZKXYhIXUNPDx+2vq1dJTmqappVHXS5tXS6W5JOPZr5j+eoZ8gY3PShI2LWj5rWF7ZEtIQ==}
     engines: {node: '>=18.0.0'}
@@ -2098,11 +2076,43 @@ packages:
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
-  '@react-email/tailwind@1.2.2':
-    resolution: {integrity: sha512-heO9Khaqxm6Ulm6p7HQ9h01oiiLRrZuuEQuYds/O7Iyp3c58sMVHZGIxiRXO/kSs857NZQycpjewEVKF3jhNTw==}
-    engines: {node: '>=18.0.0'}
+  '@react-email/tailwind@2.0.1':
+    resolution: {integrity: sha512-/xq0IDYVY7863xPY7cdI45Xoz7M6CnIQBJcQvbqN7MNVpopfH9f+mhjayV1JGfKaxlGWuxfLKhgi9T2shsnEFg==}
+    engines: {node: '>=22.0.0'}
     peerDependencies:
+      '@react-email/body': 0.2.0
+      '@react-email/button': 0.2.0
+      '@react-email/code-block': 0.2.0
+      '@react-email/code-inline': 0.0.5
+      '@react-email/container': 0.0.15
+      '@react-email/heading': 0.0.15
+      '@react-email/hr': 0.0.11
+      '@react-email/img': 0.0.11
+      '@react-email/link': 0.0.12
+      '@react-email/preview': 0.0.13
+      '@react-email/text': 0.1.5
       react: ^18.0 || ^19.0 || ^19.0.0-rc
+    peerDependenciesMeta:
+      '@react-email/body':
+        optional: true
+      '@react-email/button':
+        optional: true
+      '@react-email/code-block':
+        optional: true
+      '@react-email/code-inline':
+        optional: true
+      '@react-email/container':
+        optional: true
+      '@react-email/heading':
+        optional: true
+      '@react-email/hr':
+        optional: true
+      '@react-email/img':
+        optional: true
+      '@react-email/link':
+        optional: true
+      '@react-email/preview':
+        optional: true
 
   '@react-email/text@0.1.5':
     resolution: {integrity: sha512-o5PNHFSE085VMXayxH+SJ1LSOtGsTv+RpNKnTiJDrJUwoBu77G3PlKOsZZQHCNyD28WsQpl9v2WcJLbQudqwPg==}
@@ -3214,9 +3224,6 @@ packages:
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
-
-  csstype@3.1.3:
-    resolution: {integrity: sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==}
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
@@ -7485,7 +7492,7 @@ snapshots:
 
   '@radix-ui/rect@1.1.1': {}
 
-  '@react-email/body@0.1.0(react@18.3.1)':
+  '@react-email/body@0.2.0(react@18.3.1)':
     dependencies:
       react: 18.3.1
 
@@ -7493,7 +7500,7 @@ snapshots:
     dependencies:
       react: 18.3.1
 
-  '@react-email/code-block@0.1.0(react@18.3.1)':
+  '@react-email/code-block@0.2.0(react@18.3.1)':
     dependencies:
       prismjs: 1.30.0
       react: 18.3.1
@@ -7506,11 +7513,11 @@ snapshots:
     dependencies:
       react: 18.3.1
 
-  '@react-email/components@0.5.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@react-email/components@1.0.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
-      '@react-email/body': 0.1.0(react@18.3.1)
+      '@react-email/body': 0.2.0(react@18.3.1)
       '@react-email/button': 0.2.0(react@18.3.1)
-      '@react-email/code-block': 0.1.0(react@18.3.1)
+      '@react-email/code-block': 0.2.0(react@18.3.1)
       '@react-email/code-inline': 0.0.5(react@18.3.1)
       '@react-email/column': 0.0.13(react@18.3.1)
       '@react-email/container': 0.0.15(react@18.3.1)
@@ -7521,12 +7528,12 @@ snapshots:
       '@react-email/html': 0.0.11(react@18.3.1)
       '@react-email/img': 0.0.11(react@18.3.1)
       '@react-email/link': 0.0.12(react@18.3.1)
-      '@react-email/markdown': 0.0.16(react@18.3.1)
+      '@react-email/markdown': 0.0.17(react@18.3.1)
       '@react-email/preview': 0.0.13(react@18.3.1)
-      '@react-email/render': 1.4.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@react-email/render': 2.0.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@react-email/row': 0.0.12(react@18.3.1)
       '@react-email/section': 0.0.16(react@18.3.1)
-      '@react-email/tailwind': 1.2.2(react@18.3.1)
+      '@react-email/tailwind': 2.0.1(@react-email/body@0.2.0(react@18.3.1))(@react-email/button@0.2.0(react@18.3.1))(@react-email/code-block@0.2.0(react@18.3.1))(@react-email/code-inline@0.0.5(react@18.3.1))(@react-email/container@0.0.15(react@18.3.1))(@react-email/heading@0.0.15(react@18.3.1))(@react-email/hr@0.0.11(react@18.3.1))(@react-email/img@0.0.11(react@18.3.1))(@react-email/link@0.0.12(react@18.3.1))(@react-email/preview@0.0.13(react@18.3.1))(@react-email/text@0.1.5(react@18.3.1))(react@18.3.1)
       '@react-email/text': 0.1.5(react@18.3.1)
       react: 18.3.1
     transitivePeerDependencies:
@@ -7564,7 +7571,7 @@ snapshots:
     dependencies:
       react: 18.3.1
 
-  '@react-email/markdown@0.0.16(react@18.3.1)':
+  '@react-email/markdown@0.0.17(react@18.3.1)':
     dependencies:
       marked: 15.0.12
       react: 18.3.1
@@ -7581,6 +7588,13 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       react-promise-suspense: 0.3.4
 
+  '@react-email/render@2.0.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      html-to-text: 9.0.5
+      prettier: 3.7.3
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
   '@react-email/row@0.0.12(react@18.3.1)':
     dependencies:
       react: 18.3.1
@@ -7589,9 +7603,22 @@ snapshots:
     dependencies:
       react: 18.3.1
 
-  '@react-email/tailwind@1.2.2(react@18.3.1)':
+  '@react-email/tailwind@2.0.1(@react-email/body@0.2.0(react@18.3.1))(@react-email/button@0.2.0(react@18.3.1))(@react-email/code-block@0.2.0(react@18.3.1))(@react-email/code-inline@0.0.5(react@18.3.1))(@react-email/container@0.0.15(react@18.3.1))(@react-email/heading@0.0.15(react@18.3.1))(@react-email/hr@0.0.11(react@18.3.1))(@react-email/img@0.0.11(react@18.3.1))(@react-email/link@0.0.12(react@18.3.1))(@react-email/preview@0.0.13(react@18.3.1))(@react-email/text@0.1.5(react@18.3.1))(react@18.3.1)':
     dependencies:
+      '@react-email/text': 0.1.5(react@18.3.1)
       react: 18.3.1
+      tailwindcss: 4.1.15
+    optionalDependencies:
+      '@react-email/body': 0.2.0(react@18.3.1)
+      '@react-email/button': 0.2.0(react@18.3.1)
+      '@react-email/code-block': 0.2.0(react@18.3.1)
+      '@react-email/code-inline': 0.0.5(react@18.3.1)
+      '@react-email/container': 0.0.15(react@18.3.1)
+      '@react-email/heading': 0.0.15(react@18.3.1)
+      '@react-email/hr': 0.0.11(react@18.3.1)
+      '@react-email/img': 0.0.11(react@18.3.1)
+      '@react-email/link': 0.0.12(react@18.3.1)
+      '@react-email/preview': 0.0.13(react@18.3.1)
 
   '@react-email/text@0.1.5(react@18.3.1)':
     dependencies:
@@ -8113,7 +8140,7 @@ snapshots:
   '@types/react@18.3.24':
     dependencies:
       '@types/prop-types': 15.7.15
-      csstype: 3.1.3
+      csstype: 3.2.3
 
   '@types/send@0.17.5':
     dependencies:
@@ -8862,8 +8889,6 @@ snapshots:
 
   crypto-js@4.2.0: {}
 
-  csstype@3.1.3: {}
-
   csstype@3.2.3: {}
 
   damerau-levenshtein@1.0.8: {}
@@ -9239,7 +9264,7 @@ snapshots:
       eslint: 9.39.1(jiti@2.6.1)
       eslint-import-resolver-node: 0.3.9
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.1(jiti@2.6.1)))(eslint@9.39.1(jiti@2.6.1))
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.1(jiti@2.6.1)))(eslint@9.39.1(jiti@2.6.1)))(eslint@9.39.1(jiti@2.6.1))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.1(jiti@2.6.1))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.39.1(jiti@2.6.1))
       eslint-plugin-react: 7.37.5(eslint@9.39.1(jiti@2.6.1))
       eslint-plugin-react-hooks: 5.2.0(eslint@9.39.1(jiti@2.6.1))
@@ -9273,7 +9298,7 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.1(jiti@2.6.1)))(eslint@9.39.1(jiti@2.6.1)))(eslint@9.39.1(jiti@2.6.1))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.1(jiti@2.6.1))
     transitivePeerDependencies:
       - supports-color
 
@@ -9288,7 +9313,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.1(jiti@2.6.1)))(eslint@9.39.1(jiti@2.6.1)))(eslint@9.39.1(jiti@2.6.1)):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.1(jiti@2.6.1)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9

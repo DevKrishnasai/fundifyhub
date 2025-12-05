@@ -10,6 +10,5 @@
   "exclude": ["node_modules", "dist"],
   "references": [
     { "path": "../types" }
-    ,{ "path": "../templates" }
   ]
 }

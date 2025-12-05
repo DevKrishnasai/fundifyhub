@@ -5,7 +5,7 @@ import { QUEUE_NAMES, NotificationChannel, SERVICE_NAMES } from '@fundifyhub/typ
 import {
   NotificationService,
   type NotificationRequest,
-} from '@fundifyhub/notifications';
+} from '@fundifyhub/providers/notifications';
 import type { NotificationJobData } from '@fundifyhub/utils/server';
 import { serviceManager } from '../services/service-manager';
 
@@ -139,16 +139,16 @@ export class NotificationWorker extends BaseWorker<NotificationJobData> {
         return { success: true };
       } else {
         const failedChannels = result.channelResults
-          .filter(r => r.status !== 'SENT')
-          .map(r => `${r.channel}: ${r.error}`)
+          .filter((r: any) => r.status !== 'SENT')
+          .map((r: any) => `${r.channel}: ${r.error}`)
           .join(', ');
 
         // Check if only in-app notifications failed - these are often due to data issues
         // and shouldn't fail the entire notification job if other channels succeeded
-        const inAppFailures = result.channelResults.filter(r => 
+        const inAppFailures = result.channelResults.filter((r: any) => 
           r.channel === 'IN_APP' && r.status !== 'SENT'
         );
-        const otherChannelSuccesses = result.channelResults.filter(r => 
+        const otherChannelSuccesses = result.channelResults.filter((r: any) => 
           r.channel !== 'IN_APP' && r.status === 'SENT'
         );
 

@@ -18,10 +18,9 @@
       "@fundifyhub/types": ["./packages/types/src"],
       "@fundifyhub/utils": ["./packages/utils/src"],
       "@fundifyhub/utils/server": ["./packages/utils/src/server"],
-      "@fundifyhub/templates": ["./packages/templates/src"],
+      "@fundifyhub/providers": ["./packages/providers/src"],
       "@fundifyhub/prisma": ["./packages/prisma/src"],
-      "@fundifyhub/logger": ["./packages/logger/src"],
-      "@fundifyhub/notifications": ["./packages/notifications/src"]
+      "@fundifyhub/logger": ["./packages/logger/src"]
     }
   },
   "include": ["src/**/*"],

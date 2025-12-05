@@ -5,12 +5,19 @@
     "composite": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "allowJs": true,
+    "skipLibCheck": true
   },
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist"],
   "references": [
-    { "path": "../types" }
+    { "path": "../types" },
+    { "path": "../logger" },
+    { "path": "../utils" },
+    { "path": "../prisma" }
   ]
 }
