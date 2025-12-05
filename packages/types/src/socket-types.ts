@@ -106,6 +106,10 @@ export interface RequestUpdatedPayload {
   oldValue?: unknown;
   newValue?: unknown;
   status?: string;
+  /** New stage-based status (10 values) */
+  stage?: string;
+  /** Sub-status within the stage */
+  subStatus?: string;
   message?: string;
   updatedBy?: {
     id: string;

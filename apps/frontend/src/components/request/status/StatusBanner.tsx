@@ -24,22 +24,36 @@ import {
   UserCheck,
   AlertTriangle,
   RefreshCw,
+  FileEdit,
+  Mail,
+  UserPlus,
+  ClipboardList,
+  ClipboardCheck,
+  ThumbsUp,
+  UserX,
+  UserMinus,
+  FileSignature,
+  FileCheck,
+  Building2,
+  Loader2,
+  TrendingUp,
+  Ban,
   type LucideIcon,
 } from 'lucide-react';
 import {
-  REQUEST_STATUS,
-  REQUEST_STATUS_LABELS,
-  REQUEST_STATUS_COLORS,
-  CUSTOMER_ACTION_REQUIRED,
-  ADMIN_ACTION_REQUIRED,
-  AGENT_ACTION_REQUIRED,
-  WORKFLOW_MATRIX,
+  REQUEST_STAGE,
+  SUB_STATUS,
+  STAGE_COLORS,
+  SUB_STATUS_DISPLAY,
+  calculateActionFlags,
+  getStatusDisplay,
+  getStageNumber,
 } from '@fundifyhub/types';
 
 /**
- * Status Banner System
+ * Status Banner System (Stage-Based)
  * 
- * Displays contextual, status-aware banners that guide users through the workflow.
+ * Displays contextual, stage-aware banners that guide users through the workflow.
  * Shows what's happening, what's expected, and who needs to take action.
  */
 
@@ -52,286 +66,178 @@ export type BannerVariant = 'info' | 'warning' | 'success' | 'error' | 'neutral'
 /** Union type for all user roles */
 type UserRoleKey = 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
 
-interface BannerConfig {
+interface StageBannerConfig {
   icon: LucideIcon;
   variant: BannerVariant;
   title: string;
   description: string | Partial<Record<UserRoleKey, string>>;
   actionLabel?: string;
   showProgress?: boolean;
-  phase?: number; // 1-6 for workflow phases
 }
 
-// ============================================
-// STATUS TO BANNER MAPPING
-// ============================================
-
-const STATUS_BANNER_CONFIG: Record<REQUEST_STATUS, BannerConfig> = {
-  // Phase 1: Submission & Review
-  [REQUEST_STATUS.PENDING]: {
-    icon: Clock,
-    variant: 'info',
-    title: 'Awaiting Review',
-    description: {
-      CUSTOMER: 'Your request has been submitted and is waiting for an admin to review it.',
-      DISTRICT_ADMIN: 'New loan request awaiting your review and approval.',
-      SUPER_ADMIN: 'New loan request awaiting review and approval.',
-      AGENT: 'New loan request has been submitted for admin review.',
-    },
-    phase: 1,
-  },
-  [REQUEST_STATUS.UNDER_REVIEW]: {
-    icon: FileSearch,
-    variant: 'info',
-    title: 'Under Review',
-    description: {
-      CUSTOMER: 'An admin is currently reviewing your request and asset details.',
-      DISTRICT_ADMIN: 'You are currently reviewing this request and asset details.',
-      SUPER_ADMIN: 'You are currently reviewing this request and asset details.',
-      AGENT: 'This request is currently under admin review.',
-    },
-    phase: 1,
-  },
-  [REQUEST_STATUS.MORE_INFO_REQUIRED]: {
-    icon: FileText,
-    variant: 'warning',
-    title: 'Additional Information Required',
-    description: {
-      CUSTOMER: 'Please provide the requested documents or information to proceed.',
-      DISTRICT_ADMIN: 'Customer needs to provide additional documents or information.',
-      SUPER_ADMIN: 'Customer needs to provide additional documents or information.',
-      AGENT: 'Customer needs to provide additional documents or information.',
-    },
-    actionLabel: 'View Requirements',
-    phase: 1,
-  },
-
-  // Phase 2: Offer & Negotiation
-  [REQUEST_STATUS.OFFER_SENT]: {
-    icon: Send,
-    variant: 'info',
-    title: 'Offer Awaiting Response',
-    description: {
-      CUSTOMER: 'Review the loan offer and decide whether to accept or decline.',
-      DISTRICT_ADMIN: 'Loan offer sent to customer. Awaiting their response.',
-      SUPER_ADMIN: 'Loan offer sent to customer. Awaiting their response.',
-      AGENT: 'Loan offer has been sent to the customer for review.',
-    },
-    actionLabel: 'Review Offer',
-    phase: 2,
-  },
-  [REQUEST_STATUS.OFFER_ACCEPTED]: {
-    icon: CheckCircle,
-    variant: 'success',
-    title: 'Offer Accepted',
-    description: {
-      CUSTOMER: 'Great! Your offer has been accepted. An agent will be assigned for inspection.',
-      DISTRICT_ADMIN: 'Customer accepted the offer. Assign an agent for inspection.',
-      SUPER_ADMIN: 'Customer accepted the offer. Assign an agent for inspection.',
-      AGENT: 'Customer accepted the offer. You may be assigned for inspection.',
-    },
-    phase: 2,
-  },
-  [REQUEST_STATUS.OFFER_DECLINED]: {
-    icon: XCircle,
-    variant: 'neutral',
-    title: 'Offer Declined',
-    description: 'The previous offer was declined. A new offer may be made.',
-    phase: 2,
-  },
-  [REQUEST_STATUS.OFFER_EXPIRED]: {
-    icon: Timer,
-    variant: 'warning',
-    title: 'Offer Expired',
-    description: 'The offer has expired due to no response. Contact admin for a new offer.',
-    phase: 2,
-  },
-
-  // Phase 3: Inspection
-  [REQUEST_STATUS.INSPECTION_SCHEDULED]: {
-    icon: Calendar,
-    variant: 'info',
-    title: 'Inspection Scheduled',
-    description: {
-      CUSTOMER: 'An agent has been assigned and will visit for asset inspection. Please be available at the scheduled time.',
-      DISTRICT_ADMIN: 'Agent assigned for inspection. Monitor progress and handle any rescheduling requests.',
-      SUPER_ADMIN: 'Agent assigned for inspection. Monitor progress and handle any rescheduling requests.',
-      AGENT: 'You have been assigned for inspection. Visit the customer at the scheduled time.',
-    },
-    showProgress: true,
-    phase: 3,
-  },
-  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: {
-    icon: RefreshCw,
-    variant: 'warning',
-    title: 'Reschedule Requested',
-    description: {
-      CUSTOMER: 'Your reschedule request has been submitted. Admin will confirm a new date.',
-      DISTRICT_ADMIN: 'Customer requested to reschedule inspection. Review and confirm new date.',
-      SUPER_ADMIN: 'Customer requested to reschedule inspection. Review and confirm new date.',
-      AGENT: 'Customer requested to reschedule inspection. Admin will confirm new date.',
-    },
-    phase: 3,
-  },
-  [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: {
-    icon: UserCheck,
-    variant: 'info',
-    title: 'Inspection In Progress',
-    description: {
-      CUSTOMER: 'The agent is currently inspecting and verifying your asset. Please cooperate with the inspection.',
-      DISTRICT_ADMIN: 'Agent is currently conducting the inspection. Monitor for completion.',
-      SUPER_ADMIN: 'Agent is currently conducting the inspection. Monitor for completion.',
-      AGENT: 'You are currently conducting the inspection. Complete verification and submit your decision.',
-    },
-    showProgress: true,
-    phase: 3,
-  },
-  [REQUEST_STATUS.INSPECTION_COMPLETED]: {
-    icon: CheckCircle,
-    variant: 'success',
-    title: 'Inspection Completed',
-    description: {
-      CUSTOMER: 'Inspection is complete. The agent will make a final decision on your loan request.',
-      DISTRICT_ADMIN: 'Inspection completed. Agent will submit their approval/rejection decision.',
-      SUPER_ADMIN: 'Inspection completed. Agent will submit their approval/rejection decision.',
-      AGENT: 'Inspection completed. Submit your final decision to approve or reject the loan request.',
-    },
-    phase: 3,
-  },
-  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: {
-    icon: User,
-    variant: 'warning',
-    title: 'Missed Inspection',
-    description: {
-      CUSTOMER: 'The inspection could not be completed as you were not available. Please reschedule immediately.',
-      DISTRICT_ADMIN: 'Customer was not available for inspection. Coordinate rescheduling with the agent.',
-      SUPER_ADMIN: 'Customer was not available for inspection. Coordinate rescheduling with the agent.',
-      AGENT: 'Customer was not available for inspection. Coordinate with admin for rescheduling.',
-    },
-    actionLabel: 'Reschedule',
-    phase: 3,
-  },
-  [REQUEST_STATUS.ASSET_MISMATCH]: {
-    icon: AlertTriangle,
-    variant: 'error',
-    title: 'Asset Discrepancy',
-    description: {
-      CUSTOMER: 'The asset does not match the provided description. Please provide explanation or updated details.',
-      DISTRICT_ADMIN: 'Asset does not match description. Review agent findings and decide on next steps.',
-      SUPER_ADMIN: 'Asset does not match description. Review agent findings and decide on next steps.',
-      AGENT: 'Asset discrepancy found. Document findings and submit recommendation to admin.',
-    },
-    phase: 3,
-  },
-  [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: {
-    icon: User,
-    variant: 'warning',
-    title: 'Agent Unavailable',
-    description: {
-      CUSTOMER: 'The assigned agent is unavailable. A new agent will be assigned for your inspection.',
-      DISTRICT_ADMIN: 'Assigned agent is unavailable. Reassign to a different agent for inspection.',
-      SUPER_ADMIN: 'Assigned agent is unavailable. Reassign to a different agent for inspection.',
-      AGENT: 'You are unavailable for the scheduled inspection. Admin will reassign to another agent.',
-    },
-    phase: 3,
-  },
-
-  // Phase 4: Approval & Documentation
-  [REQUEST_STATUS.APPROVED]: {
-    icon: CheckCircle,
-    variant: 'success',
-    title: 'Request Approved!',
-    description: 'Your loan request has been approved. Proceeding to documentation.',
-    phase: 4,
-  },
-  [REQUEST_STATUS.PENDING_SIGNATURE]: {
-    icon: PenLine,
-    variant: 'warning',
-    title: 'Signature Required',
-    description: 'Please review and sign the loan agreement to proceed.',
-    actionLabel: 'Sign Agreement',
-    phase: 4,
-  },
-  [REQUEST_STATUS.PENDING_BANK_DETAILS]: {
-    icon: Wallet,
-    variant: 'warning',
-    title: 'Bank Details Required',
-    description: 'Provide your bank account or UPI details for disbursement.',
-    actionLabel: 'Add Bank Details',
-    phase: 4,
-  },
-
-  // Phase 5: Disbursement
-  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: {
-    icon: Clock,
-    variant: 'info',
-    title: 'Processing Disbursement',
-    description: 'Bank details received. Amount will be disbursed shortly.',
-    phase: 5,
-  },
-  [REQUEST_STATUS.TRANSFER_FAILED]: {
-    icon: AlertCircle,
-    variant: 'error',
-    title: 'Transfer Failed',
-    description: 'The transfer could not be completed. Please update your bank details.',
-    actionLabel: 'Update Details',
-    phase: 5,
-  },
-  [REQUEST_STATUS.AMOUNT_DISBURSED]: {
-    icon: Banknote,
-    variant: 'success',
-    title: 'Amount Disbursed!',
-    description: 'The loan amount has been successfully transferred to your account.',
-    phase: 5,
-  },
-
-  // Phase 6: Active Loan
-  [REQUEST_STATUS.ACTIVE]: {
-    icon: CheckCircle,
-    variant: 'success',
-    title: 'Loan Active',
-    description: 'Your loan is active. Make sure to pay EMIs on time.',
-    phase: 6,
-  },
-  [REQUEST_STATUS.PAYMENT_OVERDUE]: {
-    icon: AlertTriangle,
-    variant: 'error',
-    title: 'Payment Overdue',
-    description: 'You have overdue EMI payments. Pay now to avoid penalties.',
-    actionLabel: 'Pay Now',
-    phase: 6,
-  },
-  [REQUEST_STATUS.DEFAULTED]: {
-    icon: XCircle,
-    variant: 'error',
-    title: 'Loan Defaulted',
-    description: 'Multiple payments have been missed. Contact support immediately.',
-    phase: 6,
-  },
-  [REQUEST_STATUS.COMPLETED]: {
-    icon: CheckCircle,
-    variant: 'success',
-    title: 'Loan Completed',
-    description: 'Congratulations! All payments completed. Thank you for your business.',
-    phase: 6,
-  },
-
-  // Terminal States
-  [REQUEST_STATUS.REJECTED]: {
-    icon: XCircle,
-    variant: 'error',
-    title: 'Request Rejected',
-    description: 'Unfortunately, this request has been rejected.',
-    phase: 0,
-  },
-  [REQUEST_STATUS.CANCELLED]: {
-    icon: XCircle,
-    variant: 'neutral',
-    title: 'Request Cancelled',
-    description: 'This request has been cancelled.',
-    phase: 0,
-  },
+// Icon mapping from string to LucideIcon
+const ICON_MAP: Record<string, LucideIcon> = {
+  Clock,
+  FileSearch,
+  FileText,
+  Send,
+  CheckCircle,
+  XCircle,
+  Calendar,
+  User,
+  Wallet,
+  AlertCircle,
+  Timer,
+  Banknote,
+  PenLine,
+  UserCheck,
+  AlertTriangle,
+  RefreshCw,
+  FileEdit,
+  Mail,
+  UserPlus,
+  ClipboardList,
+  ClipboardCheck,
+  ThumbsUp,
+  UserX,
+  UserMinus,
+  FileSignature,
+  FileCheck,
+  Building2,
+  Loader2,
+  TrendingUp,
+  Ban,
+  CalendarClock: Calendar, // Fallback
 };
+
+// ============================================
+// STAGE-BASED BANNER CONFIGURATION
+// ============================================
+
+function getStageBannerConfig(stage: REQUEST_STAGE, subStatus: string | null): StageBannerConfig {
+  const key = subStatus ? `${stage}:${subStatus}` : null;
+  const display = key && SUB_STATUS_DISPLAY[key] ? SUB_STATUS_DISPLAY[key] : getStatusDisplay(stage, subStatus);
+  const Icon = ICON_MAP[display.icon] || Clock;
+
+  // Determine variant based on stage and subStatus
+  let variant: BannerVariant = 'info';
+  if (stage === REQUEST_STAGE.COMPLETED) {
+    variant = 'success';
+  } else if (stage === REQUEST_STAGE.REJECTED || stage === REQUEST_STAGE.CANCELLED) {
+    variant = stage === REQUEST_STAGE.REJECTED ? 'error' : 'neutral';
+  } else if (display.isBlocking) {
+    variant = 'error';
+  } else if (display.requiresAction === 'customer') {
+    variant = 'warning';
+  } else if (stage === REQUEST_STAGE.ACTIVE) {
+    if (subStatus === SUB_STATUS.ACTIVE.OVERDUE) {
+      variant = 'error';
+    } else if (subStatus === SUB_STATUS.ACTIVE.DEFAULTED) {
+      variant = 'error';
+    } else {
+      variant = 'success';
+    }
+  }
+
+  // Build role-specific descriptions
+  const baseDescription = display.description;
+  const descriptions: Partial<Record<UserRoleKey, string>> = {};
+
+  // Add role-specific context for key stages
+  switch (`${stage}:${subStatus}`) {
+    case `${REQUEST_STAGE.REVIEW}:${SUB_STATUS.REVIEW.PENDING}`:
+      descriptions.CUSTOMER = 'Your request has been submitted and is waiting for an admin to review it.';
+      descriptions.DISTRICT_ADMIN = 'New loan request awaiting your review and approval.';
+      descriptions.SUPER_ADMIN = 'New loan request awaiting review and approval.';
+      break;
+    case `${REQUEST_STAGE.REVIEW}:${SUB_STATUS.REVIEW.IN_REVIEW}`:
+      descriptions.CUSTOMER = 'An admin is currently reviewing your request and asset details.';
+      descriptions.DISTRICT_ADMIN = 'You are currently reviewing this request and asset details.';
+      descriptions.SUPER_ADMIN = 'You are currently reviewing this request and asset details.';
+      break;
+    case `${REQUEST_STAGE.REVIEW}:${SUB_STATUS.REVIEW.INFO_REQUIRED}`:
+      descriptions.CUSTOMER = 'Please provide the requested documents or information to proceed.';
+      descriptions.DISTRICT_ADMIN = 'Customer needs to provide additional documents or information.';
+      descriptions.SUPER_ADMIN = 'Customer needs to provide additional documents or information.';
+      break;
+    case `${REQUEST_STAGE.OFFER}:${SUB_STATUS.OFFER.SENT}`:
+      descriptions.CUSTOMER = 'Review the loan offer and decide whether to accept or decline.';
+      descriptions.DISTRICT_ADMIN = 'Loan offer sent to customer. Awaiting their response.';
+      descriptions.SUPER_ADMIN = 'Loan offer sent to customer. Awaiting their response.';
+      break;
+    case `${REQUEST_STAGE.INSPECTION}:${SUB_STATUS.INSPECTION.SCHEDULED}`:
+      descriptions.CUSTOMER = 'An agent has been assigned and will visit for asset inspection. Please be available at the scheduled time.';
+      descriptions.DISTRICT_ADMIN = 'Agent assigned for inspection. Monitor progress and handle any rescheduling requests.';
+      descriptions.AGENT = 'You have been assigned for inspection. Visit the customer at the scheduled time.';
+      break;
+    case `${REQUEST_STAGE.INSPECTION}:${SUB_STATUS.INSPECTION.IN_PROGRESS}`:
+      descriptions.CUSTOMER = 'The agent is currently inspecting and verifying your asset.';
+      descriptions.AGENT = 'You are currently conducting the inspection. Complete verification and submit your decision.';
+      break;
+    case `${REQUEST_STAGE.DOCUMENTATION}:${SUB_STATUS.DOCUMENTATION.PENDING_SIGNATURE}`:
+      descriptions.CUSTOMER = 'Please review and sign the loan agreement to proceed.';
+      descriptions.DISTRICT_ADMIN = 'Waiting for customer to sign the loan agreement.';
+      break;
+    case `${REQUEST_STAGE.DOCUMENTATION}:${SUB_STATUS.DOCUMENTATION.PENDING_BANK_DETAILS}`:
+      descriptions.CUSTOMER = 'Provide your bank account or UPI details for disbursement.';
+      descriptions.DISTRICT_ADMIN = 'Waiting for customer to provide bank details.';
+      break;
+    case `${REQUEST_STAGE.DISBURSEMENT}:${SUB_STATUS.DISBURSEMENT.PROCESSING}`:
+      descriptions.CUSTOMER = 'Your loan amount is being transferred to your account.';
+      descriptions.DISTRICT_ADMIN = 'Disbursement is in progress.';
+      break;
+    case `${REQUEST_STAGE.DISBURSEMENT}:${SUB_STATUS.DISBURSEMENT.FAILED}`:
+      descriptions.CUSTOMER = 'The transfer could not be completed. Please update your bank details.';
+      descriptions.DISTRICT_ADMIN = 'Transfer failed. Customer needs to update bank details.';
+      break;
+    case `${REQUEST_STAGE.ACTIVE}:${SUB_STATUS.ACTIVE.CURRENT}`:
+      descriptions.CUSTOMER = 'Your loan is active. Make sure to pay EMIs on time.';
+      descriptions.DISTRICT_ADMIN = 'Loan is active with payments on track.';
+      break;
+    case `${REQUEST_STAGE.ACTIVE}:${SUB_STATUS.ACTIVE.OVERDUE}`:
+      descriptions.CUSTOMER = 'You have overdue EMI payments. Pay now to avoid penalties.';
+      descriptions.DISTRICT_ADMIN = 'Customer has overdue payments.';
+      break;
+    case `${REQUEST_STAGE.ACTIVE}:${SUB_STATUS.ACTIVE.DEFAULTED}`:
+      descriptions.CUSTOMER = 'Multiple payments have been missed. Contact support immediately.';
+      descriptions.DISTRICT_ADMIN = 'Loan is in default status. Multiple payments missed.';
+      break;
+  }
+
+  // Determine action label
+  let actionLabel: string | undefined;
+  if (display.requiresAction === 'customer') {
+    switch (`${stage}:${subStatus}`) {
+      case `${REQUEST_STAGE.REVIEW}:${SUB_STATUS.REVIEW.INFO_REQUIRED}`:
+        actionLabel = 'Submit Information';
+        break;
+      case `${REQUEST_STAGE.OFFER}:${SUB_STATUS.OFFER.SENT}`:
+        actionLabel = 'Review Offer';
+        break;
+      case `${REQUEST_STAGE.DOCUMENTATION}:${SUB_STATUS.DOCUMENTATION.PENDING_SIGNATURE}`:
+        actionLabel = 'Sign Agreement';
+        break;
+      case `${REQUEST_STAGE.DOCUMENTATION}:${SUB_STATUS.DOCUMENTATION.PENDING_BANK_DETAILS}`:
+        actionLabel = 'Add Bank Details';
+        break;
+      case `${REQUEST_STAGE.DISBURSEMENT}:${SUB_STATUS.DISBURSEMENT.FAILED}`:
+        actionLabel = 'Update Details';
+        break;
+      case `${REQUEST_STAGE.ACTIVE}:${SUB_STATUS.ACTIVE.OVERDUE}`:
+        actionLabel = 'Pay Now';
+        break;
+    }
+  }
+
+  return {
+    icon: Icon,
+    variant,
+    title: display.label,
+    description: Object.keys(descriptions).length > 0 ? descriptions : baseDescription,
+    actionLabel,
+    showProgress: stage === REQUEST_STAGE.INSPECTION && subStatus === SUB_STATUS.INSPECTION.IN_PROGRESS,
+  };
+}
 
 // ============================================
 // VARIANT STYLES
@@ -375,7 +281,8 @@ const VARIANT_STYLES: Record<BannerVariant, { bg: string; border: string; icon: 
 // ============================================
 
 interface StatusBannerProps {
-  status: REQUEST_STATUS;
+  stage: REQUEST_STAGE;
+  subStatus: string | null;
   userRole: 'CUSTOMER' | 'DISTRICT_ADMIN' | 'STATE_ADMIN' | 'SUPER_ADMIN' | 'AGENT';
   onActionClick?: () => void;
   customDescription?: string;
@@ -391,10 +298,11 @@ interface StatusBannerProps {
 }
 
 /**
- * Main status banner component - shows contextual information based on status
+ * Main status banner component - shows contextual information based on stage
  */
 export function StatusBanner({
-  status,
+  stage,
+  subStatus,
   userRole,
   onActionClick,
   customDescription,
@@ -402,17 +310,18 @@ export function StatusBanner({
   className,
   context,
 }: StatusBannerProps) {
-  const config = STATUS_BANNER_CONFIG[status];
-  if (!config) return null;
-
+  const config = getStageBannerConfig(stage, subStatus);
   const styles = VARIANT_STYLES[config.variant];
   const Icon = config.icon;
   
+  // Calculate action flags
+  const flags = calculateActionFlags(stage, subStatus);
+  
   // Determine if current user needs to take action
-  const isCustomerAction = CUSTOMER_ACTION_REQUIRED.includes(status) && userRole === 'CUSTOMER';
-  const isAdminAction = ADMIN_ACTION_REQUIRED.includes(status) && 
-    (userRole === 'DISTRICT_ADMIN' || userRole === 'SUPER_ADMIN');
-  const isAgentAction = AGENT_ACTION_REQUIRED.includes(status) && userRole === 'AGENT';
+  const isCustomerAction = flags.requiresCustomerAction && userRole === 'CUSTOMER';
+  const isAdminAction = flags.requiresAdminAction && 
+    (userRole === 'DISTRICT_ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'STATE_ADMIN');
+  const isAgentAction = flags.requiresAgentAction && userRole === 'AGENT';
   const actionRequired = isCustomerAction || isAdminAction || isAgentAction;
 
   // Build contextual description
@@ -421,18 +330,22 @@ export function StatusBanner({
     baseDescription = baseDescription[userRole] || baseDescription.CUSTOMER || '';
   }
   let description = customDescription || baseDescription;
-  if (context?.inspectionDate && status === REQUEST_STATUS.INSPECTION_SCHEDULED) {
+  
+  // Add context-specific information
+  if (context?.inspectionDate && stage === REQUEST_STAGE.INSPECTION && subStatus === SUB_STATUS.INSPECTION.SCHEDULED) {
     description = `Scheduled for ${context.inspectionDate}${context.agentName ? ` with ${context.agentName}` : ''}.`;
   }
-  if (context?.overdueAmount && status === REQUEST_STATUS.PAYMENT_OVERDUE) {
+  if (context?.overdueAmount && stage === REQUEST_STAGE.ACTIVE && subStatus === SUB_STATUS.ACTIVE.OVERDUE) {
     description = `You have ₹${context.overdueAmount.toLocaleString()} in overdue payments. Pay now to avoid additional penalties.`;
   }
+
+  const currentPhase = getStageNumber(stage);
 
   return (
     <div className={cn('space-y-3', className)}>
       {/* Phase Progress Indicator */}
-      {showPhaseProgress && config.phase && config.phase > 0 && (
-        <PhaseProgressBar currentPhase={config.phase} />
+      {showPhaseProgress && currentPhase > 0 && (
+        <PhaseProgressBar currentPhase={currentPhase} />
       )}
       
       {/* Main Banner */}
@@ -562,23 +475,21 @@ export function PhaseProgressBar({ currentPhase, className }: PhaseProgressBarPr
  * Compact status indicator for cards/lists
  */
 interface CompactStatusIndicatorProps {
-  status: REQUEST_STATUS;
+  stage: REQUEST_STAGE;
+  subStatus: string | null;
   showLabel?: boolean;
   className?: string;
 }
 
 export function CompactStatusIndicator({ 
-  status, 
+  stage, 
+  subStatus,
   showLabel = true, 
   className 
 }: CompactStatusIndicatorProps) {
-  const config = STATUS_BANNER_CONFIG[status];
-  const colors = REQUEST_STATUS_COLORS[status];
-  const label = REQUEST_STATUS_LABELS[status];
-  
-  if (!config) return null;
-  
-  const Icon = config.icon;
+  const display = getStatusDisplay(stage, subStatus);
+  const colors = STAGE_COLORS[stage];
+  const Icon = ICON_MAP[display.icon] || Clock;
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
@@ -590,7 +501,7 @@ export function CompactStatusIndicator({
       </div>
       {showLabel && (
         <span className={cn('text-sm font-medium', colors.text)}>
-          {label}
+          {display.label}
         </span>
       )}
     </div>
@@ -601,16 +512,15 @@ export function CompactStatusIndicator({
  * Who needs to act indicator
  */
 interface ActionRequiredIndicatorProps {
-  status: REQUEST_STATUS;
+  stage: REQUEST_STAGE;
+  subStatus: string | null;
   className?: string;
 }
 
-export function ActionRequiredIndicator({ status, className }: ActionRequiredIndicatorProps) {
-  const isCustomer = CUSTOMER_ACTION_REQUIRED.includes(status);
-  const isAdmin = ADMIN_ACTION_REQUIRED.includes(status);
-  const isAgent = AGENT_ACTION_REQUIRED.includes(status);
+export function ActionRequiredIndicator({ stage, subStatus, className }: ActionRequiredIndicatorProps) {
+  const flags = calculateActionFlags(stage, subStatus);
 
-  if (!isCustomer && !isAdmin && !isAgent) {
+  if (!flags.requiresCustomerAction && !flags.requiresAdminAction && !flags.requiresAgentAction) {
     return (
       <span className={cn('text-xs text-muted-foreground', className)}>
         No action required
@@ -619,9 +529,9 @@ export function ActionRequiredIndicator({ status, className }: ActionRequiredInd
   }
 
   const actors = [];
-  if (isCustomer) actors.push('Customer');
-  if (isAdmin) actors.push('Admin');
-  if (isAgent) actors.push('Agent');
+  if (flags.requiresCustomerAction) actors.push('Customer');
+  if (flags.requiresAdminAction) actors.push('Admin');
+  if (flags.requiresAgentAction) actors.push('Agent');
 
   return (
     <div className={cn('flex items-center gap-1.5', className)}>
@@ -636,8 +546,8 @@ export function ActionRequiredIndicator({ status, className }: ActionRequiredInd
 /**
  * Get banner config for external use
  */
-export function getStatusBannerConfig(status: REQUEST_STATUS): BannerConfig | undefined {
-  return STATUS_BANNER_CONFIG[status];
+export function getStatusBannerConfig(stage: REQUEST_STAGE, subStatus: string | null): StageBannerConfig {
+  return getStageBannerConfig(stage, subStatus);
 }
 
 export default StatusBanner;

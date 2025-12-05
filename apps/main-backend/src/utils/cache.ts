@@ -1,27 +1,25 @@
-import Redis from 'ioredis';
+/**
+ * Cache Utility Module
+ *
+ * Uses RedisCacheProvider from @fundifyhub/providers for consistent
+ * framework-based caching across the application.
+ *
+ * @module utils/cache
+ */
+
+import { RedisCacheProvider, createRedisCacheProvider } from '@fundifyhub/providers';
+import { CACHE_TTL as TTL_CONSTANTS } from '@fundifyhub/types';
 import config from './config';
 import logger from './logger';
 
 /**
- * Redis Cache Client for FundifyHub
- * 
- * Provides a centralized caching layer with:
- * - Automatic JSON serialization/deserialization
- * - TTL (Time To Live) support
- * - Cache key prefixing for namespace isolation
- * - Cache invalidation helpers
+ * Re-export TTL constants with additional app-specific values
  */
-
-const CACHE_PREFIX = 'fundifyhub:cache:';
-
-// Default TTL values (in seconds)
 export const CACHE_TTL = {
-  SHORT: 60,           // 1 minute - for rapidly changing data
-  MEDIUM: 300,         // 5 minutes - for dashboard stats
-  LONG: 3600,          // 1 hour - for reference data
-  VERY_LONG: 86400,    // 24 hours - for rarely changing data
-  
-  // Resource-specific TTLs
+  // From @fundifyhub/types
+  ...TTL_CONSTANTS,
+
+  // App-specific TTLs
   USER_PROFILE: 300,          // 5 minutes
   DASHBOARD_STATS: 60,        // 1 minute
   GEOGRAPHY_DATA: 3600,       // 1 hour - countries, states, districts
@@ -37,21 +35,21 @@ export const CACHE_KEYS = {
   // Dashboard stats
   DASHBOARD_STATS: (userId: string, role: string) => `dashboard:stats:${role}:${userId}`,
   ADMIN_STATS: () => 'admin:stats',
-  
+
   // User data
   USER_PROFILE: (userId: string) => `user:profile:${userId}`,
   USER_NOTIFICATIONS: (userId: string) => `user:notifications:${userId}`,
   USER_PERMISSIONS: (userId: string) => `user:permissions:${userId}`,
-  
+
   // Request data
   REQUEST_DETAIL: (requestId: string) => `request:detail:${requestId}`,
   REQUEST_LIST: (userId: string, page: number) => `request:list:${userId}:${page}`,
-  
+
   // Loan data
   LOAN_DETAIL: (loanId: string) => `loan:detail:${loanId}`,
   LOAN_EMI_SCHEDULE: (loanId: string) => `loan:emi:${loanId}`,
-  
-  // Geography data (new)
+
+  // Geography data
   COUNTRIES: () => 'geography:countries',
   COUNTRY_BY_ID: (countryId: string) => `geography:country:${countryId}`,
   STATES_ALL: () => 'geography:states',
@@ -63,73 +61,66 @@ export const CACHE_KEYS = {
   WAREHOUSES_ALL: () => 'geography:warehouses',
   WAREHOUSES_BY_DISTRICT: (districtId: string) => `geography:warehouses:district:${districtId}`,
   WAREHOUSE_BY_ID: (warehouseId: string) => `geography:warehouse:${warehouseId}`,
-  
-  // Asset data (new)
+
+  // Asset data
   ASSET_DETAIL: (assetId: string) => `asset:detail:${assetId}`,
   ASSET_MOVEMENTS: (assetId: string) => `asset:movements:${assetId}`,
   WAREHOUSE_INVENTORY: (warehouseId: string) => `warehouse:inventory:${warehouseId}`,
-  
-  // Auction data (new)
+
+  // Auction data
   AUCTION_DETAIL: (auctionId: string) => `auction:detail:${auctionId}`,
   AUCTION_BIDS: (auctionId: string) => `auction:bids:${auctionId}`,
   ACTIVE_AUCTIONS: () => 'auction:active',
   USER_BIDS: (userId: string) => `auction:user-bids:${userId}`,
-  
+
   // Reference data (legacy - kept for backward compatibility)
   DISTRICTS: () => 'ref:districts',
   AGENTS_BY_DISTRICT: (district: string) => `ref:agents:${district}`,
-  
+
   // Service configurations
   SERVICE_CONFIG: (serviceName: string) => `service:config:${serviceName}`,
   ALL_SERVICES: () => 'service:all',
 } as const;
 
+/**
+ * Cache client wrapper using RedisCacheProvider
+ */
 class CacheClient {
-  private redis: Redis;
+  private provider: RedisCacheProvider | null = null;
   private isConnected: boolean = false;
   private connectionPromise: Promise<void> | null = null;
 
   constructor() {
-    this.redis = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
-      maxRetriesPerRequest: 3,
-      retryStrategy: (times: number) => {
-        if (times > 3) {
-          logger.error('[Cache] Redis connection failed after 3 retries');
-          return null;
-        }
-        return Math.min(times * 200, 2000);
-      },
-      lazyConnect: true,
-    });
-
-    this.redis.on('connect', () => {
-      this.isConnected = true;
-      logger.info('[Cache] Redis connected');
-    });
-
-    this.redis.on('error', (err: Error) => {
-      this.isConnected = false;
-      logger.error('[Cache] Redis error:', err);
-    });
-
-    this.redis.on('close', () => {
-      this.isConnected = false;
-      logger.warn('[Cache] Redis connection closed');
-    });
+    // Initialize provider with config
+    if (config.redis.host && config.redis.port) {
+      this.provider = createRedisCacheProvider({
+        host: config.redis.host,
+        port: config.redis.port,
+        keyPrefix: 'fundifyhub:cache:',
+        defaultTtl: CACHE_TTL.MEDIUM,
+        maxRetries: 3,
+        connectTimeout: 10000,
+      });
+    }
   }
 
   /**
    * Ensure Redis connection is established
    */
   private async ensureConnection(): Promise<boolean> {
-    if (this.isConnected) return true;
+    if (!this.provider) {
+      return false;
+    }
+
+    if (this.isConnected) {
+      return true;
+    }
 
     if (!this.connectionPromise) {
-      this.connectionPromise = this.redis.connect()
+      this.connectionPromise = this.provider.connect()
         .then(() => {
           this.isConnected = true;
+          logger.info('[Cache] Redis connected via RedisCacheProvider');
         })
         .catch((err: Error) => {
           logger.error('[Cache] Failed to connect to Redis:', err);
@@ -149,14 +140,10 @@ class CacheClient {
    */
   async get<T>(key: string): Promise<T | null> {
     try {
-      if (!await this.ensureConnection()) return null;
-      
-      const fullKey = CACHE_PREFIX + key;
-      const value = await this.redis.get(fullKey);
-      
-      if (!value) return null;
-      
-      return JSON.parse(value) as T;
+      if (!await this.ensureConnection() || !this.provider) return null;
+
+      const result = await this.provider.get<T>(key);
+      return result.found ? (result.value ?? null) : null;
     } catch (err) {
       logger.error(`[Cache] Error getting key ${key}:`, err as Error);
       return null;
@@ -168,13 +155,10 @@ class CacheClient {
    */
   async set<T>(key: string, value: T, ttlSeconds: number = CACHE_TTL.MEDIUM): Promise<boolean> {
     try {
-      if (!await this.ensureConnection()) return false;
-      
-      const fullKey = CACHE_PREFIX + key;
-      const serialized = JSON.stringify(value);
-      
-      await this.redis.setex(fullKey, ttlSeconds, serialized);
-      return true;
+      if (!await this.ensureConnection() || !this.provider) return false;
+
+      const result = await this.provider.set(key, value, { ttl: ttlSeconds });
+      return result.success;
     } catch (err) {
       logger.error(`[Cache] Error setting key ${key}:`, err as Error);
       return false;
@@ -186,11 +170,10 @@ class CacheClient {
    */
   async del(key: string): Promise<boolean> {
     try {
-      if (!await this.ensureConnection()) return false;
-      
-      const fullKey = CACHE_PREFIX + key;
-      await this.redis.del(fullKey);
-      return true;
+      if (!await this.ensureConnection() || !this.provider) return false;
+
+      const result = await this.provider.delete(key);
+      return result.success;
     } catch (err) {
       logger.error(`[Cache] Error deleting key ${key}:`, err as Error);
       return false;
@@ -202,15 +185,10 @@ class CacheClient {
    */
   async delPattern(pattern: string): Promise<number> {
     try {
-      if (!await this.ensureConnection()) return 0;
-      
-      const fullPattern = CACHE_PREFIX + pattern;
-      const keys = await this.redis.keys(fullPattern);
-      
-      if (keys.length === 0) return 0;
-      
-      const deleted = await this.redis.del(...keys);
-      return deleted;
+      if (!await this.ensureConnection() || !this.provider) return 0;
+
+      const result = await this.provider.deletePattern(pattern);
+      return result.deletedCount;
     } catch (err) {
       logger.error(`[Cache] Error deleting pattern ${pattern}:`, err as Error);
       return 0;
@@ -221,8 +199,8 @@ class CacheClient {
    * Get or set pattern - gets from cache or sets from factory function
    */
   async getOrSet<T>(
-    key: string, 
-    factory: () => Promise<T>, 
+    key: string,
+    factory: () => Promise<T>,
     ttlSeconds: number = CACHE_TTL.MEDIUM
   ): Promise<T> {
     const cached = await this.get<T>(key);
@@ -315,14 +293,32 @@ class CacheClient {
    * Check if cache is available
    */
   isAvailable(): boolean {
-    return this.isConnected;
+    return this.isConnected && this.provider !== null;
   }
 
   /**
    * Close Redis connection
    */
   async close(): Promise<void> {
-    await this.redis.quit();
+    if (this.provider) {
+      await this.provider.disconnect();
+      this.isConnected = false;
+    }
+  }
+
+  /**
+   * Get cache stats
+   */
+  async stats(): Promise<{ keyCount: number; memoryUsage?: number }> {
+    if (!this.provider || !this.isConnected) {
+      return { keyCount: 0 };
+    }
+
+    try {
+      return await this.provider.stats();
+    } catch {
+      return { keyCount: 0 };
+    }
   }
 }
 

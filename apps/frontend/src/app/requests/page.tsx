@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AppLayout, PageContainer, PageHeader } from "@/components/layout/AppLayout"
 import { RequestCardList } from "@/components/dashboard/RequestCard"
-import { ROLES, REQUEST_STATUS } from "@fundifyhub/types"
+import { ROLES, REQUEST_STAGE, STAGE_LABELS } from "@fundifyhub/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { 
@@ -174,10 +174,10 @@ function RequestsContent() {
 
   const pageInfo = getPageInfo()
 
-  // Status options for filter
-  const statusOptions = Object.values(REQUEST_STATUS).map(status => ({
-    value: status,
-    label: status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+  // Status/Stage options for filter - using stage-based system
+  const statusOptions = Object.values(REQUEST_STAGE).map(stage => ({
+    value: stage,
+    label: STAGE_LABELS[stage] || stage.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
   }))
 
   return (

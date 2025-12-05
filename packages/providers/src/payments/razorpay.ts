@@ -20,6 +20,8 @@ import {
   WebhookEventType,
   RefundInput,
   RefundResult,
+  FetchPaymentInput,
+  FetchPaymentResult,
 } from '@fundifyhub/types';
 
 /**
@@ -247,6 +249,63 @@ export class RazorpayProvider implements IPaymentProvider {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Refund failed';
+      return {
+        success: false,
+        error: message,
+      };
+    }
+  }
+
+  /**
+   * Fetch payment details from Razorpay
+   */
+  async fetchPayment(input: FetchPaymentInput): Promise<FetchPaymentResult> {
+    if (!this.client) {
+      return {
+        success: false,
+        error: 'Razorpay is not configured',
+      };
+    }
+
+    try {
+      const payment = await this.client.payments.fetch(input.providerPaymentId);
+
+      // Normalize amount to number (Razorpay returns string or number)
+      const amount = typeof payment.amount === 'string' 
+        ? parseInt(payment.amount, 10) 
+        : payment.amount;
+
+      // Normalize method to string (Razorpay returns string or number)
+      const method = payment.method != null 
+        ? String(payment.method) 
+        : undefined;
+
+      // Normalize email/contact to string (Razorpay can return mixed types)
+      const email = payment.email != null 
+        ? String(payment.email) 
+        : undefined;
+      
+      const contact = payment.contact != null 
+        ? String(payment.contact) 
+        : undefined;
+
+      return {
+        success: true,
+        paymentId: payment.id,
+        orderId: payment.order_id,
+        amount,
+        currency: payment.currency,
+        status: payment.status,
+        method,
+        errorCode: payment.error_code ?? undefined,
+        errorDescription: payment.error_description ?? undefined,
+        notes: payment.notes as Record<string, string> | undefined,
+        email,
+        contact,
+        rawData: payment,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch payment';
       return {
         success: false,
         error: message,

@@ -165,6 +165,52 @@ export interface WebhookPayload {
 }
 
 // ============================================
+// FETCH PAYMENT TYPES
+// ============================================
+
+/**
+ * Input for fetching payment details
+ */
+export interface FetchPaymentInput {
+  /** Provider payment ID */
+  providerPaymentId: string;
+}
+
+/**
+ * Result of fetching payment details
+ */
+export interface FetchPaymentResult {
+  /** Whether fetch was successful */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+  /** Payment ID from provider */
+  paymentId?: string;
+  /** Order ID from provider */
+  orderId?: string;
+  /** Amount in smallest unit */
+  amount?: number;
+  /** Currency code */
+  currency?: string;
+  /** Payment status */
+  status?: string;
+  /** Payment method used */
+  method?: string;
+  /** Error code if payment failed */
+  errorCode?: string;
+  /** Error description if payment failed */
+  errorDescription?: string;
+  /** Notes/metadata attached to payment */
+  notes?: Record<string, string>;
+  /** Email used for payment */
+  email?: string;
+  /** Contact/phone used for payment */
+  contact?: string;
+  /** Raw payment data from provider */
+  rawData?: unknown;
+}
+
+// ============================================
 // REFUND TYPES
 // ============================================
 
@@ -293,6 +339,11 @@ export interface IPaymentProvider {
    * Initiate refund
    */
   refund?(input: RefundInput): Promise<RefundResult>;
+
+  /**
+   * Fetch payment details from provider
+   */
+  fetchPayment?(input: FetchPaymentInput): Promise<FetchPaymentResult>;
 }
 
 // ============================================

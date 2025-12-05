@@ -31,7 +31,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { REQUEST_STATUS, WORKFLOW_EVENTS, ROLES } from '@fundifyhub/types';
+import { REQUEST_STAGE, WORKFLOW_EVENTS, ROLES } from '@fundifyhub/types';
 import { ACTION_CONFIG } from '@fundifyhub/utils';
 import { cn } from '@/lib/utils';
 import { getMetadataString } from '@/lib/type-guards';
@@ -167,19 +167,21 @@ export function RequestDetailPage() {
   const isAssignedAgent = request?.assignedAgentId === user?.id;
   const isAssignedAdmin = request?.assignedAdminId === user?.id;
 
-  const currentStatus = (request?.currentStatus || '') as REQUEST_STATUS;
+  // Stage-based status system
+  const currentStage = (request?.stage || REQUEST_STAGE.DRAFT) as REQUEST_STAGE;
+  const subStatus = request?.subStatus || null;
 
   // Find the latest status update reason to display in the banner
   const statusReason = useMemo(() => {
     if (!request?.requestHistory) return undefined;
-    // Find the most recent history item that transitioned TO the current status
+    // Find the most recent history item that transitioned TO the current stage
     const historyItem = request.requestHistory.find(
       (h) => {
-        const toStatus = getMetadataString(h.metadata, 'toStatus');
-        const status = getMetadataString(h.metadata, 'status');
-        // Check for both action types (mapped vs raw) and status field location
-        return (h.action === 'STATUS_UPDATED' || h.action === 'REQUEST_STATUS_CHANGED') && 
-               (toStatus === currentStatus || status === currentStatus);
+        const toStage = getMetadataString(h.metadata, 'toStage');
+        const stage = getMetadataString(h.metadata, 'stage');
+        // Check for both action types and stage field location
+        return (h.action === 'STATUS_UPDATED' || h.action === 'REQUEST_STATUS_CHANGED' || h.action === 'STAGE_CHANGED') && 
+               (toStage === currentStage || stage === currentStage);
       }
     );
     
@@ -187,7 +189,7 @@ export function RequestDetailPage() {
     return getMetadataString(historyItem.metadata, 'reason') 
       || getMetadataString(historyItem.metadata, 'note') 
       || getMetadataString(historyItem.metadata, 'message');
-  }, [request, currentStatus]);
+  }, [request, currentStage]);
 
   // Convert available actions to UI actions
   const uiActions: UIWorkflowAction[] = useMemo(() => {
@@ -228,50 +230,61 @@ export function RequestDetailPage() {
     });
   }, [availableActions, isActionLoading, openAction, executeAction, request, user]);
 
-  // Section visibility logic
-  const showOfferSection = request?.adminOfferedAmount || [
-    REQUEST_STATUS.OFFER_SENT, REQUEST_STATUS.OFFER_ACCEPTED, REQUEST_STATUS.OFFER_DECLINED,
-    REQUEST_STATUS.INSPECTION_SCHEDULED, REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-    REQUEST_STATUS.INSPECTION_COMPLETED, REQUEST_STATUS.APPROVED, REQUEST_STATUS.PENDING_SIGNATURE,
-    REQUEST_STATUS.PENDING_BANK_DETAILS, REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-    REQUEST_STATUS.TRANSFER_FAILED, REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.ACTIVE,
-  ].includes(currentStatus);
+  // Section visibility logic based on stages
+  // Stage progression: DRAFT → REVIEW → OFFER → INSPECTION → DOCUMENTATION → DISBURSEMENT → ACTIVE → COMPLETED
+  const STAGE_ORDER = [
+    REQUEST_STAGE.DRAFT,
+    REQUEST_STAGE.REVIEW, 
+    REQUEST_STAGE.OFFER,
+    REQUEST_STAGE.INSPECTION,
+    REQUEST_STAGE.DOCUMENTATION,
+    REQUEST_STAGE.DISBURSEMENT,
+    REQUEST_STAGE.ACTIVE,
+    REQUEST_STAGE.COMPLETED,
+  ];
+  
+  const currentStageIndex = STAGE_ORDER.indexOf(currentStage);
+  const isAtOrPastStage = (stage: REQUEST_STAGE) => {
+    const stageIndex = STAGE_ORDER.indexOf(stage);
+    return stageIndex >= 0 && currentStageIndex >= stageIndex;
+  };
 
-  const showInspectionSection = [
-    REQUEST_STATUS.INSPECTION_SCHEDULED, REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-    REQUEST_STATUS.INSPECTION_COMPLETED, REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED,
-    REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE, REQUEST_STATUS.ASSET_MISMATCH, REQUEST_STATUS.AGENT_NOT_AVAILABLE,
-    REQUEST_STATUS.APPROVED, REQUEST_STATUS.PENDING_SIGNATURE, REQUEST_STATUS.PENDING_BANK_DETAILS,
-    REQUEST_STATUS.BANK_DETAILS_SUBMITTED, REQUEST_STATUS.TRANSFER_FAILED,
-    REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.ACTIVE,
-  ].includes(currentStatus) || request?.assignedAgentId;
+  // Show offer section if we have offer data OR if we're at/past OFFER stage
+  const showOfferSection = request?.adminOfferedAmount || 
+    (isAtOrPastStage(REQUEST_STAGE.OFFER) && currentStage !== REQUEST_STAGE.REJECTED && currentStage !== REQUEST_STAGE.CANCELLED);
 
-  const showSignatureSection = [
-    REQUEST_STATUS.APPROVED, REQUEST_STATUS.PENDING_SIGNATURE, REQUEST_STATUS.PENDING_BANK_DETAILS,
-    REQUEST_STATUS.BANK_DETAILS_SUBMITTED, REQUEST_STATUS.TRANSFER_FAILED,
-    REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.ACTIVE,
-  ].includes(currentStatus);
+  // Show inspection section if we're at/past INSPECTION stage OR if agent is assigned
+  const showInspectionSection = isAtOrPastStage(REQUEST_STAGE.INSPECTION) || !!request?.assignedAgentId;
 
-  const showBankDetailsSection = [
-    REQUEST_STATUS.PENDING_BANK_DETAILS, REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-    REQUEST_STATUS.TRANSFER_FAILED, REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.ACTIVE,
-  ].includes(currentStatus) || request?.bankAccountNumber;
+  // Show signature section if we're at/past DOCUMENTATION stage
+  const showSignatureSection = isAtOrPastStage(REQUEST_STAGE.DOCUMENTATION) && 
+    currentStage !== REQUEST_STAGE.REJECTED && currentStage !== REQUEST_STAGE.CANCELLED;
 
-  const showLoanSection = request?.loan || [
-    REQUEST_STATUS.AMOUNT_DISBURSED, REQUEST_STATUS.ACTIVE, REQUEST_STATUS.PAYMENT_OVERDUE, REQUEST_STATUS.COMPLETED,
-  ].includes(currentStatus);
+  // Show bank details section if we're at/past DOCUMENTATION stage with pending bank OR we have bank data
+  const showBankDetailsSection = (
+    (currentStage === REQUEST_STAGE.DOCUMENTATION && subStatus === 'PENDING_BANK_DETAILS') ||
+    isAtOrPastStage(REQUEST_STAGE.DISBURSEMENT) ||
+    !!request?.bankAccountNumber
+  );
+
+  // Show loan section if loan exists OR we're at/past ACTIVE stage
+  const showLoanSection = request?.loan || 
+    currentStage === REQUEST_STAGE.ACTIVE || 
+    currentStage === REQUEST_STAGE.COMPLETED;
 
   // Permissions
   // Document upload restricted to:
-  // - Customer (owner) in allowed statuses
+  // - Customer (owner) in allowed stages
   // - Assigned admin for this request
   // - Super admin (can upload for any request)
   const canUploadDocuments = (isCustomer && isRequestOwner) || 
     isSuperAdmin || 
     (isAssignedAdmin);
-  const canSign = isCustomer && isRequestOwner && currentStatus === REQUEST_STATUS.PENDING_SIGNATURE;
-  const canSubmitBankDetails = isCustomer && isRequestOwner && currentStatus === REQUEST_STATUS.PENDING_BANK_DETAILS;
-  const canPayEmi = isCustomer && isRequestOwner && [REQUEST_STATUS.ACTIVE, REQUEST_STATUS.PAYMENT_OVERDUE].includes(currentStatus);
+  const canSign = isCustomer && isRequestOwner && 
+    currentStage === REQUEST_STAGE.DOCUMENTATION && subStatus === 'PENDING_SIGNATURE';
+  const canSubmitBankDetails = isCustomer && isRequestOwner && 
+    currentStage === REQUEST_STAGE.DOCUMENTATION && subStatus === 'PENDING_BANK_DETAILS';
+  const canPayEmi = isCustomer && isRequestOwner && currentStage === REQUEST_STAGE.ACTIVE;
 
   // Handlers
   const handleRefresh = async () => {
@@ -390,7 +403,8 @@ export function RequestDetailPage() {
 
         {/* Status Banner */}
         <StatusBanner
-          status={currentStatus}
+          stage={currentStage}
+          subStatus={subStatus}
           userRole={userRole}
           showPhaseProgress={false}
           customDescription={statusReason ?? undefined}
@@ -426,11 +440,12 @@ export function RequestDetailPage() {
             </SectionErrorBoundary>
 
             {/* Response Section for More Info Required */}
-            {isCustomer && isRequestOwner && currentStatus === REQUEST_STATUS.MORE_INFO_REQUIRED && (
+            {isCustomer && isRequestOwner && currentStage === REQUEST_STAGE.REVIEW && subStatus === 'NEEDS_INFO' && (
               <SectionErrorBoundary sectionName="Response">
                 <ResponseSection
                   requestId={request.id}
-                  currentStatus={currentStatus}
+                  stage={currentStage}
+                  subStatus={subStatus}
                   adminRequestedInfo={request.adminRequestedInfo}
                   onSuccess={handleRefresh}
                 />
@@ -469,7 +484,8 @@ export function RequestDetailPage() {
               <SectionErrorBoundary sectionName="Agreement & Signature">
                 <SignatureSection
                   requestId={request.id}
-                  currentStatus={currentStatus}
+                  stage={currentStage}
+                  subStatus={subStatus}
                   agreementUrl={request.agreementUrl}
                   signedAgreementUrl={request.signedAgreementUrl}
                   isCustomer={isCustomer && isRequestOwner}
@@ -484,7 +500,8 @@ export function RequestDetailPage() {
               <SectionErrorBoundary sectionName="Bank Details">
                 <BankDetailsSection
                   requestId={request.id}
-                  currentStatus={currentStatus}
+                  stage={currentStage}
+                  subStatus={subStatus}
                   bankDetails={{
                     bankAccountNumber: request.bankAccountNumber,
                     bankIfscCode: request.bankIfscCode,

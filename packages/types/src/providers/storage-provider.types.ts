@@ -44,19 +44,15 @@ export interface StorageFileMetadata {
 }
 
 /**
- * File upload options
+ * Input for file upload
  */
-export interface FileUploadOptions {
-  /** Target folder/path (optional) */
-  folder?: string;
-  /** Custom metadata to attach */
-  metadata?: Record<string, string>;
-  /** Whether file should be private (require signed URLs) */
-  isPrivate?: boolean;
-  /** Allowed MIME types (for validation) */
-  allowedMimeTypes?: string[];
-  /** Maximum file size in bytes */
-  maxSize?: number;
+export interface FileUploadInput {
+  /** File content as Buffer, ArrayBuffer, or similar */
+  content: Buffer | Uint8Array;
+  /** File name */
+  fileName: string;
+  /** MIME type */
+  mimeType: string;
 }
 
 /**
@@ -71,8 +67,10 @@ export interface FileUploadResult {
   fileKey?: string;
   /** Direct URL (for public files) */
   url?: string;
-  /** File metadata */
-  metadata?: StorageFileMetadata;
+  /** File name */
+  fileName?: string;
+  /** File size in bytes */
+  fileSize?: number;
 }
 
 // ============================================
@@ -232,6 +230,11 @@ export interface IStorageProvider {
    * Delete multiple files
    */
   deleteFiles(fileKeys: string[]): Promise<BatchDeleteResult>;
+
+  /**
+   * Upload a file (optional - some providers only handle client-side uploads)
+   */
+  uploadFile?(input: FileUploadInput): Promise<FileUploadResult>;
 
   /**
    * List files (optional - not all providers support this)

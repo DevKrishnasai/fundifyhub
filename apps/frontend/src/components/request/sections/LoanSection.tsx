@@ -16,7 +16,7 @@ import {
   CreditCard,
   Info,
 } from 'lucide-react';
-import { REQUEST_STATUS, LOAN_STATUS, EMI_STATUS } from '@fundifyhub/types';
+import { REQUEST_STAGE, LOAN_STATUS, EMI_STATUS } from '@fundifyhub/types';
 import type { RequestType, LoanType, EMIScheduleType } from '@fundifyhub/types';
 import { 
   SectionCard, 
@@ -27,7 +27,6 @@ import {
 } from './SectionCard';
 import { format, formatDistanceToNow, isPast, isToday, isFuture } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { isStatusIn } from '@/lib/type-guards';
 
 /**
  * LoanSection - Displays active loan details and EMI schedule
@@ -56,10 +55,15 @@ export function LoanSection({
   const loan = request.loan;
   const emis = loan?.emisSchedule || request.emisSchedule || [];
   const isCustomer = userRole === 'CUSTOMER';
-
-  const hasActiveLoan = loan && isStatusIn(
-    loan.status || request.currentStatus,
-    [LOAN_STATUS.ACTIVE, REQUEST_STATUS.ACTIVE, REQUEST_STATUS.PAYMENT_OVERDUE, REQUEST_STATUS.DEFAULTED, REQUEST_STATUS.COMPLETED] as const
+  
+  // Stage-based loan check
+  const currentStage = (request.stage || REQUEST_STAGE.DRAFT) as REQUEST_STAGE;
+  
+  const hasActiveLoan = loan && (
+    loan.status === LOAN_STATUS.ACTIVE ||
+    loan.status === LOAN_STATUS.COMPLETED ||
+    currentStage === REQUEST_STAGE.ACTIVE ||
+    currentStage === REQUEST_STAGE.COMPLETED
   );
 
   // Format currency

@@ -43,7 +43,7 @@ import {
   type UserRole
 } from '@fundifyhub/types';
 import config from '../../utils/config';
-import { generateSignedUrl, generateSignedUrls } from '../../utils/uploadthing';
+import { generateSignedUrl, generateSignedUrls, uploadFile } from '../../utils/uploadthing';
 import { CLIENT_CONSTANTS } from '@fundifyhub/types';
 
 
@@ -1944,25 +1944,15 @@ export async function generateAgreementController(req: Request, res: Response): 
     // If the client requested a signed URL (preview/download via signed URL), upload to storage and return a signed URL
     if (String(req.query.signedUrl) === 'true') {
       try {
-        const { UTApi } = await import('uploadthing/server');
-        const utapi = new UTApi();
-
-        // Upload generated PDF temporarily for preview/download
-        // Node environment: construct a Blob/Buffer wrapped File-compatible object for uploadthing
-        // uploadthing's UTApi.uploadFiles expects a File-like object in server Node environments
-        // Note: Buffer requires cast for File constructor in Node environment
-        const nodeFile = new File([pdfBuffer as unknown as BlobPart], `loan-agreement-${request.requestNumber || request.id}.pdf`, { type: 'application/pdf' });
-        const uploadResult = await utapi.uploadFiles(nodeFile);
-        if (uploadResult.error) {
-          logger.error('UploadThing upload failed for agreement preview:', { error: JSON.stringify(uploadResult.error) });
-          res.status(500).json({ success: false, message: 'Failed to prepare agreement preview' } as APIResponseType);
-          return;
-        }
-
-        const uploadedFile = uploadResult.data;
+        // Upload generated PDF using the storage provider
+        const uploadedFile = await uploadFile(
+          pdfBuffer, 
+          `loan-agreement-${request.requestNumber || request.id}.pdf`, 
+          'application/pdf'
+        );
 
         // Generate signed URL for short preview time
-        const { url } = await generateSignedUrl(uploadedFile.key, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
+        const { url } = await generateSignedUrl(uploadedFile.fileKey, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
 
         res.status(200).json({ success: true, data: { url } } as APIResponseType);
         return;
@@ -2139,29 +2129,20 @@ export async function signAgreementController(req: Request, res: Response): Prom
     const signedPdfBytes = await pdfDoc.save();
     const signedPdfBuffer = Buffer.from(signedPdfBytes);
 
-    // Upload to UploadThing
-    const { UTApi } = await import('uploadthing/server');
-    const utapi = new UTApi();
-
-    // Create a proper File object for UploadThing
-    // Note: Buffer requires cast for File constructor in Node environment
-    const signedPdfFile = new File([signedPdfBuffer as unknown as BlobPart], `signed-agreement-${request.requestNumber || request.id}.pdf`, { type: 'application/pdf' });
-    const uploadResult = await utapi.uploadFiles(signedPdfFile);
-    if (uploadResult.error) {
-      logger.error('UploadThing upload failed:', { error: JSON.stringify(uploadResult.error) });
-      res.status(500).json({ success: false, message: 'Failed to upload signed agreement' } as APIResponseType);
-      return;
-    }
-
-    const uploadedFile = uploadResult.data;
+    // Upload to UploadThing using storage provider
+    const uploadedFile = await uploadFile(
+      signedPdfBuffer,
+      `signed-agreement-${request.requestNumber || request.id}.pdf`,
+      'application/pdf'
+    );
 
     // Save document record
     const document = await prisma.document.create({
       data: {
         requestId: request.id,
-        fileKey: uploadedFile.key,
-        fileName: uploadedFile.name,
-        fileSize: uploadedFile.size,
+        fileKey: uploadedFile.fileKey,
+        fileName: uploadedFile.fileName,
+        fileSize: uploadedFile.fileSize,
         fileType: 'application/pdf',
         uploadedBy: user.id, // Customer initiated, but system processed
         uploaderRole: DOCUMENT_UPLOADER_ROLE.SYSTEM,
@@ -2171,7 +2152,7 @@ export async function signAgreementController(req: Request, res: Response): Prom
     });
 
     // Generate signed URL for the client
-    const { url: signedUrl } = await generateSignedUrl(uploadedFile.key, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
+    const { url: signedUrl } = await generateSignedUrl(uploadedFile.fileKey, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
 
     // Update request to next stage - need bank details
     const fromStage = request.stage;
@@ -2273,23 +2254,14 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
     // Convert base64 to buffer
     const pdfBuffer = Buffer.from(pdfBase64, 'base64');
 
-    // Upload to UploadThing using UTApi
-    const { UTApi } = await import('uploadthing/server');
-    const utapi = new UTApi();
-
+    // Upload to UploadThing using storage provider
     logger.info(`Uploading signed agreement for request ${id}`);
 
-    // Upload buffer - create File object for UploadThing
-    const pdfFile = new File([pdfBuffer as unknown as BlobPart], `signed-agreement-${id}.pdf`, { type: 'application/pdf' });
-    const uploadResult = await utapi.uploadFiles(pdfFile);
-
-    if (uploadResult.error) {
-      logger.error('UploadThing upload failed:', { error: JSON.stringify(uploadResult.error) });
-      res.status(500).json({ success: false, error: 'Failed to upload PDF to storage' });
-      return;
-    }
-
-    const uploadedFile = uploadResult.data;
+    const uploadedFile = await uploadFile(
+      pdfBuffer,
+      `signed-agreement-${id}.pdf`,
+      'application/pdf'
+    );
 
     // Determine uploaderRole based on user's roles
     let uploaderRole = 'USER_SUBMITTED';
@@ -2303,9 +2275,9 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
     const document = await prisma.document.create({
       data: {
         requestId: id,
-        fileKey: uploadedFile.key,
-        fileName: uploadedFile.name,
-        fileSize: uploadedFile.size,
+        fileKey: uploadedFile.fileKey,
+        fileName: uploadedFile.fileName,
+        fileSize: uploadedFile.fileSize,
         fileType: 'application/pdf',
         uploadedBy: user.id,
         uploaderRole,
@@ -2358,17 +2330,20 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
 
         const stampedBytes = await pdfDoc.save();
         const stampedBuffer = Buffer.from(stampedBytes);
-        const stampedFile = new File([stampedBuffer as unknown as BlobPart], `stamped-agreement-${id}.pdf`, { type: 'application/pdf' });
-        const stampedUpload = await utapi.uploadFiles(stampedFile);
-        if (stampedUpload.error) throw new Error('Failed to upload stamped PDF');
-        const stampedUploaded = stampedUpload.data;
+        
+        // Upload stamped PDF using storage provider
+        const stampedUploaded = await uploadFile(
+          stampedBuffer,
+          `stamped-agreement-${id}.pdf`,
+          'application/pdf'
+        );
 
         const systemDoc = await prisma.document.create({
           data: {
             requestId: id,
-            fileKey: stampedUploaded.key,
-            fileName: stampedUploaded.name,
-            fileSize: stampedUploaded.size,
+            fileKey: stampedUploaded.fileKey,
+            fileName: stampedUploaded.fileName,
+            fileSize: stampedUploaded.fileSize,
             fileType: 'application/pdf',
             uploadedBy: user.id,
             uploaderRole: DOCUMENT_UPLOADER_ROLE.SYSTEM,
@@ -2378,10 +2353,10 @@ export async function uploadSignedAgreementController(req: Request, res: Respons
         });
 
         try {
-          const { url } = await generateSignedUrl(stampedUploaded.key, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
+          const { url } = await generateSignedUrl(stampedUploaded.fileKey, CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT);
           stampedSignedUrl = url;
           stampedDocumentId = systemDoc.id;
-          stampedFileKey = stampedUploaded.key;
+          stampedFileKey = stampedUploaded.fileKey;
           logger.info(`System stamping completed successfully requestId=${id} systemDocumentId=${systemDoc.id}`);
         } catch (e) {
           logger.error('Failed to generate signed URL for stamped document', e as Error);

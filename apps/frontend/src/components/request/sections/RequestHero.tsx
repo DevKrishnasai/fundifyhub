@@ -17,10 +17,10 @@ import {
   Box,
   MapPin
 } from 'lucide-react';
-import { REQUEST_STATUS, LOAN_STATUS, EMI_STATUS, ROLES } from '@fundifyhub/types';
+import { REQUEST_STAGE, LOAN_STATUS, EMI_STATUS, ROLES } from '@fundifyhub/types';
 import type { RequestType } from '@fundifyhub/types';
 import { cn } from '@/lib/utils';
-import { getDistrictName, isStatusIn } from '@/lib/type-guards';
+import { getDistrictName } from '@/lib/type-guards';
 import { formatDistanceToNow, format, isPast } from 'date-fns';
 
 interface RequestHeroProps {
@@ -34,6 +34,10 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
   const isCustomer = userRole === ROLES.CUSTOMER;
   const loan = request.loan;
   
+  // Stage-based check
+  const currentStage = (request.stage || REQUEST_STAGE.DRAFT) as REQUEST_STAGE;
+  const subStatus = request.subStatus || null;
+  
   // Format currency helper
   const formatCurrency = (amount: number | null | undefined) => {
     if (amount == null) return '—';
@@ -45,10 +49,11 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
     }).format(amount);
   };
 
-  // 1. Active Loan View
-  const hasActiveLoan = loan && isStatusIn(
-    loan.status || request.currentStatus,
-    [LOAN_STATUS.ACTIVE, REQUEST_STATUS.ACTIVE, REQUEST_STATUS.PAYMENT_OVERDUE, REQUEST_STATUS.DEFAULTED] as const
+  // 1. Active Loan View - Show for ACTIVE or COMPLETED stage with existing loan
+  const hasActiveLoan = loan && (
+    currentStage === REQUEST_STAGE.ACTIVE || 
+    currentStage === REQUEST_STAGE.COMPLETED ||
+    loan.status === LOAN_STATUS.ACTIVE
   );
 
   if (hasActiveLoan && loan) {
@@ -144,24 +149,13 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
     );
   }
 
-  // 2. Offer Phase View
-  const hasOffer = request.adminOfferedAmount && isStatusIn(
-    request.currentStatus,
-    [
-      REQUEST_STATUS.OFFER_SENT,
-      REQUEST_STATUS.OFFER_ACCEPTED,
-      REQUEST_STATUS.OFFER_DECLINED,
-      REQUEST_STATUS.INSPECTION_SCHEDULED,
-      REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-      REQUEST_STATUS.INSPECTION_COMPLETED,
-      REQUEST_STATUS.APPROVED,
-      REQUEST_STATUS.PENDING_SIGNATURE,
-      REQUEST_STATUS.PENDING_BANK_DETAILS,
-      REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-      REQUEST_STATUS.TRANSFER_FAILED,
-      REQUEST_STATUS.AMOUNT_DISBURSED,
-    ] as const
-  );
+  // 2. Offer Phase View - Show for stages at or after OFFER (except terminal stages)
+  const hasOffer = request.adminOfferedAmount && [
+    REQUEST_STAGE.OFFER,
+    REQUEST_STAGE.INSPECTION,
+    REQUEST_STAGE.DOCUMENTATION,
+    REQUEST_STAGE.DISBURSEMENT,
+  ].includes(currentStage);
 
   if (hasOffer) {
     return (
@@ -200,7 +194,7 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
 
             <div className="p-4 sm:p-6 flex flex-col justify-center">
                {/* Status-specific action hint */}
-               {request.currentStatus === REQUEST_STATUS.OFFER_SENT && isCustomer ? (
+               {currentStage === REQUEST_STAGE.OFFER && subStatus === 'SENT' && isCustomer ? (
                  <Button onClick={() => onAction?.('view-offer')} className="w-full">
                    View Offer <ArrowRight className="ml-2 h-4 w-4" />
                  </Button>

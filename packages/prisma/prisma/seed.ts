@@ -61,6 +61,14 @@ const USERS = [
     password: "Admin@123",
   },
   {
+    firstName: "Agent",
+    lastName: "Kumar",
+    email: "agent@fundifyhub.com",
+    phoneNumber: "9876543210",
+    roles: [UserRole.AGENT],
+    password: "Agent@123",
+  },
+  {
     firstName: "Kiran",
     lastName: "Kumar",
     email: "aks.randm@gmail.com",
@@ -322,8 +330,17 @@ async function main() {
   // Create sample requests for Kiran Kumar (Customer)
   console.log("📝 Creating sample loan requests...")
   const customerId = createdUsers["aks.randm@gmail.com"]
-  const agentId = createdUsers["aks.daytoday@gmail.com"]
+  const agentId = createdUsers["agent@fundifyhub.com"]
   const adminId = createdUsers["kambati855@gmail.com"]
+
+  // Create district assignment for Agent
+  await prisma.userDistrictAssignment.createMany({
+    data: [
+      { userId: agentId, districtId: hyderabadId, isPrimary: true },
+      { userId: agentId, districtId: warangalId, isPrimary: false },
+    ],
+  })
+  console.log(`  ✅ Created district assignments for Agent Kumar`)
 
   // Create bank details for the customer
   console.log("🏦 Creating bank details for customer...")
@@ -762,11 +779,25 @@ async function main() {
     data: [
       {
         serviceName: "EMAIL",
-        isEnabled: true,
-        isActive: true,
-        connectionStatus: "CONNECTED",
+        isEnabled: false, // Disabled by default - needs SMTP config
+        isActive: false,
+        connectionStatus: "DISCONNECTED",
         configuredBy: adminId,
         configuredAt: new Date(),
+        // SMTP config structure (values need to be set by admin)
+        config: {
+          smtp: {
+            host: "smtp.gmail.com",
+            port: 587,
+            secure: false,
+            auth: {
+              user: "", // Gmail address - configure via admin UI
+              pass: "", // App password - configure via admin UI
+            },
+          },
+          from: "FundifyHub <noreply@fundifyhub.com>",
+          replyTo: "support@fundifyhub.com",
+        },
       },
       {
         serviceName: "WHATSAPP",
@@ -774,6 +805,12 @@ async function main() {
         isActive: false,
         connectionStatus: "DISCONNECTED",
         configuredBy: adminId,
+        // WhatsApp Web.js config (QR code linking required)
+        config: {
+          sessionName: "fundifyhub-whatsapp",
+          retryOnDisconnect: true,
+          maxRetries: 3,
+        },
       },
       {
         serviceName: "SMS",
@@ -781,6 +818,26 @@ async function main() {
         isActive: false,
         connectionStatus: "DISCONNECTED",
         configuredBy: adminId,
+        // SMS provider config (future)
+        config: {
+          provider: "twilio", // or msg91, textlocal
+          accountSid: "",
+          authToken: "",
+          fromNumber: "",
+        },
+      },
+      {
+        serviceName: "RAZORPAY",
+        isEnabled: true, // Payment is critical - enabled by default
+        isActive: true,
+        connectionStatus: "CONNECTED",
+        configuredBy: adminId,
+        configuredAt: new Date(),
+        // Razorpay config (uses env vars, this is for status tracking)
+        config: {
+          configured: true,
+          mode: "test", // or "live"
+        },
       },
     ],
   })

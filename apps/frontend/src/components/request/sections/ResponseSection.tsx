@@ -7,14 +7,15 @@ import { AlertCircle, FileText, X, Upload, CheckCircle, Loader2, Image as ImageI
 import { UploadDropzone } from '@/components/uploadthing-components';
 import { postWithResult, deleteWithResult } from '@/lib/api-client';
 import { useToast } from '@/hooks';
-import { REQUEST_STATUS, WORKFLOW_EVENTS } from '@fundifyhub/types';
+import { REQUEST_STAGE, WORKFLOW_EVENTS } from '@fundifyhub/types';
 import { useRequestActions } from '../context/RequestActionContext';
 import { cn } from '@/lib/utils';
 import type { UploadedFileResult } from '@/lib/type-guards';
 
 interface ResponseSectionProps {
   requestId: string;
-  currentStatus: string;
+  stage: REQUEST_STAGE;
+  subStatus: string | null;
   adminRequestedInfo?: string | null;
   onSuccess?: () => void;
 }
@@ -33,7 +34,8 @@ const getStorageKey = (requestId: string) => `fundifyhub_staged_files_${requestI
 
 export function ResponseSection({
   requestId,
-  currentStatus,
+  stage,
+  subStatus,
   adminRequestedInfo,
   onSuccess,
 }: ResponseSectionProps) {
@@ -43,9 +45,12 @@ export function ResponseSection({
   const { success: toastSuccess, error: toastError } = useToast();
   const { executeAction } = useRequestActions();
 
+  // More info required in REVIEW stage with NEEDS_INFO subStatus
+  const isMoreInfoRequired = stage === REQUEST_STAGE.REVIEW && subStatus === 'NEEDS_INFO';
+
   // Load staged files from localStorage on mount
   useEffect(() => {
-    if (currentStatus === REQUEST_STATUS.MORE_INFO_REQUIRED) {
+    if (isMoreInfoRequired) {
       const saved = localStorage.getItem(getStorageKey(requestId));
       if (saved) {
         try {
@@ -56,21 +61,21 @@ export function ResponseSection({
         }
       }
     }
-  }, [requestId, currentStatus]);
+  }, [requestId, isMoreInfoRequired]);
 
   // Save staged files to localStorage whenever they change
   useEffect(() => {
-    if (currentStatus === REQUEST_STATUS.MORE_INFO_REQUIRED) {
+    if (isMoreInfoRequired) {
       if (stagedFiles.length > 0) {
         localStorage.setItem(getStorageKey(requestId), JSON.stringify(stagedFiles));
       } else {
         localStorage.removeItem(getStorageKey(requestId));
       }
     }
-  }, [stagedFiles, requestId, currentStatus]);
+  }, [stagedFiles, requestId, isMoreInfoRequired]);
 
-  // Only show this section if status is MORE_INFO_REQUIRED
-  if (currentStatus !== REQUEST_STATUS.MORE_INFO_REQUIRED) {
+  // Only show this section if more info is required
+  if (!isMoreInfoRequired) {
     return null;
   }
 

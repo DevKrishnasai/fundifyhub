@@ -21,8 +21,8 @@ import { Search, Filter, X, SlidersHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { 
   DISTRICTS, 
-  REQUEST_STATUS, 
-  REQUEST_STATUS_LABELS 
+  REQUEST_STAGE, 
+  STAGE_LABELS 
 } from "@fundifyhub/types"
 
 // Special value for "All" option since Radix Select doesn't allow empty strings
@@ -74,8 +74,8 @@ export interface FiltersProps {
   className?: string
 }
 
-// Default status options from constants
-const defaultStatusOptions: FilterOption[] = Object.entries(REQUEST_STATUS_LABELS).map(
+// Default status options from constants (using stage-based system)
+const defaultStatusOptions: FilterOption[] = Object.entries(STAGE_LABELS).map(
   ([value, label]) => ({ value, label })
 )
 
@@ -398,7 +398,7 @@ export function Filters({
           )}
           {values.status && (
             <FilterTag
-              label={`Status: ${REQUEST_STATUS_LABELS[values.status as REQUEST_STATUS] || values.status}`}
+              label={`Status: ${STAGE_LABELS[values.status as REQUEST_STAGE] || values.status}`}
               onRemove={() => handleChange("status", undefined)}
             />
           )}

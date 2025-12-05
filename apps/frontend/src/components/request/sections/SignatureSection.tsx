@@ -12,11 +12,12 @@ import { FileSignature, CheckCircle, AlertCircle, Download, RefreshCw } from 'lu
 import SignatureCanvas from 'react-signature-canvas';
 import { Button } from '@/components/ui/button';
 import { SectionCard } from './SectionCard';
-import { REQUEST_STATUS } from '@fundifyhub/types';
+import { REQUEST_STAGE } from '@fundifyhub/types';
 
 export interface SignatureSectionProps {
   requestId: string;
-  currentStatus: REQUEST_STATUS;
+  stage: REQUEST_STAGE;
+  subStatus: string | null;
   agreementUrl?: string | null;
   signedAgreementUrl?: string | null;
   isCustomer: boolean;
@@ -27,7 +28,8 @@ export interface SignatureSectionProps {
 
 export function SignatureSection({
   requestId,
-  currentStatus,
+  stage,
+  subStatus,
   agreementUrl,
   signedAgreementUrl,
   isCustomer,
@@ -39,7 +41,8 @@ export function SignatureSection({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
-  const needsSignature = currentStatus === REQUEST_STATUS.PENDING_SIGNATURE;
+  // Signature is needed in DOCUMENTATION stage with PENDING_SIGNATURE subStatus
+  const needsSignature = stage === REQUEST_STAGE.DOCUMENTATION && subStatus === 'PENDING_SIGNATURE';
   const hasSigned = !!signedAgreementUrl;
   const canSign = needsSignature && isCustomer && agreementUrl;
 

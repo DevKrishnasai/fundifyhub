@@ -1,13 +1,29 @@
-import { UTApi } from "uploadthing/server";
-import type { UploadThingListFilesResponse } from "@fundifyhub/types";
+/**
+ * UploadThing Storage Utilities
+ * 
+ * This file provides a thin wrapper around @fundifyhub/providers/storage
+ * for consistent storage operations across the backend.
+ * 
+ * All file operations use the UploadThingProvider abstraction.
+ */
+
+import { createUploadThingProvider } from "@fundifyhub/providers";
 import { CLIENT_CONSTANTS } from "@fundifyhub/types";
 import config from './config';
 import logger from './logger';
 
-// Initialize UploadThing API using validated config (token validated at import)
-const utapi = new UTApi({
+// Initialize UploadThing provider using validated config
+const storageProvider = createUploadThingProvider({
   token: config.uploadthing.token,
+  defaultExpiresIn: CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT,
 });
+
+// Validate provider configuration on startup
+if (!storageProvider.isConfigured()) {
+  logger.error('UploadThing provider not configured. File storage features will not work.');
+} else {
+  logger.info('UploadThing storage provider initialized successfully');
+}
 
 /**
  * Generate a signed URL for accessing a private file
@@ -30,38 +46,21 @@ export async function generateSignedUrl(
   fileKey: string,
   expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<{ url: string; expiresAt: Date }> {
-  // Skip demo/placeholder file keys that won't exist in UploadThing
-  if (fileKey.startsWith('demo-file-key-') || fileKey.startsWith('placeholder-')) {
-    return {
-      url: '', // Return empty URL for demo files
-      expiresAt: new Date(0),
-    };
-  }
+  const result = await storageProvider.generateSignedUrl(fileKey, { expiresIn });
 
-  try {
-    const result = await utapi.getSignedURL(fileKey, { expiresIn });
-
-    const expiresAt = new Date(Date.now() + expiresIn * 1000);
-
-    return {
-      url: result.url,
-      expiresAt,
-    };
-  } catch (err) {
-    // Extract error info safely without using `any`
-    const e = err as Record<string, unknown> | null;
-    const response = e?.response as Record<string, unknown> | undefined;
-    const status = response?.status ?? (e?.status as number | undefined) ?? null;
-    const body = response?.body ?? (e?.message as string | undefined) ?? (err instanceof Error ? err.message : JSON.stringify(err));
-    logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey} status=${status} body=${String(body)}`);
-
-    if (status === 404 || String(body).toLowerCase().includes('file not found')) {
+  if (!result.success) {
+    // For file not found or demo files, return empty URL
+    if (result.error?.includes('not found') || result.error?.includes('not configured')) {
+      logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey}: ${result.error}`);
       return { url: '', expiresAt: new Date(0) };
     }
-
-    // For other errors, throw to surface issues (auth, token, service outage)
-    throw new Error(`Failed to generate signed URL for ${fileKey}: ${String(body)}`);
+    throw new Error(`Failed to generate signed URL for ${fileKey}: ${result.error}`);
   }
+
+  return {
+    url: result.url!,
+    expiresAt: result.expiresAt!,
+  };
 }
 
 /**
@@ -74,7 +73,6 @@ export async function generateSignedUrl(
  * @param fileKeys - Array of unique UploadThing file keys
  * @param expiresIn - Expiration time in seconds for all URLs (default: 900 = 15 minutes)
  * @returns Promise resolving to array of objects with fileKey, signed URL, and expiration date
- * @throws Error if any signed URL generation fails
  *
  * @example
  * ```typescript
@@ -86,50 +84,18 @@ export async function generateSignedUrls(
   fileKeys: string[],
   expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<Array<{ fileKey: string; url: string; expiresAt: Date }>> {
-  try {
-    const results = await Promise.all(
-      fileKeys.map(async (fileKey) => {
-        // Skip demo/placeholder file keys
-        if (fileKey.startsWith('demo-file-key-') || fileKey.startsWith('placeholder-')) {
-          return {
-            fileKey,
-            url: '', // Return empty URL for demo files
-            expiresAt: new Date(0),
-          };
-        }
+  const result = await storageProvider.generateSignedUrls(fileKeys, { expiresIn });
 
-        try {
-          const result = await utapi.getSignedURL(fileKey, { expiresIn });
-          return {
-            fileKey,
-            url: result.url,
-            expiresAt: new Date(Date.now() + expiresIn * 1000),
-          };
-        } catch (e) {
-          // Extract error info safely without using `any`
-          const ee = e as Record<string, unknown> | null;
-          const response = ee?.response as Record<string, unknown> | undefined;
-          const status = response?.status ?? (ee?.status as number | undefined) ?? null;
-          const body = response?.body ?? (ee?.message as string | undefined) ?? (e instanceof Error ? e.message : JSON.stringify(e));
-          logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey} status=${status} body=${String(body)}`);
-
-          // If it's a 404, return empty URL for that file, continue other files
-          if (status === 404 || String(body).toLowerCase().includes('file not found')) {
-            return { fileKey, url: '', expiresAt: new Date(0) };
-          }
-
-          // For other errors, log and return empty to avoid failing the whole batch
-          return { fileKey, url: '', expiresAt: new Date(0) };
-        }
-      })
-    );
-    
-    return results;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`Failed to generate signed URLs: ${message}`);
+  if (!result.success) {
+    logger.error(`Failed to generate signed URLs: batch operation failed`);
     throw new Error("Failed to generate signed URLs");
   }
+
+  return result.results.map(item => ({
+    fileKey: item.fileKey,
+    url: item.url ?? '',
+    expiresAt: item.expiresAt ?? new Date(0),
+  }));
 }
 
 /**
@@ -151,45 +117,81 @@ export async function generateSignedUrls(
 export async function deleteUploadThingFiles(
   fileKeys: string[]
 ): Promise<{ success: boolean; deletedCount: number }> {
-  try {
-    await utapi.deleteFiles(fileKeys);
-    
-    return {
-      success: true,
-      deletedCount: fileKeys.length,
-    };
-  } catch (error) {
+  const result = await storageProvider.deleteFiles(fileKeys);
+
+  if (!result.success) {
+    logger.error(`Failed to delete files: batch operation failed`);
     throw new Error("Failed to delete files from UploadThing");
   }
+
+  return {
+    success: true,
+    deletedCount: result.successCount,
+  };
 }
 
 /**
- * Get file information from UploadThing
+ * Delete a single file from UploadThing storage
  *
- * Retrieves metadata about a file stored in UploadThing without downloading it.
- * Useful for checking file existence, size, type, and other properties.
+ * Permanently removes a file from UploadThing storage. This operation cannot be undone.
  *
- * @param fileKey - The unique file key to get information for
- * @returns Promise resolving to file information object
- * @throws Error if file is not found or retrieval fails
+ * @param fileKey - The file key to delete
+ * @returns Promise resolving to success status
+ * @throws Error if file deletion fails
+ */
+export async function deleteUploadThingFile(
+  fileKey: string
+): Promise<{ success: boolean }> {
+  const result = await storageProvider.deleteFile(fileKey);
+
+  if (!result.success) {
+    logger.error(`Failed to delete file ${fileKey}: ${result.error}`);
+    throw new Error(`Failed to delete file from UploadThing: ${fileKey}`);
+  }
+
+  return { success: true };
+}
+
+/**
+ * Upload a file to UploadThing storage
+ *
+ * Uploads a buffer to UploadThing and returns the file key and URL.
+ *
+ * @param buffer - The file content as a Buffer
+ * @param fileName - The name to give the file
+ * @param mimeType - The MIME type of the file (e.g., 'application/pdf')
+ * @returns Promise resolving to upload result with file key and URL
+ * @throws Error if upload fails
  *
  * @example
  * ```typescript
- * const fileInfo = await getFileInfo("file_123");
- * console.log(`File size: ${fileInfo.size} bytes`);
+ * const result = await uploadFile(pdfBuffer, 'document.pdf', 'application/pdf');
+ * console.log(`Uploaded: ${result.fileKey}`);
  * ```
  */
-export async function getFileInfo(fileKey: string) {
-  try {
-    const files = await utapi.listFiles();
-    const file = files.files.find((f) => f.key === fileKey);
-    
-    if (!file) {
-      throw new Error("File not found");
-    }
-    
-    return file;
-  } catch (error) {
-    throw new Error("Failed to get file information");
+export async function uploadFile(
+  buffer: Buffer,
+  fileName: string,
+  mimeType: string
+): Promise<{ fileKey: string; url: string; fileName: string; fileSize: number }> {
+  const result = await storageProvider.uploadFile({
+    content: buffer,
+    fileName,
+    mimeType,
+  });
+
+  if (!result.success || !result.fileKey) {
+    logger.error(`Failed to upload file ${fileName}: ${result.error}`);
+    throw new Error(`Failed to upload file to UploadThing: ${result.error}`);
   }
+
+  return {
+    fileKey: result.fileKey,
+    url: result.url ?? '',
+    fileName: result.fileName ?? fileName,
+    fileSize: result.fileSize ?? buffer.length,
+  };
 }
+
+// Export the provider for direct access if needed
+export { storageProvider };

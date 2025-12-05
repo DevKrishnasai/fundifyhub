@@ -19,6 +19,8 @@ import {
   BatchSignedUrlResult,
   FileDeleteResult,
   BatchDeleteResult,
+  FileUploadInput,
+  FileUploadResult,
   SIGNED_URL_EXPIRY,
 } from '@fundifyhub/types';
 
@@ -295,6 +297,59 @@ export class UploadThingProvider implements IStorageProvider {
       successCount,
       failedCount,
     };
+  }
+
+  /**
+   * Upload a file to UploadThing
+   */
+  async uploadFile(input: FileUploadInput): Promise<FileUploadResult> {
+    if (!this.utapi) {
+      return {
+        success: false,
+        error: 'UploadThing is not configured',
+      };
+    }
+
+    try {
+      // Convert content to ArrayBuffer for File constructor compatibility
+      const arrayBuffer = input.content instanceof Buffer 
+        ? input.content.buffer.slice(
+            input.content.byteOffset, 
+            input.content.byteOffset + input.content.byteLength
+          )
+        : input.content.buffer;
+      
+      // Create a File object from the ArrayBuffer
+      const file = new File(
+        [arrayBuffer], 
+        input.fileName, 
+        { type: input.mimeType }
+      );
+
+      const uploadResult = await this.utapi.uploadFiles(file);
+      
+      if (uploadResult.error) {
+        return {
+          success: false,
+          error: `Upload failed: ${JSON.stringify(uploadResult.error)}`,
+        };
+      }
+
+      const data = uploadResult.data;
+      return {
+        success: true,
+        fileKey: data.key,
+        url: data.ufsUrl,
+        fileName: data.name,
+        fileSize: data.size,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown upload error';
+      return {
+        success: false,
+        error: `Upload failed: ${message}`,
+      };
+    }
   }
 }
 

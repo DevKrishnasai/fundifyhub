@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SectionCard, SectionRow, SectionGrid } from './SectionCard';
-import { REQUEST_STATUS, VALIDATION_PATTERNS } from '@fundifyhub/types';
+import { REQUEST_STAGE, VALIDATION_PATTERNS } from '@fundifyhub/types';
 
 export interface BankDetails {
   bankAccountNumber?: string | null;
@@ -24,7 +24,8 @@ export interface BankDetails {
 
 export interface BankDetailsSectionProps {
   requestId: string;
-  currentStatus: REQUEST_STATUS;
+  stage: REQUEST_STAGE;
+  subStatus: string | null;
   bankDetails: BankDetails;
   isCustomer: boolean;
   onSubmit?: (details: BankDetails) => Promise<void>;
@@ -33,7 +34,8 @@ export interface BankDetailsSectionProps {
 
 export function BankDetailsSection({
   requestId,
-  currentStatus,
+  stage,
+  subStatus,
   bankDetails,
   isCustomer,
   onSubmit,
@@ -49,12 +51,13 @@ export function BankDetailsSection({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const needsBankDetails = [
-    REQUEST_STATUS.PENDING_BANK_DETAILS,
-    REQUEST_STATUS.TRANSFER_FAILED,
-  ].includes(currentStatus);
+  // Bank details needed in DOCUMENTATION stage with PENDING_BANK_DETAILS subStatus
+  // or in DISBURSEMENT stage with FAILED subStatus (transfer failed)
+  const needsBankDetails = 
+    (stage === REQUEST_STAGE.DOCUMENTATION && subStatus === 'PENDING_BANK_DETAILS') ||
+    (stage === REQUEST_STAGE.DISBURSEMENT && subStatus === 'FAILED');
 
-  const hasSubmittedDetails = currentStatus === REQUEST_STATUS.BANK_DETAILS_SUBMITTED;
+  const hasSubmittedDetails = stage === REQUEST_STAGE.DOCUMENTATION && subStatus === 'BANK_DETAILS_SUBMITTED';
   const hasBankDetails = !!(bankDetails.bankAccountNumber || bankDetails.upiId);
 
   const validateForm = (): boolean => {
@@ -137,7 +140,7 @@ export function BankDetailsSection({
         <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg mb-4">
           <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
           <p className="text-sm text-amber-700 dark:text-amber-400">
-            {currentStatus === REQUEST_STATUS.TRANSFER_FAILED
+            {stage === REQUEST_STAGE.DISBURSEMENT && subStatus === 'FAILED'
               ? 'Previous transfer failed. Please update your bank details.'
               : 'Please provide your bank details for loan disbursement.'}
           </p>

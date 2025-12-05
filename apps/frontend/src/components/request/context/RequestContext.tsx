@@ -84,13 +84,19 @@ export function RequestProvider({ requestId, children }: RequestProviderProps) {
       if (data.requestId === requestId) {
         console.log('[RequestContext] Request matches, reloading...');
         loadRequest().then(() => {
-          if (data.status && data.status !== request?.currentStatus) {
-            toastSuccess(data.message || `Status changed to ${data.status}`);
+          // Compare stage/subStatus for change detection
+          const stageChanged = data.stage && data.stage !== request?.stage;
+          const subStatusChanged = data.subStatus && data.subStatus !== request?.subStatus;
+          // Fallback to legacy status comparison for backwards compat
+          const statusChanged = data.status && data.status !== request?.currentStatus;
+          
+          if (stageChanged || subStatusChanged || statusChanged) {
+            toastSuccess(data.message || `Status changed to ${data.stage || data.status}`);
           }
         });
       }
     },
-    [requestId, request?.currentStatus, loadRequest, toastSuccess]
+    [requestId, request?.stage, request?.subStatus, request?.currentStatus, loadRequest, toastSuccess]
   );
 
   // Listen for status changes

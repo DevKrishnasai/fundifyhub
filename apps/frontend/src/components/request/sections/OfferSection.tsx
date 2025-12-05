@@ -16,7 +16,7 @@ import {
   IndianRupee,
   TrendingUp,
 } from 'lucide-react';
-import { REQUEST_STATUS } from '@fundifyhub/types';
+import { REQUEST_STAGE } from '@fundifyhub/types';
 import type { RequestType } from '@fundifyhub/types';
 import { 
   SectionCard, 
@@ -54,10 +54,16 @@ export function OfferSection({
   className,
 }: OfferSectionProps) {
   const hasOffer = request.adminOfferedAmount !== null && request.adminOfferedAmount > 0;
-  const isOfferSent = request.currentStatus === REQUEST_STATUS.OFFER_SENT;
-  const isOfferAccepted = request.currentStatus === REQUEST_STATUS.OFFER_ACCEPTED;
-  const isOfferDeclined = request.currentStatus === REQUEST_STATUS.OFFER_DECLINED;
-  const isOfferExpired = request.currentStatus === REQUEST_STATUS.OFFER_EXPIRED;
+  
+  // Stage-based offer status checks
+  const currentStage = (request.stage || REQUEST_STAGE.DRAFT) as REQUEST_STAGE;
+  const subStatus = request.subStatus || null;
+  
+  const isOfferSent = currentStage === REQUEST_STAGE.OFFER && subStatus === 'SENT';
+  const isOfferAccepted = currentStage === REQUEST_STAGE.OFFER && subStatus === 'ACCEPTED';
+  const isOfferDeclined = currentStage === REQUEST_STAGE.OFFER && subStatus === 'DECLINED';
+  const isOfferExpired = currentStage === REQUEST_STAGE.OFFER && subStatus === 'EXPIRED';
+  
   const isCustomer = userRole === 'CUSTOMER';
   const isAdmin = userRole === 'DISTRICT_ADMIN' || userRole === 'SUPER_ADMIN';
 

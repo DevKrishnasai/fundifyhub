@@ -1,18 +1,17 @@
-
 // ============================================
 // USER ROLES - Single role per user
 // ============================================
 
 export const ROLES = {
-  CUSTOMER: "CUSTOMER",
-  AGENT: "AGENT",
-  DISTRICT_ADMIN: "DISTRICT_ADMIN",
-  STATE_ADMIN: "STATE_ADMIN",
-  SUPER_ADMIN: "SUPER_ADMIN",
+  CUSTOMER: 'CUSTOMER',
+  AGENT: 'AGENT',
+  DISTRICT_ADMIN: 'DISTRICT_ADMIN',
+  STATE_ADMIN: 'STATE_ADMIN',
+  SUPER_ADMIN: 'SUPER_ADMIN',
 } as const;
 
 // Type for role values
-export type UserRole = typeof ROLES[keyof typeof ROLES];
+export type UserRole = (typeof ROLES)[keyof typeof ROLES];
 
 // Role hierarchy levels (higher = more access)
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
@@ -33,10 +32,19 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 // Roles that have admin capabilities
-export const ADMIN_ROLES = [ROLES.DISTRICT_ADMIN, ROLES.STATE_ADMIN, ROLES.SUPER_ADMIN] as const;
+export const ADMIN_ROLES = [
+  ROLES.DISTRICT_ADMIN,
+  ROLES.STATE_ADMIN,
+  ROLES.SUPER_ADMIN,
+] as const;
 
 // Roles that can manage requests
-export const REQUEST_MANAGER_ROLES = [ROLES.AGENT, ROLES.DISTRICT_ADMIN, ROLES.STATE_ADMIN, ROLES.SUPER_ADMIN] as const;
+export const REQUEST_MANAGER_ROLES = [
+  ROLES.AGENT,
+  ROLES.DISTRICT_ADMIN,
+  ROLES.STATE_ADMIN,
+  ROLES.SUPER_ADMIN,
+] as const;
 
 export enum SERVICE_NAMES {
   WHATSAPP = 'WHATSAPP',
@@ -54,7 +62,7 @@ export enum TEMPLATE_NAMES {
   EMI_OVERDUE = 'EMI_OVERDUE',
   REQUEST_STATUS_NOTIFICATIONS = 'REQUEST_STATUS_NOTIFICATIONS',
   REQUEST_SUBMITTED = 'REQUEST_SUBMITTED',
-};
+}
 
 export enum QUEUE_NAMES {
   EMI_CRON_QUEUE = 'EMI_CRON_QUEUE',
@@ -73,9 +81,8 @@ export enum SERVICE_CONTROL_ACTIONS {
   STOP = 'STOP',
   RESTART = 'RESTART',
   DISCONNECT = 'DISCONNECT',
-  TEST = 'TEST'
+  TEST = 'TEST',
 }
-
 
 export enum CONNECTION_STATUS {
   CONNECTED = 'CONNECTED',
@@ -89,86 +96,77 @@ export enum CONNECTION_STATUS {
 
 // ----------- REQUEST RELATED -----------
 
-export enum REQUEST_STATUS {
-  // ============================================
-  // PHASE 1: SUBMISSION & REVIEW
-  // ============================================
-  PENDING = "PENDING",                      // Customer submitted, waiting for admin
-  UNDER_REVIEW = "UNDER_REVIEW",           // Admin reviewing request
-  MORE_INFO_REQUIRED = "MORE_INFO_REQUIRED", // Admin needs additional documents
-  
-  // ============================================
-  // PHASE 2: OFFER & NEGOTIATION
-  // ============================================
-  OFFER_SENT = "OFFER_SENT",               // Admin sent offer to customer
-  OFFER_ACCEPTED = "OFFER_ACCEPTED",       // Customer accepted offer
-  OFFER_DECLINED = "OFFER_DECLINED",       // Customer declined offer
-  OFFER_EXPIRED = "OFFER_EXPIRED",         // Customer didn't respond in time
-  
-  // ============================================
-  // PHASE 3: INSPECTION
-  // ============================================
-  INSPECTION_SCHEDULED = "INSPECTION_SCHEDULED",     // Agent assigned with date/time
-  INSPECTION_RESCHEDULE_REQUESTED = "INSPECTION_RESCHEDULE_REQUESTED", // Customer requested reschedule
-  INSPECTION_IN_PROGRESS = "INSPECTION_IN_PROGRESS", // Agent conducting inspection
-  INSPECTION_COMPLETED = "INSPECTION_COMPLETED",     // Agent finished inspection
-  CUSTOMER_NOT_AVAILABLE = "CUSTOMER_NOT_AVAILABLE", // Customer wasn't at location
-  ASSET_MISMATCH = "ASSET_MISMATCH",                 // Asset doesn't match description
-  AGENT_NOT_AVAILABLE = "AGENT_NOT_AVAILABLE",       // Agent couldn't make it
-  
-  // ============================================
-  // PHASE 4: APPROVAL & DOCUMENTATION
-  // ============================================
-  APPROVED = "APPROVED",                         // Agent approved request
-  PENDING_SIGNATURE = "PENDING_SIGNATURE",       // Waiting for customer signature
-  PENDING_BANK_DETAILS = "PENDING_BANK_DETAILS", // Waiting for UPI/bank details
-  
-  // ============================================
-  // PHASE 5: LOAN PROCESSING & DISBURSEMENT
-  // ============================================
-  BANK_DETAILS_SUBMITTED = "BANK_DETAILS_SUBMITTED", // Customer submitted, admin will disburse
-  TRANSFER_FAILED = "TRANSFER_FAILED",               // Transfer failed, need new details
-  AMOUNT_DISBURSED = "AMOUNT_DISBURSED",             // Money successfully sent
-  
-  // ============================================
-  // PHASE 6: ACTIVE LOAN
-  // ============================================
-  ACTIVE = "ACTIVE",                       // Loan active, customer paying EMIs
-  PAYMENT_OVERDUE = "PAYMENT_OVERDUE",     // Customer missed EMI payment
-  DEFAULTED = "DEFAULTED",                 // Multiple missed payments
-  COMPLETED = "COMPLETED",                 // All EMIs paid successfully
-  
-  // ============================================
-  // TERMINAL STATES
-  // ============================================
-  REJECTED = "REJECTED",                   // Request rejected
-  CANCELLED = "CANCELLED",                 // Request cancelled
-}
-
-
 export enum ASSET_TYPE {
-  LAPTOP = "LAPTOP",
-  TABLET = "TABLET",
-  CAMERA = "CAMERA",
-  "GAMING CONSOLE" = "GAMING CONSOLE",
-  MOBILE = "MOBILE",
-  ELECTRONICS = "ELECTRONICS",
-  TV = "TV",
-  HOME_APPLIANCE = "HOME_APPLIANCE",
-  BICYCLE = "BICYCLE",
-  TRUCK = "TRUCK",
-  MOTORCYCLE = "MOTORCYCLE",
-  CAR = "CAR",
-  JEWELRY = "JEWELRY",
-  OTHER = "OTHER"
+  LAPTOP = 'LAPTOP',
+  TABLET = 'TABLET',
+  CAMERA = 'CAMERA',
+  'GAMING CONSOLE' = 'GAMING CONSOLE',
+  MOBILE = 'MOBILE',
+  ELECTRONICS = 'ELECTRONICS',
+  TV = 'TV',
+  HOME_APPLIANCE = 'HOME_APPLIANCE',
+  BICYCLE = 'BICYCLE',
+  TRUCK = 'TRUCK',
+  MOTORCYCLE = 'MOTORCYCLE',
+  CAR = 'CAR',
+  JEWELRY = 'JEWELRY',
+  OTHER = 'OTHER',
 }
 
 export enum ASSET_CONDITION {
-  EXCELLENT = "EXCELLENT",
-  GOOD = "GOOD",
-  FAIR = "FAIR",
-  POOR = "POOR",
-  DAMAGED = "DAMAGED"
+  EXCELLENT = 'EXCELLENT',
+  GOOD = 'GOOD',
+  FAIR = 'FAIR',
+  POOR = 'POOR',
+  DAMAGED = 'DAMAGED',
+}
+
+// ============================================
+// REQUEST STATUS (Legacy - 28 values)
+// @deprecated Use REQUEST_STAGE from stage-constants.ts for new code
+// Kept for backward compatibility with workflow.ts and database
+// ============================================
+
+export enum REQUEST_STATUS {
+  // Submission Phase
+  PENDING = 'PENDING',
+  UNDER_REVIEW = 'UNDER_REVIEW',
+  MORE_INFO_REQUIRED = 'MORE_INFO_REQUIRED',
+  
+  // Offer Phase
+  OFFER_SENT = 'OFFER_SENT',
+  OFFER_ACCEPTED = 'OFFER_ACCEPTED',
+  OFFER_DECLINED = 'OFFER_DECLINED',
+  OFFER_EXPIRED = 'OFFER_EXPIRED',
+  
+  // Inspection Phase
+  INSPECTION_SCHEDULED = 'INSPECTION_SCHEDULED',
+  INSPECTION_RESCHEDULE_REQUESTED = 'INSPECTION_RESCHEDULE_REQUESTED',
+  INSPECTION_IN_PROGRESS = 'INSPECTION_IN_PROGRESS',
+  INSPECTION_COMPLETED = 'INSPECTION_COMPLETED',
+  CUSTOMER_NOT_AVAILABLE = 'CUSTOMER_NOT_AVAILABLE',
+  ASSET_MISMATCH = 'ASSET_MISMATCH',
+  AGENT_NOT_AVAILABLE = 'AGENT_NOT_AVAILABLE',
+  
+  // Approval Phase
+  APPROVED = 'APPROVED',
+  PENDING_SIGNATURE = 'PENDING_SIGNATURE',
+  
+  // Disbursement Phase
+  PENDING_BANK_DETAILS = 'PENDING_BANK_DETAILS',
+  BANK_DETAILS_SUBMITTED = 'BANK_DETAILS_SUBMITTED',
+  TRANSFER_FAILED = 'TRANSFER_FAILED',
+  AMOUNT_DISBURSED = 'AMOUNT_DISBURSED',
+  
+  // Repayment Phase
+  ACTIVE = 'ACTIVE',
+  PAYMENT_OVERDUE = 'PAYMENT_OVERDUE',
+  DEFAULTED = 'DEFAULTED',
+  COMPLETED = 'COMPLETED',
+  
+  // Terminal States
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
 }
 
 // ============================================
@@ -176,32 +174,32 @@ export enum ASSET_CONDITION {
 // ============================================
 
 export enum AUCTION_STATUS {
-  DRAFT = "DRAFT",           // Listing being prepared
-  SCHEDULED = "SCHEDULED",   // Auction scheduled for future
-  ACTIVE = "ACTIVE",         // Bidding is open
-  EXTENDED = "EXTENDED",     // Bidding extended due to last-minute activity
-  ENDED = "ENDED",           // Bidding closed, winner determined
-  SOLD = "SOLD",             // Payment received, asset transferred
-  UNSOLD = "UNSOLD",         // No valid bids received
-  CANCELLED = "CANCELLED"    // Auction cancelled by admin
+  DRAFT = 'DRAFT', // Listing being prepared
+  SCHEDULED = 'SCHEDULED', // Auction scheduled for future
+  ACTIVE = 'ACTIVE', // Bidding is open
+  EXTENDED = 'EXTENDED', // Bidding extended due to last-minute activity
+  ENDED = 'ENDED', // Bidding closed, winner determined
+  SOLD = 'SOLD', // Payment received, asset transferred
+  UNSOLD = 'UNSOLD', // No valid bids received
+  CANCELLED = 'CANCELLED', // Auction cancelled by admin
 }
 
 export enum BID_STATUS {
-  ACTIVE = "ACTIVE",         // Valid, active bid
-  OUTBID = "OUTBID",         // Superseded by higher bid
-  WINNING = "WINNING",       // Currently the highest bid
-  WON = "WON",               // Won the auction
-  WITHDRAWN = "WITHDRAWN",   // Bidder withdrew the bid
-  REJECTED = "REJECTED",     // Bid rejected by admin (suspicious activity)
-  CANCELLED = "CANCELLED"    // Bid cancelled when auction is cancelled
+  ACTIVE = 'ACTIVE', // Valid, active bid
+  OUTBID = 'OUTBID', // Superseded by higher bid
+  WINNING = 'WINNING', // Currently the highest bid
+  WON = 'WON', // Won the auction
+  WITHDRAWN = 'WITHDRAWN', // Bidder withdrew the bid
+  REJECTED = 'REJECTED', // Bid rejected by admin (suspicious activity)
+  CANCELLED = 'CANCELLED', // Bid cancelled when auction is cancelled
 }
 
 export enum MOVEMENT_TYPE {
-  INTAKE = "INTAKE",         // Asset received from customer
-  TRANSFER = "TRANSFER",     // Moved between warehouses
-  AUCTION = "AUCTION",       // Moved for auction
-  RELEASE = "RELEASE",       // Returned to customer
-  DISPOSAL = "DISPOSAL"      // Asset disposed/scrapped
+  INTAKE = 'INTAKE', // Asset received from customer
+  TRANSFER = 'TRANSFER', // Moved between warehouses
+  AUCTION = 'AUCTION', // Moved for auction
+  RELEASE = 'RELEASE', // Returned to customer
+  DISPOSAL = 'DISPOSAL', // Asset disposed/scrapped
 }
 
 // Auction status display labels
@@ -217,15 +215,50 @@ export const AUCTION_STATUS_LABELS: Record<AUCTION_STATUS, string> = {
 };
 
 // Auction status colors for UI
-export const AUCTION_STATUS_COLORS: Record<AUCTION_STATUS, { bg: string; text: string; border: string }> = {
-  [AUCTION_STATUS.DRAFT]: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-400', border: 'border-gray-300' },
-  [AUCTION_STATUS.SCHEDULED]: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-300' },
-  [AUCTION_STATUS.ACTIVE]: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-300' },
-  [AUCTION_STATUS.EXTENDED]: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-300' },
-  [AUCTION_STATUS.ENDED]: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-300' },
-  [AUCTION_STATUS.SOLD]: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-300' },
-  [AUCTION_STATUS.UNSOLD]: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-300' },
-  [AUCTION_STATUS.CANCELLED]: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-300' },
+export const AUCTION_STATUS_COLORS: Record<
+  AUCTION_STATUS,
+  { bg: string; text: string; border: string }
+> = {
+  [AUCTION_STATUS.DRAFT]: {
+    bg: 'bg-gray-100 dark:bg-gray-800',
+    text: 'text-gray-700 dark:text-gray-400',
+    border: 'border-gray-300',
+  },
+  [AUCTION_STATUS.SCHEDULED]: {
+    bg: 'bg-blue-100 dark:bg-blue-900/30',
+    text: 'text-blue-700 dark:text-blue-400',
+    border: 'border-blue-300',
+  },
+  [AUCTION_STATUS.ACTIVE]: {
+    bg: 'bg-green-100 dark:bg-green-900/30',
+    text: 'text-green-700 dark:text-green-400',
+    border: 'border-green-300',
+  },
+  [AUCTION_STATUS.EXTENDED]: {
+    bg: 'bg-amber-100 dark:bg-amber-900/30',
+    text: 'text-amber-700 dark:text-amber-400',
+    border: 'border-amber-300',
+  },
+  [AUCTION_STATUS.ENDED]: {
+    bg: 'bg-purple-100 dark:bg-purple-900/30',
+    text: 'text-purple-700 dark:text-purple-400',
+    border: 'border-purple-300',
+  },
+  [AUCTION_STATUS.SOLD]: {
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-700 dark:text-emerald-400',
+    border: 'border-emerald-300',
+  },
+  [AUCTION_STATUS.UNSOLD]: {
+    bg: 'bg-orange-100 dark:bg-orange-900/30',
+    text: 'text-orange-700 dark:text-orange-400',
+    border: 'border-orange-300',
+  },
+  [AUCTION_STATUS.CANCELLED]: {
+    bg: 'bg-red-100 dark:bg-red-900/30',
+    text: 'text-red-700 dark:text-red-400',
+    border: 'border-red-300',
+  },
 };
 
 // Bid status labels
@@ -268,75 +301,80 @@ export const CLIENT_CONSTANTS = {
 };
 
 export const ASSET_TYPE_OPTIONS = [
-  { value: "LAPTOP", label: "Laptop" },
-  { value: "TABLET", label: "Tablet" },
-  { value: "CAMERA", label: "Camera" },
-  { value: "GAMING CONSOLE", label: "Gaming Console" },
-  { value: "MOBILE", label: "Mobile / Phone" },
-  { value: "ELECTRONICS", label: "Electronics (TV, Audio)" },
-  { value: "TV", label: "TV" },
-  { value: "HOME_APPLIANCE", label: "Home Appliance" },
-  { value: "BICYCLE", label: "Bicycle" },
-  { value: "TRUCK", label: "Truck" },
-  { value: "MOTORCYCLE", label: "Motorcycle" },
-  { value: "CAR", label: "Car" },
-  { value: "JEWELRY", label: "Jewelry" },
-  { value: "OTHER", label: "Other" },
-]
+  { value: 'LAPTOP', label: 'Laptop' },
+  { value: 'TABLET', label: 'Tablet' },
+  { value: 'CAMERA', label: 'Camera' },
+  { value: 'GAMING CONSOLE', label: 'Gaming Console' },
+  { value: 'MOBILE', label: 'Mobile / Phone' },
+  { value: 'ELECTRONICS', label: 'Electronics (TV, Audio)' },
+  { value: 'TV', label: 'TV' },
+  { value: 'HOME_APPLIANCE', label: 'Home Appliance' },
+  { value: 'BICYCLE', label: 'Bicycle' },
+  { value: 'TRUCK', label: 'Truck' },
+  { value: 'MOTORCYCLE', label: 'Motorcycle' },
+  { value: 'CAR', label: 'Car' },
+  { value: 'JEWELRY', label: 'Jewelry' },
+  { value: 'OTHER', label: 'Other' },
+];
 
 export const ASSET_CONDITION_OPTIONS = [
-  { value: "EXCELLENT", label: "Excellent - Like new" },
-  { value: "GOOD", label: "Good - Minor wear" },
-  { value: "FAIR", label: "Fair - Visible wear" },
-  { value: "POOR", label: "Poor - Significant wear" },
-]
+  { value: 'EXCELLENT', label: 'Excellent - Like new' },
+  { value: 'GOOD', label: 'Good - Minor wear' },
+  { value: 'FAIR', label: 'Fair - Visible wear' },
+  { value: 'POOR', label: 'Poor - Significant wear' },
+];
 
 /**
  * @deprecated Use geography hierarchy from database (Country → State → District)
  * This is kept for backward compatibility during migration.
  */
 export const DISTRICTS = [
-  "Hyderabad",
-  "Warangal",
-  "Nizamabad",
-  "Karimnagar",
-  "Khammam",
-  "Mahbubnagar",
-  "Nalgonda",
-  "Adilabad",
-  "Medak",
-  "Rangareddy",
-  "Sangareddy",
-  "Siddipet",
-  "Jagtial",
-  "Peddapalli",
-  "Mancherial",
-  "Kamareddy",
-  "Nirmal",
-  "Kumuram Bheem",
-  "Rajanna Sircilla",
-  "Medchal-Malkajgiri",
-  "Wanaparthy",
-  "Nagarkurnool",
-  "Jogulamba Gadwal",
-  "Suryapet",
-  "Yadadri Bhuvanagiri",
-  "Mahabubabad",
-  "Bhadradri Kothagudem",
-  "Jangaon",
-  "Jayashankar Bhupalpally",
-  "Mulugu",
-  "Narayanpet",
-  "Vikarabad",
+  'Hyderabad',
+  'Warangal',
+  'Nizamabad',
+  'Karimnagar',
+  'Khammam',
+  'Mahbubnagar',
+  'Nalgonda',
+  'Adilabad',
+  'Medak',
+  'Rangareddy',
+  'Sangareddy',
+  'Siddipet',
+  'Jagtial',
+  'Peddapalli',
+  'Mancherial',
+  'Kamareddy',
+  'Nirmal',
+  'Kumuram Bheem',
+  'Rajanna Sircilla',
+  'Medchal-Malkajgiri',
+  'Wanaparthy',
+  'Nagarkurnool',
+  'Jogulamba Gadwal',
+  'Suryapet',
+  'Yadadri Bhuvanagiri',
+  'Mahabubabad',
+  'Bhadradri Kothagudem',
+  'Jangaon',
+  'Jayashankar Bhupalpally',
+  'Mulugu',
+  'Narayanpet',
+  'Vikarabad',
 ];
 
-export const ADMIN_AGENT_ROLES = [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN, ROLES.AGENT] as const;
+export const ADMIN_AGENT_ROLES = [
+  ROLES.SUPER_ADMIN,
+  ROLES.STATE_ADMIN,
+  ROLES.DISTRICT_ADMIN,
+  ROLES.AGENT,
+] as const;
 
 export const ALLOWED_UPDATE_STATUSES = [
   REQUEST_STATUS.PENDING,
   REQUEST_STATUS.OFFER_DECLINED,
   REQUEST_STATUS.REJECTED,
-  REQUEST_STATUS.CANCELLED
+  REQUEST_STATUS.CANCELLED,
 ];
 
 export const PENDING_REQUEST_STATUSES = [
@@ -626,125 +664,126 @@ export const REQUEST_HISTORY_ACTION_CONFIG: Record<
 
 // Helper to get label for unknown actions
 export const getRequestHistoryActionLabel = (action: string): string => {
-  const config = REQUEST_HISTORY_ACTION_CONFIG[action as REQUEST_HISTORY_ACTION];
+  const config =
+    REQUEST_HISTORY_ACTION_CONFIG[action as REQUEST_HISTORY_ACTION];
   if (config) return config.label;
   // Fallback: convert SNAKE_CASE to Title Case
   return action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
 
 export enum DOCUMENT_CATEGORY {
-  ASSET = "ASSET",                    // Asset photos, receipts
-  INSPECTION = "INSPECTION",          // Inspection photos taken by agent
-  IDENTITY = "IDENTITY",              // ID proofs, address proofs
-  INCOME = "INCOME",                  // Salary slips, bank statements
-  LEGAL = "LEGAL",                    // Agreements, policies
-  PAYMENT = "PAYMENT",                // EMI receipts, payment proofs
-  LOAN = "LOAN",                      // Loan agreements, documents
-  PROFILE = "PROFILE",                // User profile pictures
-  TRANSFER_PROOF = "TRANSFER_PROOF",  // Amount transfer proofs
-  OTHER = "OTHER"                     // Miscellaneous
+  ASSET = 'ASSET', // Asset photos, receipts
+  INSPECTION = 'INSPECTION', // Inspection photos taken by agent
+  IDENTITY = 'IDENTITY', // ID proofs, address proofs
+  INCOME = 'INCOME', // Salary slips, bank statements
+  LEGAL = 'LEGAL', // Agreements, policies
+  PAYMENT = 'PAYMENT', // EMI receipts, payment proofs
+  LOAN = 'LOAN', // Loan agreements, documents
+  PROFILE = 'PROFILE', // User profile pictures
+  TRANSFER_PROOF = 'TRANSFER_PROOF', // Amount transfer proofs
+  OTHER = 'OTHER', // Miscellaneous
 }
 
 export enum DOCUMENT_TYPE {
-  ASSET_PHOTO = "ASSET_PHOTO",
-  ASSET_DOCUMENT = "ASSET_DOCUMENT",     // Warranty cards, bills, receipts, etc.
-  PURCHASE_RECEIPT = "PURCHASE_RECEIPT",
-  ID_PROOF = "ID_PROOF",
-  ADDRESS_PROOF = "ADDRESS_PROOF",
-  INSPECTION_PHOTO = "INSPECTION_PHOTO",
-  EMI_RECEIPT = "EMI_RECEIPT",
-  TRANSFER_PROOF = "TRANSFER_PROOF",
-  LOAN_AGREEMENT = "LOAN_AGREEMENT",
-  PROFILE_PICTURE = "PROFILE_PICTURE",
-  OTHER = "OTHER"
+  ASSET_PHOTO = 'ASSET_PHOTO',
+  ASSET_DOCUMENT = 'ASSET_DOCUMENT', // Warranty cards, bills, receipts, etc.
+  PURCHASE_RECEIPT = 'PURCHASE_RECEIPT',
+  ID_PROOF = 'ID_PROOF',
+  ADDRESS_PROOF = 'ADDRESS_PROOF',
+  INSPECTION_PHOTO = 'INSPECTION_PHOTO',
+  EMI_RECEIPT = 'EMI_RECEIPT',
+  TRANSFER_PROOF = 'TRANSFER_PROOF',
+  LOAN_AGREEMENT = 'LOAN_AGREEMENT',
+  PROFILE_PICTURE = 'PROFILE_PICTURE',
+  OTHER = 'OTHER',
 }
 
 export enum DOCUMENT_STATUS {
-  ACTIVE = "ACTIVE",
-  ARCHIVED = "ARCHIVED",
-  DELETED = "DELETED"
+  ACTIVE = 'ACTIVE',
+  ARCHIVED = 'ARCHIVED',
+  DELETED = 'DELETED',
 }
 
 // Document uploader role categorization (includes system role for stamped uploads)
 export enum DOCUMENT_UPLOADER_ROLE {
-  USER_SUBMITTED = "USER_SUBMITTED",
-  AGENT_SUBMITTED = "AGENT_SUBMITTED",
-  ADMIN_SUBMITTED = "ADMIN_SUBMITTED",
-  SYSTEM = "SYSTEM"
+  USER_SUBMITTED = 'USER_SUBMITTED',
+  AGENT_SUBMITTED = 'AGENT_SUBMITTED',
+  ADMIN_SUBMITTED = 'ADMIN_SUBMITTED',
+  SYSTEM = 'SYSTEM',
 }
 
 export enum LOAN_STATUS {
-  ACTIVE = "ACTIVE",          // Money disbursed, customer paying EMIs
-  COMPLETED = "COMPLETED",    // All EMIs paid successfully
-  DEFAULTED = "DEFAULTED"     // Customer failed to pay, loan defaulted
+  ACTIVE = 'ACTIVE', // Money disbursed, customer paying EMIs
+  COMPLETED = 'COMPLETED', // All EMIs paid successfully
+  DEFAULTED = 'DEFAULTED', // Customer failed to pay, loan defaulted
 }
 
 export enum EMI_STATUS {
-  PENDING = "PENDING",
-  PAID = "PAID", 
-  OVERDUE = "OVERDUE",
-  DEFAULTED = "DEFAULTED"
+  PENDING = 'PENDING',
+  PAID = 'PAID',
+  OVERDUE = 'OVERDUE',
+  DEFAULTED = 'DEFAULTED',
 }
 
 // Late fee starts from day 1 (no grace period for daily charges)
 export const LATE_FEE_GRACE_PERIOD_DAYS = 0;
 
 export enum INSPECTION_STATUS {
-  PENDING = "PENDING",
-  SCHEDULED = "SCHEDULED",
-  IN_PROGRESS = "IN_PROGRESS",
-  COMPLETED = "COMPLETED",
-  CANCELLED = "CANCELLED"
+  PENDING = 'PENDING',
+  SCHEDULED = 'SCHEDULED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
 }
 
 export enum PAYMENT_METHOD {
-  RAZORPAY = "RAZORPAY",
-  UPI = "UPI",
-  BANK_TRANSFER = "BANK_TRANSFER",
-  CASH = "CASH",
-  CARD = "CARD"
+  RAZORPAY = 'RAZORPAY',
+  UPI = 'UPI',
+  BANK_TRANSFER = 'BANK_TRANSFER',
+  CASH = 'CASH',
+  CARD = 'CARD',
 }
 
 export enum PAYMENT_STATUS {
-  PENDING = "PENDING",
-  SUCCESS = "SUCCESS",
-  FAILED = "FAILED",
-  REFUNDED = "REFUNDED"
+  PENDING = 'PENDING',
+  SUCCESS = 'SUCCESS',
+  FAILED = 'FAILED',
+  REFUNDED = 'REFUNDED',
 }
 
 export enum PAYMENT_TYPE {
-  EMI = "EMI",               // Regular EMI payment
-  ADVANCE = "ADVANCE",       // Advance payment
-  LATE_FEE = "LATE_FEE"     // Late fee/penalty payment (PARTIAL removed)
+  EMI = 'EMI', // Regular EMI payment
+  ADVANCE = 'ADVANCE', // Advance payment
+  LATE_FEE = 'LATE_FEE', // Late fee/penalty payment (PARTIAL removed)
 }
 
 // Payment Order Status - Tracks Razorpay order lifecycle
 export enum PAYMENT_ORDER_STATUS {
-  CREATED = "CREATED",       // Order created, awaiting payment attempt
-  ATTEMPTED = "ATTEMPTED",   // Customer opened Razorpay checkout
-  PAID = "PAID",             // Payment successful
-  FAILED = "FAILED",         // Payment failed
-  EXPIRED = "EXPIRED"        // Order expired (not paid within ~30 min)
+  CREATED = 'CREATED', // Order created, awaiting payment attempt
+  ATTEMPTED = 'ATTEMPTED', // Customer opened Razorpay checkout
+  PAID = 'PAID', // Payment successful
+  FAILED = 'FAILED', // Payment failed
+  EXPIRED = 'EXPIRED', // Order expired (not paid within ~30 min)
 }
 
 // Asset Status - Collateral lifecycle
 export enum ASSET_STATUS {
-  PLEDGED = "PLEDGED",           // Asset is currently pledged against a loan
-  RELEASED = "RELEASED",         // Asset returned to customer after loan completion
-  IN_AUCTION = "IN_AUCTION",     // Asset is in auction process
-  FORFEITED = "FORFEITED",       // Asset forfeited due to loan default
-  AUCTIONED = "AUCTIONED",       // Asset sold through auction
-  SOLD = "SOLD"                  // Asset was sold in auction
+  PLEDGED = 'PLEDGED', // Asset is currently pledged against a loan
+  RELEASED = 'RELEASED', // Asset returned to customer after loan completion
+  IN_AUCTION = 'IN_AUCTION', // Asset is in auction process
+  FORFEITED = 'FORFEITED', // Asset forfeited due to loan default
+  AUCTIONED = 'AUCTIONED', // Asset sold through auction
+  SOLD = 'SOLD', // Asset was sold in auction
 }
 
 // Offer Status - Admin offer lifecycle
 export enum OFFER_STATUS {
-  PENDING = "PENDING",           // Offer sent, awaiting customer response
-  ACCEPTED = "ACCEPTED",         // Customer accepted the offer
-  DECLINED = "DECLINED",         // Customer declined the offer
-  EXPIRED = "EXPIRED",           // Offer expired without response
-  REVISED = "REVISED",           // Offer was superseded by a new offer
-  CANCELLED = "CANCELLED"        // Admin cancelled the offer
+  PENDING = 'PENDING', // Offer sent, awaiting customer response
+  ACCEPTED = 'ACCEPTED', // Customer accepted the offer
+  DECLINED = 'DECLINED', // Customer declined the offer
+  EXPIRED = 'EXPIRED', // Offer expired without response
+  REVISED = 'REVISED', // Offer was superseded by a new offer
+  CANCELLED = 'CANCELLED', // Admin cancelled the offer
 }
 
 // Razorpay order expiry time in minutes
@@ -803,8 +842,16 @@ export const VALIDATION_PATTERNS = {
 
 export const MAX_DOCUMENT_SIZE = 4 * 1024 * 1024; // 4MB in bytes
 export const MAX_DOCUMENT_COUNT = 5;
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
-export const ALLOWED_DOCUMENT_TYPES = [...ALLOWED_IMAGE_TYPES, 'application/pdf'];
+export const ALLOWED_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/jpg',
+];
+export const ALLOWED_DOCUMENT_TYPES = [
+  ...ALLOWED_IMAGE_TYPES,
+  'application/pdf',
+];
 
 export const POLL_INTERVAL_MS = 8000; // 8 seconds
 export const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
@@ -830,7 +877,10 @@ export const ACTION_MESSAGES = {
 } as const;
 
 // Document Type to Category Mapping
-export const DOCUMENT_TYPE_TO_CATEGORY: Record<DOCUMENT_TYPE, DOCUMENT_CATEGORY> = {
+export const DOCUMENT_TYPE_TO_CATEGORY: Record<
+  DOCUMENT_TYPE,
+  DOCUMENT_CATEGORY
+> = {
   [DOCUMENT_TYPE.ASSET_PHOTO]: DOCUMENT_CATEGORY.ASSET,
   [DOCUMENT_TYPE.ASSET_DOCUMENT]: DOCUMENT_CATEGORY.ASSET,
   [DOCUMENT_TYPE.PURCHASE_RECEIPT]: DOCUMENT_CATEGORY.ASSET,
@@ -889,77 +939,77 @@ export const DOCUMENT_TYPE_CONFIG: Record<
     category: DOCUMENT_CATEGORY.ASSET,
     isDownloadable: true,
     icon: 'FileImage',
-    description: 'Photos of the asset being pledged'
+    description: 'Photos of the asset being pledged',
   },
   [DOCUMENT_TYPE.ASSET_DOCUMENT]: {
     label: 'Asset Document',
     category: DOCUMENT_CATEGORY.ASSET,
     isDownloadable: true,
     icon: 'FileText',
-    description: 'Warranty cards, bills, receipts related to the asset'
+    description: 'Warranty cards, bills, receipts related to the asset',
   },
   [DOCUMENT_TYPE.PURCHASE_RECEIPT]: {
     label: 'Purchase Receipt',
     category: DOCUMENT_CATEGORY.ASSET,
     isDownloadable: true,
     icon: 'Receipt',
-    description: 'Original purchase receipt or invoice'
+    description: 'Original purchase receipt or invoice',
   },
   [DOCUMENT_TYPE.ID_PROOF]: {
     label: 'ID Proof',
     category: DOCUMENT_CATEGORY.IDENTITY,
     isDownloadable: false, // Sensitive document
     icon: 'CreditCard',
-    description: 'Government issued ID proof'
+    description: 'Government issued ID proof',
   },
   [DOCUMENT_TYPE.ADDRESS_PROOF]: {
     label: 'Address Proof',
     category: DOCUMENT_CATEGORY.IDENTITY,
     isDownloadable: false, // Sensitive document
     icon: 'MapPin',
-    description: 'Address verification document'
+    description: 'Address verification document',
   },
   [DOCUMENT_TYPE.INSPECTION_PHOTO]: {
     label: 'Inspection Photo',
     category: DOCUMENT_CATEGORY.INSPECTION,
     isDownloadable: true,
     icon: 'Camera',
-    description: 'Photos taken during asset inspection'
+    description: 'Photos taken during asset inspection',
   },
   [DOCUMENT_TYPE.EMI_RECEIPT]: {
     label: 'EMI Receipt',
     category: DOCUMENT_CATEGORY.PAYMENT,
     isDownloadable: true,
     icon: 'Receipt',
-    description: 'EMI payment receipt'
+    description: 'EMI payment receipt',
   },
   [DOCUMENT_TYPE.TRANSFER_PROOF]: {
     label: 'Transfer Proof',
     category: DOCUMENT_CATEGORY.TRANSFER_PROOF,
     isDownloadable: true,
     icon: 'ArrowRightLeft',
-    description: 'Proof of amount transfer'
+    description: 'Proof of amount transfer',
   },
   [DOCUMENT_TYPE.LOAN_AGREEMENT]: {
     label: 'Loan Agreement',
     category: DOCUMENT_CATEGORY.LEGAL,
     isDownloadable: true,
     icon: 'FileText',
-    description: 'Signed loan agreement document'
+    description: 'Signed loan agreement document',
   },
   [DOCUMENT_TYPE.PROFILE_PICTURE]: {
     label: 'Profile Picture',
     category: DOCUMENT_CATEGORY.PROFILE,
     isDownloadable: false,
     icon: 'User',
-    description: 'User profile picture'
+    description: 'User profile picture',
   },
   [DOCUMENT_TYPE.OTHER]: {
     label: 'Other Document',
     category: DOCUMENT_CATEGORY.OTHER,
     isDownloadable: true,
     icon: 'File',
-    description: 'Miscellaneous document'
+    description: 'Miscellaneous document',
   },
 };
 
@@ -985,7 +1035,7 @@ export enum PERMISSION {
   UPDATE_REQUEST_STATUS = 'UPDATE_REQUEST_STATUS',
   ASSIGN_AGENT = 'ASSIGN_AGENT',
   CREATE_OFFER = 'CREATE_OFFER',
-  
+
   // User permissions
   VIEW_OWN_PROFILE = 'VIEW_OWN_PROFILE',
   UPDATE_OWN_PROFILE = 'UPDATE_OWN_PROFILE',
@@ -994,34 +1044,34 @@ export enum PERMISSION {
   UPDATE_USER = 'UPDATE_USER',
   DELETE_USER = 'DELETE_USER',
   MANAGE_USER_ROLES = 'MANAGE_USER_ROLES',
-  
+
   // Document permissions
   UPLOAD_DOCUMENT = 'UPLOAD_DOCUMENT',
   VIEW_DOCUMENT = 'VIEW_DOCUMENT',
   DELETE_DOCUMENT = 'DELETE_DOCUMENT',
   VERIFY_DOCUMENT = 'VERIFY_DOCUMENT',
-  
+
   // Loan permissions
   VIEW_OWN_LOANS = 'VIEW_OWN_LOANS',
   VIEW_ALL_LOANS = 'VIEW_ALL_LOANS',
   CREATE_LOAN = 'CREATE_LOAN',
   DISBURSE_LOAN = 'DISBURSE_LOAN',
-  
+
   // Payment permissions
   MAKE_PAYMENT = 'MAKE_PAYMENT',
   VIEW_ALL_PAYMENTS = 'VIEW_ALL_PAYMENTS',
   RECORD_PAYMENT = 'RECORD_PAYMENT',
-  
+
   // Inspection permissions
   VIEW_ASSIGNED_INSPECTIONS = 'VIEW_ASSIGNED_INSPECTIONS',
   COMPLETE_INSPECTION = 'COMPLETE_INSPECTION',
-  
+
   // Admin permissions
   VIEW_ANALYTICS = 'VIEW_ANALYTICS',
   VIEW_AUDIT_LOGS = 'VIEW_AUDIT_LOGS',
   MANAGE_SETTINGS = 'MANAGE_SETTINGS',
   MANAGE_SERVICES = 'MANAGE_SERVICES',
-  
+
   // Comment permissions
   ADD_COMMENT = 'ADD_COMMENT',
   VIEW_INTERNAL_COMMENTS = 'VIEW_INTERNAL_COMMENTS',
@@ -1103,7 +1153,10 @@ export const ROLE_PERMISSIONS: Record<string, PERMISSION[]> = {
 };
 
 // Helper to check if role has permission
-export const hasPermission = (role: string | string[], permission: PERMISSION): boolean => {
+export const hasPermission = (
+  role: string | string[],
+  permission: PERMISSION
+): boolean => {
   const roles = Array.isArray(role) ? role : [role];
   return roles.some(r => ROLE_PERMISSIONS[r]?.includes(permission));
 };
@@ -1133,69 +1186,69 @@ export interface NavMenuItem {
 
 // Unified navigation - items shown based on user role
 export const NAV_ITEMS: NavMenuItem[] = [
-  { 
-    label: 'Dashboard', 
-    href: '/dashboard', 
+  {
+    label: 'Dashboard',
+    href: '/dashboard',
     icon: 'LayoutDashboard',
   },
-  { 
-    label: 'Requests', 
-    href: '/requests', 
+  {
+    label: 'Requests',
+    href: '/requests',
     icon: 'FileText',
   },
-  { 
-    label: 'Upload Asset', 
-    href: '/submit-request', 
+  {
+    label: 'Upload Asset',
+    href: '/submit-request',
     icon: 'Upload',
     roles: [ROLES.CUSTOMER],
   },
-  { 
-    label: 'Users', 
-    href: '/users', 
+  {
+    label: 'Users',
+    href: '/users',
     icon: 'Users',
     roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN],
     permissions: [PERMISSION.VIEW_ALL_USERS],
   },
-  { 
-    label: 'Geography', 
-    href: '/geography', 
+  {
+    label: 'Geography',
+    href: '/geography',
     icon: 'MapPin',
     roles: [ROLES.SUPER_ADMIN, ROLES.DISTRICT_ADMIN],
   },
-  { 
-    label: 'Assets', 
-    href: '/assets', 
+  {
+    label: 'Assets',
+    href: '/assets',
     icon: 'Package',
     roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN],
   },
-  { 
-    label: 'Auctions', 
-    href: '/auctions', 
+  {
+    label: 'Auctions',
+    href: '/auctions',
     icon: 'Gavel',
     // Visible to all roles - customers can bid, admins can manage
   },
-  { 
-    label: 'Analytics', 
-    href: '/analytics', 
+  {
+    label: 'Analytics',
+    href: '/analytics',
     icon: 'BarChart3',
     roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN, ROLES.DISTRICT_ADMIN],
     permissions: [PERMISSION.VIEW_ANALYTICS],
   },
-  { 
-    label: 'Audit Logs', 
-    href: '/audit-logs', 
+  {
+    label: 'Audit Logs',
+    href: '/audit-logs',
     icon: 'ScrollText',
     roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN],
     permissions: [PERMISSION.VIEW_AUDIT_LOGS],
   },
-  { 
-    label: 'Settings', 
-    href: '/settings', 
+  {
+    label: 'Settings',
+    href: '/settings',
     icon: 'Settings',
   },
-  { 
-    label: 'Notifications', 
-    href: '/notifications', 
+  {
+    label: 'Notifications',
+    href: '/notifications',
     icon: 'Bell',
   },
 ];
@@ -1205,33 +1258,140 @@ export const NAV_ITEMS: NavMenuItem[] = [
 // ----------- STATUS DISPLAY CONSTANTS -----------
 
 // Status badge color mapping for consistent UI
-export const REQUEST_STATUS_COLORS: Record<REQUEST_STATUS, { bg: string; text: string; border: string }> = {
-  [REQUEST_STATUS.PENDING]: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400', border: 'border-yellow-300' },
-  [REQUEST_STATUS.UNDER_REVIEW]: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-300' },
-  [REQUEST_STATUS.MORE_INFO_REQUIRED]: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-300' },
-  [REQUEST_STATUS.OFFER_SENT]: { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-400', border: 'border-indigo-300' },
-  [REQUEST_STATUS.OFFER_ACCEPTED]: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-300' },
-  [REQUEST_STATUS.OFFER_DECLINED]: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-300' },
-  [REQUEST_STATUS.OFFER_EXPIRED]: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-400', border: 'border-gray-300' },
-  [REQUEST_STATUS.INSPECTION_SCHEDULED]: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-300' },
-  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-300' },
-  [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400', border: 'border-cyan-300' },
-  [REQUEST_STATUS.INSPECTION_COMPLETED]: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-300' },
-  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-300' },
-  [REQUEST_STATUS.ASSET_MISMATCH]: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-300' },
-  [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-300' },
-  [REQUEST_STATUS.APPROVED]: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-300' },
-  [REQUEST_STATUS.PENDING_SIGNATURE]: { bg: 'bg-violet-100 dark:bg-violet-900/30', text: 'text-violet-700 dark:text-violet-400', border: 'border-violet-300' },
-  [REQUEST_STATUS.PENDING_BANK_DETAILS]: { bg: 'bg-sky-100 dark:bg-sky-900/30', text: 'text-sky-700 dark:text-sky-400', border: 'border-sky-300' },
-  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-300' },
-  [REQUEST_STATUS.TRANSFER_FAILED]: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-300' },
-  [REQUEST_STATUS.AMOUNT_DISBURSED]: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-300' },
-  [REQUEST_STATUS.ACTIVE]: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-300' },
-  [REQUEST_STATUS.PAYMENT_OVERDUE]: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-300' },
-  [REQUEST_STATUS.DEFAULTED]: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-300' },
-  [REQUEST_STATUS.COMPLETED]: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-300' },
-  [REQUEST_STATUS.REJECTED]: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-300' },
-  [REQUEST_STATUS.CANCELLED]: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-400', border: 'border-gray-300' },
+export const REQUEST_STATUS_COLORS: Record<
+  REQUEST_STATUS,
+  { bg: string; text: string; border: string }
+> = {
+  [REQUEST_STATUS.PENDING]: {
+    bg: 'bg-yellow-100 dark:bg-yellow-900/30',
+    text: 'text-yellow-700 dark:text-yellow-400',
+    border: 'border-yellow-300',
+  },
+  [REQUEST_STATUS.UNDER_REVIEW]: {
+    bg: 'bg-blue-100 dark:bg-blue-900/30',
+    text: 'text-blue-700 dark:text-blue-400',
+    border: 'border-blue-300',
+  },
+  [REQUEST_STATUS.MORE_INFO_REQUIRED]: {
+    bg: 'bg-orange-100 dark:bg-orange-900/30',
+    text: 'text-orange-700 dark:text-orange-400',
+    border: 'border-orange-300',
+  },
+  [REQUEST_STATUS.OFFER_SENT]: {
+    bg: 'bg-indigo-100 dark:bg-indigo-900/30',
+    text: 'text-indigo-700 dark:text-indigo-400',
+    border: 'border-indigo-300',
+  },
+  [REQUEST_STATUS.OFFER_ACCEPTED]: {
+    bg: 'bg-green-100 dark:bg-green-900/30',
+    text: 'text-green-700 dark:text-green-400',
+    border: 'border-green-300',
+  },
+  [REQUEST_STATUS.OFFER_DECLINED]: {
+    bg: 'bg-red-100 dark:bg-red-900/30',
+    text: 'text-red-700 dark:text-red-400',
+    border: 'border-red-300',
+  },
+  [REQUEST_STATUS.OFFER_EXPIRED]: {
+    bg: 'bg-gray-100 dark:bg-gray-800',
+    text: 'text-gray-700 dark:text-gray-400',
+    border: 'border-gray-300',
+  },
+  [REQUEST_STATUS.INSPECTION_SCHEDULED]: {
+    bg: 'bg-purple-100 dark:bg-purple-900/30',
+    text: 'text-purple-700 dark:text-purple-400',
+    border: 'border-purple-300',
+  },
+  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: {
+    bg: 'bg-amber-100 dark:bg-amber-900/30',
+    text: 'text-amber-700 dark:text-amber-400',
+    border: 'border-amber-300',
+  },
+  [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: {
+    bg: 'bg-cyan-100 dark:bg-cyan-900/30',
+    text: 'text-cyan-700 dark:text-cyan-400',
+    border: 'border-cyan-300',
+  },
+  [REQUEST_STATUS.INSPECTION_COMPLETED]: {
+    bg: 'bg-teal-100 dark:bg-teal-900/30',
+    text: 'text-teal-700 dark:text-teal-400',
+    border: 'border-teal-300',
+  },
+  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: {
+    bg: 'bg-orange-100 dark:bg-orange-900/30',
+    text: 'text-orange-700 dark:text-orange-400',
+    border: 'border-orange-300',
+  },
+  [REQUEST_STATUS.ASSET_MISMATCH]: {
+    bg: 'bg-red-100 dark:bg-red-900/30',
+    text: 'text-red-700 dark:text-red-400',
+    border: 'border-red-300',
+  },
+  [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: {
+    bg: 'bg-amber-100 dark:bg-amber-900/30',
+    text: 'text-amber-700 dark:text-amber-400',
+    border: 'border-amber-300',
+  },
+  [REQUEST_STATUS.APPROVED]: {
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-700 dark:text-emerald-400',
+    border: 'border-emerald-300',
+  },
+  [REQUEST_STATUS.PENDING_SIGNATURE]: {
+    bg: 'bg-violet-100 dark:bg-violet-900/30',
+    text: 'text-violet-700 dark:text-violet-400',
+    border: 'border-violet-300',
+  },
+  [REQUEST_STATUS.PENDING_BANK_DETAILS]: {
+    bg: 'bg-sky-100 dark:bg-sky-900/30',
+    text: 'text-sky-700 dark:text-sky-400',
+    border: 'border-sky-300',
+  },
+  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: {
+    bg: 'bg-blue-100 dark:bg-blue-900/30',
+    text: 'text-blue-700 dark:text-blue-400',
+    border: 'border-blue-300',
+  },
+  [REQUEST_STATUS.TRANSFER_FAILED]: {
+    bg: 'bg-red-100 dark:bg-red-900/30',
+    text: 'text-red-700 dark:text-red-400',
+    border: 'border-red-300',
+  },
+  [REQUEST_STATUS.AMOUNT_DISBURSED]: {
+    bg: 'bg-green-100 dark:bg-green-900/30',
+    text: 'text-green-700 dark:text-green-400',
+    border: 'border-green-300',
+  },
+  [REQUEST_STATUS.ACTIVE]: {
+    bg: 'bg-green-100 dark:bg-green-900/30',
+    text: 'text-green-700 dark:text-green-400',
+    border: 'border-green-300',
+  },
+  [REQUEST_STATUS.PAYMENT_OVERDUE]: {
+    bg: 'bg-orange-100 dark:bg-orange-900/30',
+    text: 'text-orange-700 dark:text-orange-400',
+    border: 'border-orange-300',
+  },
+  [REQUEST_STATUS.DEFAULTED]: {
+    bg: 'bg-red-100 dark:bg-red-900/30',
+    text: 'text-red-700 dark:text-red-400',
+    border: 'border-red-300',
+  },
+  [REQUEST_STATUS.COMPLETED]: {
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-700 dark:text-emerald-400',
+    border: 'border-emerald-300',
+  },
+  [REQUEST_STATUS.REJECTED]: {
+    bg: 'bg-red-100 dark:bg-red-900/30',
+    text: 'text-red-700 dark:text-red-400',
+    border: 'border-red-300',
+  },
+  [REQUEST_STATUS.CANCELLED]: {
+    bg: 'bg-gray-100 dark:bg-gray-800',
+    text: 'text-gray-700 dark:text-gray-400',
+    border: 'border-gray-300',
+  },
 };
 
 // Status display labels (user-friendly names)
@@ -1268,27 +1428,39 @@ export const REQUEST_STATUS_LABELS: Record<REQUEST_STATUS, string> = {
 export const REQUEST_STATUS_DESCRIPTION: Record<REQUEST_STATUS, string> = {
   [REQUEST_STATUS.PENDING]: 'Your request is waiting for admin review',
   [REQUEST_STATUS.UNDER_REVIEW]: 'Admin is reviewing your request details',
-  [REQUEST_STATUS.MORE_INFO_REQUIRED]: 'Please provide additional documents or information',
+  [REQUEST_STATUS.MORE_INFO_REQUIRED]:
+    'Please provide additional documents or information',
   [REQUEST_STATUS.OFFER_SENT]: 'Review the loan offer and accept or decline',
   [REQUEST_STATUS.OFFER_ACCEPTED]: 'Great! Waiting for inspection scheduling',
-  [REQUEST_STATUS.OFFER_DECLINED]: 'You declined the offer. You can submit a new request',
-  [REQUEST_STATUS.OFFER_EXPIRED]: 'The offer has expired. Contact support for assistance',
-  [REQUEST_STATUS.INSPECTION_SCHEDULED]: 'An agent will visit for asset inspection',
-  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: 'Reschedule request pending approval',
+  [REQUEST_STATUS.OFFER_DECLINED]:
+    'You declined the offer. You can submit a new request',
+  [REQUEST_STATUS.OFFER_EXPIRED]:
+    'The offer has expired. Contact support for assistance',
+  [REQUEST_STATUS.INSPECTION_SCHEDULED]:
+    'An agent will visit for asset inspection',
+  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]:
+    'Reschedule request pending approval',
   [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: 'Agent is inspecting your asset',
-  [REQUEST_STATUS.INSPECTION_COMPLETED]: 'Inspection done, awaiting final approval',
-  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: 'Agent visit failed. Will be rescheduled',
+  [REQUEST_STATUS.INSPECTION_COMPLETED]:
+    'Inspection done, awaiting final approval',
+  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]:
+    'Agent visit failed. Will be rescheduled',
   [REQUEST_STATUS.ASSET_MISMATCH]: 'Asset does not match description provided',
   [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: 'Agent unavailable. Will be reassigned',
   [REQUEST_STATUS.APPROVED]: 'Congratulations! Your loan is approved',
   [REQUEST_STATUS.PENDING_SIGNATURE]: 'Please sign the loan agreement',
-  [REQUEST_STATUS.PENDING_BANK_DETAILS]: 'Provide bank details for disbursement',
-  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: 'Bank details received, processing disbursement',
-  [REQUEST_STATUS.TRANSFER_FAILED]: 'Transfer failed. Please update bank details',
-  [REQUEST_STATUS.AMOUNT_DISBURSED]: 'Loan amount has been transferred to your account',
+  [REQUEST_STATUS.PENDING_BANK_DETAILS]:
+    'Provide bank details for disbursement',
+  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]:
+    'Bank details received, processing disbursement',
+  [REQUEST_STATUS.TRANSFER_FAILED]:
+    'Transfer failed. Please update bank details',
+  [REQUEST_STATUS.AMOUNT_DISBURSED]:
+    'Loan amount has been transferred to your account',
   [REQUEST_STATUS.ACTIVE]: 'Your loan is active. Keep up with EMI payments',
   [REQUEST_STATUS.PAYMENT_OVERDUE]: 'EMI payment is overdue. Please pay soon',
-  [REQUEST_STATUS.DEFAULTED]: 'Multiple payments missed. Contact support immediately',
+  [REQUEST_STATUS.DEFAULTED]:
+    'Multiple payments missed. Contact support immediately',
   [REQUEST_STATUS.COMPLETED]: 'Congratulations! Loan fully repaid',
   [REQUEST_STATUS.REJECTED]: 'Request was rejected. See notes for details',
   [REQUEST_STATUS.CANCELLED]: 'Request was cancelled',
@@ -1401,7 +1573,7 @@ export enum AUDIT_ACTION {
   PASSWORD_CHANGED = 'PASSWORD_CHANGED',
   PASSWORD_RESET_REQUESTED = 'PASSWORD_RESET_REQUESTED',
   PASSWORD_RESET_COMPLETED = 'PASSWORD_RESET_COMPLETED',
-  
+
   // User management
   USER_CREATED = 'USER_CREATED',
   USER_UPDATED = 'USER_UPDATED',
@@ -1409,49 +1581,49 @@ export enum AUDIT_ACTION {
   USER_ROLE_CHANGED = 'USER_ROLE_CHANGED',
   USER_ACTIVATED = 'USER_ACTIVATED',
   USER_DEACTIVATED = 'USER_DEACTIVATED',
-  
+
   // Request operations
   REQUEST_CREATED = 'REQUEST_CREATED',
   REQUEST_UPDATED = 'REQUEST_UPDATED',
   REQUEST_STATUS_CHANGED = 'REQUEST_STATUS_CHANGED',
   REQUEST_DELETED = 'REQUEST_DELETED',
-  
+
   // Offer operations
   OFFER_CREATED = 'OFFER_CREATED',
   OFFER_UPDATED = 'OFFER_UPDATED',
   OFFER_ACCEPTED = 'OFFER_ACCEPTED',
   OFFER_DECLINED = 'OFFER_DECLINED',
-  
+
   // Inspection operations
   AGENT_ASSIGNED = 'AGENT_ASSIGNED',
   ADMIN_ASSIGNED = 'ADMIN_ASSIGNED',
   INSPECTION_SCHEDULED = 'INSPECTION_SCHEDULED',
   INSPECTION_STARTED = 'INSPECTION_STARTED',
   INSPECTION_COMPLETED = 'INSPECTION_COMPLETED',
-  
+
   // Loan operations
   LOAN_CREATED = 'LOAN_CREATED',
   LOAN_DISBURSED = 'LOAN_DISBURSED',
   LOAN_STATUS_CHANGED = 'LOAN_STATUS_CHANGED',
   LOAN_COMPLETED = 'LOAN_COMPLETED',
   LOAN_DEFAULTED = 'LOAN_DEFAULTED',
-  
+
   // Payment operations
   PAYMENT_INITIATED = 'PAYMENT_INITIATED',
   PAYMENT_COMPLETED = 'PAYMENT_COMPLETED',
   PAYMENT_FAILED = 'PAYMENT_FAILED',
   PAYMENT_REFUNDED = 'PAYMENT_REFUNDED',
-  
+
   // Document operations
   DOCUMENT_UPLOADED = 'DOCUMENT_UPLOADED',
   DOCUMENT_DELETED = 'DOCUMENT_DELETED',
   DOCUMENT_VERIFIED = 'DOCUMENT_VERIFIED',
-  
+
   // System operations
   SETTINGS_UPDATED = 'SETTINGS_UPDATED',
   SERVICE_STARTED = 'SERVICE_STARTED',
   SERVICE_STOPPED = 'SERVICE_STOPPED',
-  
+
   // Comments
   COMMENT_ADDED = 'COMMENT_ADDED',
   COMMENT_DELETED = 'COMMENT_DELETED',
@@ -1481,7 +1653,10 @@ export enum AUDIT_STATUS {
 }
 
 // Audit action severity levels for filtering/display
-export const AUDIT_ACTION_SEVERITY: Record<AUDIT_ACTION, 'info' | 'warning' | 'error' | 'success'> = {
+export const AUDIT_ACTION_SEVERITY: Record<
+  AUDIT_ACTION,
+  'info' | 'warning' | 'error' | 'success'
+> = {
   // Authentication - info/warning
   [AUDIT_ACTION.LOGIN]: 'info',
   [AUDIT_ACTION.LOGOUT]: 'info',
@@ -1489,7 +1664,7 @@ export const AUDIT_ACTION_SEVERITY: Record<AUDIT_ACTION, 'info' | 'warning' | 'e
   [AUDIT_ACTION.PASSWORD_CHANGED]: 'info',
   [AUDIT_ACTION.PASSWORD_RESET_REQUESTED]: 'info',
   [AUDIT_ACTION.PASSWORD_RESET_COMPLETED]: 'info',
-  
+
   // User management
   [AUDIT_ACTION.USER_CREATED]: 'success',
   [AUDIT_ACTION.USER_UPDATED]: 'info',
@@ -1497,49 +1672,49 @@ export const AUDIT_ACTION_SEVERITY: Record<AUDIT_ACTION, 'info' | 'warning' | 'e
   [AUDIT_ACTION.USER_ROLE_CHANGED]: 'warning',
   [AUDIT_ACTION.USER_ACTIVATED]: 'success',
   [AUDIT_ACTION.USER_DEACTIVATED]: 'warning',
-  
+
   // Request operations
   [AUDIT_ACTION.REQUEST_CREATED]: 'success',
   [AUDIT_ACTION.REQUEST_UPDATED]: 'info',
   [AUDIT_ACTION.REQUEST_STATUS_CHANGED]: 'info',
   [AUDIT_ACTION.REQUEST_DELETED]: 'warning',
-  
+
   // Offer operations
   [AUDIT_ACTION.OFFER_CREATED]: 'info',
   [AUDIT_ACTION.OFFER_UPDATED]: 'info',
   [AUDIT_ACTION.OFFER_ACCEPTED]: 'success',
   [AUDIT_ACTION.OFFER_DECLINED]: 'warning',
-  
+
   // Inspection
   [AUDIT_ACTION.AGENT_ASSIGNED]: 'info',
   [AUDIT_ACTION.ADMIN_ASSIGNED]: 'info',
   [AUDIT_ACTION.INSPECTION_SCHEDULED]: 'info',
   [AUDIT_ACTION.INSPECTION_STARTED]: 'info',
   [AUDIT_ACTION.INSPECTION_COMPLETED]: 'success',
-  
+
   // Loan operations
   [AUDIT_ACTION.LOAN_CREATED]: 'success',
   [AUDIT_ACTION.LOAN_DISBURSED]: 'success',
   [AUDIT_ACTION.LOAN_STATUS_CHANGED]: 'info',
   [AUDIT_ACTION.LOAN_COMPLETED]: 'success',
   [AUDIT_ACTION.LOAN_DEFAULTED]: 'error',
-  
+
   // Payments
   [AUDIT_ACTION.PAYMENT_INITIATED]: 'info',
   [AUDIT_ACTION.PAYMENT_COMPLETED]: 'success',
   [AUDIT_ACTION.PAYMENT_FAILED]: 'error',
   [AUDIT_ACTION.PAYMENT_REFUNDED]: 'warning',
-  
+
   // Documents
   [AUDIT_ACTION.DOCUMENT_UPLOADED]: 'info',
   [AUDIT_ACTION.DOCUMENT_DELETED]: 'warning',
   [AUDIT_ACTION.DOCUMENT_VERIFIED]: 'success',
-  
+
   // System
   [AUDIT_ACTION.SETTINGS_UPDATED]: 'warning',
   [AUDIT_ACTION.SERVICE_STARTED]: 'success',
   [AUDIT_ACTION.SERVICE_STOPPED]: 'warning',
-  
+
   // Comments
   [AUDIT_ACTION.COMMENT_ADDED]: 'info',
   [AUDIT_ACTION.COMMENT_DELETED]: 'warning',
@@ -1581,7 +1756,8 @@ export enum AGENT_ISSUE_TYPES {
 
 // Local storage keys
 export const LOCAL_STORAGE_KEYS = {
-  INSPECTION_PHOTOS: (requestId: string) => `fundifyhub_inspection_photos_${requestId}`,
+  INSPECTION_PHOTOS: (requestId: string) =>
+    `fundifyhub_inspection_photos_${requestId}`,
 } as const;
 
 // ----------- LOCAL STORAGE CONSTANTS END -----------
@@ -1612,38 +1788,38 @@ export const OFFER_FORM_CONSTRAINTS = {
 export const RATE_LIMIT_CONFIG = {
   // General API rate limits
   GENERAL: {
-    windowMs: 60 * 1000,      // 1 minute
-    maxRequests: 100,         // 100 requests per minute
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 100, // 100 requests per minute
   },
-  
+
   // Authentication endpoints (stricter)
   AUTH: {
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 10,          // 10 attempts per 15 minutes
+    maxRequests: 10, // 10 attempts per 15 minutes
   },
-  
+
   // OTP/verification endpoints (very strict)
   OTP: {
-    windowMs: 60 * 1000,      // 1 minute
-    maxRequests: 3,           // 3 requests per minute
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 3, // 3 requests per minute
   },
-  
+
   // File upload endpoints
   UPLOAD: {
-    windowMs: 60 * 1000,      // 1 minute
-    maxRequests: 10,          // 10 uploads per minute
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 10, // 10 uploads per minute
   },
-  
+
   // Payment endpoints
   PAYMENT: {
-    windowMs: 60 * 1000,      // 1 minute
-    maxRequests: 20,          // 20 payment requests per minute
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 20, // 20 payment requests per minute
   },
-  
+
   // Admin endpoints (more lenient)
   ADMIN: {
-    windowMs: 60 * 1000,      // 1 minute
-    maxRequests: 200,         // 200 requests per minute
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 200, // 200 requests per minute
   },
 } as const;
 
@@ -1655,19 +1831,19 @@ export const RATE_LIMIT_CONFIG = {
 export const CACHE_TTL = {
   /** Short-lived cache (60 seconds) - frequently changing data */
   SHORT: 60,
-  
+
   /** Medium cache (5 minutes) - moderately changing data */
   MEDIUM: 300,
-  
+
   /** Long cache (30 minutes) - rarely changing data */
   LONG: 1800,
-  
+
   /** Dashboard stats cache (2 minutes) */
   DASHBOARD: 120,
-  
+
   /** User session data cache (15 minutes) */
   SESSION: 900,
-  
+
   /** Static data cache (1 hour) */
   STATIC: 3600,
 } as const;

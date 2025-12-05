@@ -16,7 +16,7 @@ import {
   RefreshCw,
   PlayCircle,
 } from 'lucide-react';
-import { REQUEST_STATUS } from '@fundifyhub/types';
+import { REQUEST_STAGE } from '@fundifyhub/types';
 import type { RequestType, UserType, InspectionType } from '@fundifyhub/types';
 import { getDistrictName } from '@/lib/type-guards';
 import { 
@@ -47,15 +47,16 @@ interface InspectionSectionProps {
   className?: string;
 }
 
-const INSPECTION_STATUSES = [
-  REQUEST_STATUS.INSPECTION_SCHEDULED,
-  REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED,
-  REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-  REQUEST_STATUS.INSPECTION_COMPLETED,
-  REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE,
-  REQUEST_STATUS.ASSET_MISMATCH,
-  REQUEST_STATUS.AGENT_NOT_AVAILABLE,
-];
+// Inspection sub-statuses for the INSPECTION stage
+const INSPECTION_SUB_STATUSES = [
+  'SCHEDULED',
+  'RESCHEDULE_REQUESTED', 
+  'IN_PROGRESS',
+  'COMPLETED',
+  'CUSTOMER_NOT_AVAILABLE',
+  'ASSET_MISMATCH',
+  'AGENT_NOT_AVAILABLE',
+] as const;
 
 export function InspectionSection({
   request,
@@ -71,8 +72,12 @@ export function InspectionSection({
 }: InspectionSectionProps) {
   const [stagedPhotosCount, setStagedPhotosCount] = useState(0);
   
+  // Stage-based inspection checks
+  const currentStage = (request.stage || REQUEST_STAGE.DRAFT) as REQUEST_STAGE;
+  const subStatus = request.subStatus || null;
+  
   const hasInspection = request.assignedAgentId !== null || 
-    INSPECTION_STATUSES.includes(request.currentStatus as REQUEST_STATUS);
+    currentStage === REQUEST_STAGE.INSPECTION;
   
   const agent = request.assignedAgent;
   const inspectionDate = request.inspectionScheduledAt ? new Date(request.inspectionScheduledAt) : null;
@@ -82,14 +87,14 @@ export function InspectionSection({
   const isAgent = userRole === 'AGENT';
   const isAssignedAgent = isAgent && currentUserId === request.assignedAgentId;
 
-  const currentStatus = request.currentStatus as REQUEST_STATUS;
-  const isScheduled = currentStatus === REQUEST_STATUS.INSPECTION_SCHEDULED;
-  const isInProgress = currentStatus === REQUEST_STATUS.INSPECTION_IN_PROGRESS;
-  const isCompleted = currentStatus === REQUEST_STATUS.INSPECTION_COMPLETED;
-  const isRescheduleRequested = currentStatus === REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED;
-  const isCustomerNotAvailable = currentStatus === REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE;
-  const isAgentNotAvailable = currentStatus === REQUEST_STATUS.AGENT_NOT_AVAILABLE;
-  const isAssetMismatch = currentStatus === REQUEST_STATUS.ASSET_MISMATCH;
+  // Stage-based status checks
+  const isScheduled = currentStage === REQUEST_STAGE.INSPECTION && subStatus === 'SCHEDULED';
+  const isInProgress = currentStage === REQUEST_STAGE.INSPECTION && subStatus === 'IN_PROGRESS';
+  const isCompleted = currentStage === REQUEST_STAGE.INSPECTION && subStatus === 'COMPLETED';
+  const isRescheduleRequested = currentStage === REQUEST_STAGE.INSPECTION && subStatus === 'RESCHEDULE_REQUESTED';
+  const isCustomerNotAvailable = currentStage === REQUEST_STAGE.INSPECTION && subStatus === 'CUSTOMER_NOT_AVAILABLE';
+  const isAgentNotAvailable = currentStage === REQUEST_STAGE.INSPECTION && subStatus === 'AGENT_NOT_AVAILABLE';
+  const isAssetMismatch = currentStage === REQUEST_STAGE.INSPECTION && subStatus === 'ASSET_MISMATCH';
 
   // Track staged photos count for enabling/disabling complete button
   const handlePhotosChange = useCallback((photos: { fileKey: string }[]) => {
