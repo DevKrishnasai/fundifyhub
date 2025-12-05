@@ -59,6 +59,18 @@ const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'onRetry' | 'onFinalFailure' 
 const NON_RETRYABLE_CODES = [400, 401, 403, 404, 422];
 
 /**
+ * Type guard to check if error has a status property
+ */
+function hasStatusProperty(error: unknown): error is { status: number } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    typeof (error as { status: unknown }).status === 'number'
+  );
+}
+
+/**
  * Default function to determine if an error should be retried
  */
 function defaultShouldRetry(error: Error): boolean {
@@ -71,9 +83,9 @@ function defaultShouldRetry(error: Error): boolean {
     }
   }
 
-  // Check for specific error properties
-  if ('status' in error && typeof (error as any).status === 'number') {
-    if (NON_RETRYABLE_CODES.includes((error as any).status)) {
+  // Check for specific error properties using type guard
+  if (hasStatusProperty(error)) {
+    if (NON_RETRYABLE_CODES.includes(error.status)) {
       return false;
     }
   }

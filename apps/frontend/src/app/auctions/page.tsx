@@ -16,6 +16,7 @@ import {
 } from '@fundifyhub/types'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import Link from 'next/link'
+import Image from 'next/image'
 
 // UI Components
 import {
@@ -332,12 +333,14 @@ export default function AuctionsPage() {
                   {/* Asset Photo */}
                   {auction.asset.photos?.[0] && (
                     <div className="relative h-48 bg-muted">
-                      <img
+                      <Image
                         src={auction.asset.photos[0]}
                         alt={auction.title}
-                        className="w-full h-full object-cover"
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                       />
-                      <div className="absolute top-2 right-2">
+                      <div className="absolute top-2 right-2 z-10">
                         {renderStatusBadge(auction.status)}
                       </div>
                     </div>

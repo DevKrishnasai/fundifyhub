@@ -66,10 +66,11 @@ export const sendWhatsApp = async (opts: { to: string; text: string }) => {
     
     const result = await client.sendMessage(formattedNumber, opts.text);
     return result;
-  } catch (err: any) {
+  } catch (err) {
     const contextLogger = logger.child('[whatsapp-send]');
-    contextLogger.error(`Failed to send to ${opts.to}:`, err);
-    throw new Error(`WhatsApp send failed: ${err.message || 'Unknown error'}`);
+    const error = err instanceof Error ? err : new Error(String(err));
+    contextLogger.error(`Failed to send to ${opts.to}:`, error);
+    throw new Error(`WhatsApp send failed: ${error.message}`);
   }
 };
 

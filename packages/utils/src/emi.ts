@@ -1,28 +1,57 @@
 /**
- * EMI calculation utility
- * Returns amortizing EMI schedule and summary
+ * EMI Calculation Utilities
+ * 
+ * Provides functions for calculating Equated Monthly Installments (EMI)
+ * using the standard amortization formula.
+ * 
+ * @module emi
+ */
+
+/**
+ * A single row in the EMI schedule representing one installment.
  */
 export type EMIScheduleRow = {
+  /** Installment number (1-indexed) */
   installment: number;
-  paymentDate: string; // ISO
+  /** ISO date string for when payment is due */
+  paymentDate: string;
+  /** Total payment amount (principal + interest) */
   paymentAmount: number;
+  /** Principal component of this payment */
   principal: number;
+  /** Interest component of this payment */
   interest: number;
+  /** Remaining loan balance after this payment */
   remainingBalance: number;
 };
 
+/**
+ * Result of EMI calculation including schedule and summary.
+ */
 export type EMICalcResult = {
+  /** Fixed monthly payment amount */
   monthlyPayment: number;
+  /** Total interest over the loan tenure */
   totalInterest: number;
+  /** Total amount to be paid (principal + total interest) */
   totalPayment: number;
+  /** Complete amortization schedule */
   emiSchedule: EMIScheduleRow[];
 };
 
+/**
+ * Rounds a number to specified decimal places.
+ * @internal
+ */
 function roundTo(amount: number, decimals = 2) {
   const p = Math.pow(10, decimals);
   return Math.round(amount * p) / p;
 }
 
+/**
+ * Adds months to a date, handling month-end edge cases.
+ * @internal
+ */
 function addMonths(date: Date, months: number) {
   const d = new Date(date.getTime());
   const day = d.getDate();
@@ -34,11 +63,46 @@ function addMonths(date: Date, months: number) {
   return d;
 }
 
+/**
+ * Calculates the EMI schedule for a loan using the standard amortization formula.
+ * 
+ * The EMI is calculated as:
+ * ```
+ * EMI = P × r × (1 + r)^n / ((1 + r)^n - 1)
+ * ```
+ * Where:
+ * - P = Principal loan amount
+ * - r = Monthly interest rate (annual rate / 12 / 100)
+ * - n = Number of monthly installments
+ * 
+ * @param opts - Calculation options
+ * @param opts.principal - Loan principal amount (must be > 0)
+ * @param opts.annualRate - Annual interest rate as percentage (e.g., 12 for 12%)
+ * @param opts.tenureMonths - Loan tenure in months (must be > 0)
+ * @param opts.firstPaymentDate - ISO date string for first payment (defaults to next month)
+ * @param opts.decimals - Decimal places for rounding (defaults to 2)
+ * @returns EMI calculation result with schedule
+ * @throws {Error} If principal or tenureMonths is <= 0
+ * 
+ * @example
+ * ```typescript
+ * const result = calculateEmiSchedule({
+ *   principal: 100000,
+ *   annualRate: 12,
+ *   tenureMonths: 12,
+ *   firstPaymentDate: '2025-02-01'
+ * });
+ * 
+ * console.log(result.monthlyPayment); // ~8884.88
+ * console.log(result.totalInterest);  // ~6618.56
+ * console.log(result.emiSchedule.length); // 12
+ * ```
+ */
 export function calculateEmiSchedule(opts: {
   principal: number;
-  annualRate: number; // percent
+  annualRate: number;
   tenureMonths: number;
-  firstPaymentDate?: string; // ISO
+  firstPaymentDate?: string;
   decimals?: number;
 }): EMICalcResult {
   const { principal, annualRate, tenureMonths, firstPaymentDate, decimals = 2 } = opts;

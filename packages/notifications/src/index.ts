@@ -60,6 +60,7 @@ export {
 export { EmailAdapter, getEmailAdapter } from './channel-adapters/email-adapter';
 export { WhatsAppAdapter, getWhatsAppAdapter } from './channel-adapters/whatsapp-adapter';
 export { InAppAdapter, getInAppAdapter } from './channel-adapters/in-app-adapter';
+export { PushAdapter, getPushAdapter, type PushSubscription, type PushPayload, type PushAdapterConfig } from './channel-adapters/push-adapter';
 
 // Re-export types from @fundifyhub/types for convenience
 export {
@@ -70,6 +71,7 @@ export {
   DeliveryMode,
   BackoffStrategy,
   DEFAULT_RETRY_CONFIGS,
+  DEFAULT_CHANNEL_RATE_LIMITS,
   type NotificationRequest,
   type NotificationResult,
   type ChannelDeliveryResult,
@@ -78,6 +80,9 @@ export {
   type ChannelOptions,
   type EmailOptions,
   type WhatsAppOptions,
+  type PushOptions,
   type InAppOptions,
+  type ChannelRateLimitConfig,
+  type RateLimitResult,
 } from '@fundifyhub/types';
 

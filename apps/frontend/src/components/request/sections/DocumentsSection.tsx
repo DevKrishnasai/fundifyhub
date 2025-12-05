@@ -55,7 +55,6 @@ export function DocumentsSection({
 }: DocumentsSectionProps) {
   const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all');
   
-  const documents = request.documents || [];
   const isCustomer = userRole === 'CUSTOMER';
   const isAdmin = userRole === 'DISTRICT_ADMIN' || userRole === 'SUPER_ADMIN';
   const isAgent = userRole === 'AGENT';
@@ -68,6 +67,7 @@ export function DocumentsSection({
 
   // Group documents by category
   const groupedDocuments = useMemo(() => {
+    const documents = request.documents || [];
     const grouped: GroupedDocuments = {};
     documents.forEach((doc) => {
       const category = doc.documentCategory || 'OTHER';
@@ -77,8 +77,9 @@ export function DocumentsSection({
       grouped[category].push(doc);
     });
     return grouped;
-  }, [documents]);
+  }, [request.documents]);
 
+  const documents = request.documents || [];
   const categories = Object.keys(groupedDocuments);
   const filteredDocuments = selectedCategory === 'all' 
     ? documents 
@@ -188,6 +189,8 @@ export function DocumentsSection({
                   title="Click to view"
                 >
                   {isImage && doc.url ? (
+                    // Using img for document previews - dimensions unknown, need responsive sizing
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img 
                       src={doc.url} 
                       alt={doc.fileName}

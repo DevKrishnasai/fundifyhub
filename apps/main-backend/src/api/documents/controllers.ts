@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { prisma, DocumentStatus } from "@fundifyhub/prisma";
+import { prisma, DocumentStatus, Document, Prisma } from "@fundifyhub/prisma";
 import {
   generateSignedUrl,
   generateSignedUrls,
@@ -162,33 +162,31 @@ export async function createBulkDocumentsController(req: Request, res: Response)
 
     // Create documents in database
     const createdDocuments = await prisma.document.createMany({
-      data: documents.map((doc: CreateDocumentRequest) => {
-        const data: any = {
+      data: documents.map((doc: CreateDocumentRequest): Prisma.DocumentCreateManyInput => {
+        const baseData: Prisma.DocumentCreateManyInput = {
           fileKey: doc.fileKey,
           fileName: doc.fileName,
-          fileSize: doc.fileSize || 0,
+          fileSize: doc.fileSize ?? 0,
           fileType: doc.fileType,
           documentType: doc.documentType,
-          documentCategory: doc.documentCategory || "OTHER",
-          requestId: doc.requestId || null,
+          documentCategory: doc.documentCategory ?? "OTHER",
+          requestId: doc.requestId ?? null,
           uploadedBy: doc.uploadedBy,
-          uploaderRole: uploaderRoleMap[doc.uploadedBy] || "USER_SUBMITTED",
-          description: doc.description || null,
-          displayOrder: doc.displayOrder || null,
+          uploaderRole: uploaderRoleMap[doc.uploadedBy] ?? "USER_SUBMITTED",
+          description: doc.description ?? null,
+          displayOrder: doc.displayOrder ?? null,
+          metadata: doc.metadata as Prisma.InputJsonValue ?? Prisma.JsonNull,
         };
-        if (doc.metadata) {
-          data.metadata = doc.metadata;
-        }
-        return data;
+        return baseData;
       }),
     });
 
     logger.info(`Bulk created ${createdDocuments.count} documents`);
 
     // Fetch created documents by fileKey for response
-    let createdRows: any[] = [];
+    let createdRows: Document[] = [];
     try {
-      const fileKeys = documents.map((d: any) => d.fileKey);
+      const fileKeys = documents.map((d: CreateDocumentRequest) => d.fileKey);
       createdRows = await prisma.document.findMany({ where: { fileKey: { in: fileKeys } } });
     } catch (err) {
       logger.error('Failed to fetch created documents', err as Error);

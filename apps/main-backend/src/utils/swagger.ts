@@ -58,7 +58,12 @@ const options: swaggerJsdoc.Options = {
     './src/api/auth/*.ts',
     './src/api/user/*.ts',
     './src/api/requests/*.ts',
-    // Add other route paths as needed
+    './src/api/payments/*.ts',
+    './src/api/documents/*.ts',
+    './src/api/admin/**/*.ts',
+    './src/api/geography/*.ts',
+    './src/api/assets/*.ts',
+    './src/api/auctions/*.ts',
   ],
 };
 

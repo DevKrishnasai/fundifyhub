@@ -199,6 +199,76 @@ export const DEFAULT_RETRY_CONFIGS: Record<NotificationPriority, RetryConfig> = 
 };
 
 // ============================================
+// RATE LIMITING
+// ============================================
+
+/**
+ * Rate limit configuration per channel
+ */
+export interface ChannelRateLimitConfig {
+  /** Maximum requests per window */
+  maxRequests: number;
+  /** Window duration in milliseconds */
+  windowMs: number;
+  /** Whether to queue requests when rate limited (vs rejecting) */
+  queueOnLimit?: boolean;
+  /** Maximum queue size when queueing */
+  maxQueueSize?: number;
+}
+
+/**
+ * Default rate limits per channel
+ * These are conservative limits; adjust based on provider quotas
+ */
+export const DEFAULT_CHANNEL_RATE_LIMITS: Record<NotificationChannel, ChannelRateLimitConfig> = {
+  [NotificationChannel.EMAIL]: {
+    maxRequests: 100,       // 100 emails per minute
+    windowMs: 60 * 1000,
+    queueOnLimit: true,
+    maxQueueSize: 1000,
+  },
+  [NotificationChannel.WHATSAPP]: {
+    maxRequests: 50,        // 50 messages per minute (WhatsApp Business API limits)
+    windowMs: 60 * 1000,
+    queueOnLimit: true,
+    maxQueueSize: 500,
+  },
+  [NotificationChannel.SMS]: {
+    maxRequests: 30,        // 30 SMS per minute (typical provider limits)
+    windowMs: 60 * 1000,
+    queueOnLimit: true,
+    maxQueueSize: 500,
+  },
+  [NotificationChannel.PUSH]: {
+    maxRequests: 500,       // 500 push per minute (FCM/APNS are generous)
+    windowMs: 60 * 1000,
+    queueOnLimit: true,
+    maxQueueSize: 2000,
+  },
+  [NotificationChannel.IN_APP]: {
+    maxRequests: 1000,      // 1000 per minute (database inserts)
+    windowMs: 60 * 1000,
+    queueOnLimit: false,    // In-app should never be rate limited
+    maxQueueSize: 0,
+  },
+};
+
+/**
+ * Rate limit check result
+ */
+export interface RateLimitResult {
+  /** Whether the request is allowed */
+  allowed: boolean;
+  /** Remaining requests in current window */
+  remaining: number;
+  /** When the rate limit resets (timestamp) */
+  resetAt: number;
+  /** If rate limited, how long to wait (ms) */
+  retryAfter?: number;
+}
+
+
+// ============================================
 // RECIPIENT TYPES
 // ============================================
 

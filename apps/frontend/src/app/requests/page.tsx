@@ -41,8 +41,8 @@ function RequestsSkeleton() {
           </div>
           <div className="flex flex-wrap gap-4">
             <Skeleton className="h-10 flex-1 min-w-[200px]" />
-            <Skeleton className="h-10 w-[160px]" />
-            <Skeleton className="h-10 w-[160px]" />
+            <Skeleton className="h-10 w-40" />
+            <Skeleton className="h-10 w-40" />
           </div>
           <RequestsListSkeleton items={5} />
         </div>
@@ -76,13 +76,13 @@ function RequestsContent() {
   const { data: districts = [] } = useDistricts({ enabled: isAdmin })
   
   // Get available districts for filtering based on role
-  const userDistricts = user?.districts || []
   const availableDistricts = useMemo(() => {
+    const userDistricts = user?.districts || []
     if (isSuperAdmin) {
       return districts.map(d => d.name)
     }
     return userDistricts
-  }, [isSuperAdmin, districts, userDistricts])
+  }, [isSuperAdmin, districts, user?.districts])
 
   // Build filter params for React Query
   const filterParams = useMemo(() => ({

@@ -7,7 +7,7 @@ import { AppLayout, PageContainer, PageHeader } from "@/components/layout/AppLay
 import { ROLES, PERMISSION, hasPermission, SERVICE_NAMES, CONNECTION_STATUS, profileUpdateSchema, changePasswordSchema, emailConfigSchema } from "@fundifyhub/types"
 import type { ServiceConfigType, EmailConfigType } from "@fundifyhub/types"
 import { BACKEND_API_CONFIG } from "@/lib/urls"
-import { apiClient } from "@/lib/api-client"
+import { apiClient, getErrorMessage } from "@/lib/api-client"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -607,8 +607,8 @@ function SystemSettings() {
         : BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICES
       const response = await apiClient.get(url)
       setServices(response.data.data || [])
-    } catch (error: any) {
-      const message = error?.response?.data?.message || "Failed to load services"
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, "Failed to load services")
       setFetchError(message)
       if (!isPolling) {
         toast.error(message)
@@ -688,8 +688,8 @@ function SystemSettings() {
       toast.success(`${SERVICE_DISPLAY_INFO[serviceName].displayName} ${currentlyEnabled ? "disabled" : "enabled"} successfully`)
       // Fetch fresh data after toggle
       await fetchServices({ fresh: true })
-    } catch (error: any) {
-      const message = error?.response?.data?.message || `Failed to toggle ${SERVICE_DISPLAY_INFO[serviceName].displayName}`
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, `Failed to toggle ${SERVICE_DISPLAY_INFO[serviceName].displayName}`)
       toast.error(message)
     } finally {
       setActionLoading(null)
@@ -741,8 +741,8 @@ function SystemSettings() {
       toast.success(`${SERVICE_DISPLAY_INFO[selectedService].displayName} configured successfully. A test email has been sent to verify.`)
       setConfigModalOpen(false)
       await fetchServices({ fresh: true })
-    } catch (error: any) {
-      const message = error?.response?.data?.message || "Failed to save configuration"
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, "Failed to save configuration")
       toast.error(message)
     } finally {
       setIsSaving(false)
@@ -763,8 +763,8 @@ function SystemSettings() {
       toast.success(`${SERVICE_DISPLAY_INFO[serviceName].displayName} test initiated. Check your ${serviceName === SERVICE_NAMES.EMAIL ? "email inbox" : "WhatsApp"} for verification.`)
       setTestPhoneModalOpen(false)
       setTestPhoneNumber("")
-    } catch (error: any) {
-      const message = error?.response?.data?.message || `Failed to test ${SERVICE_DISPLAY_INFO[serviceName].displayName}`
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, `Failed to test ${SERVICE_DISPLAY_INFO[serviceName].displayName}`)
       toast.error(message)
     } finally {
       setTestLoading(null)
@@ -1031,7 +1031,7 @@ function SystemSettings() {
                     {service.serviceName === SERVICE_NAMES.EMAIL && !hasConfig(service) && (
                       <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                         <p className="text-sm text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
                           <span>Configure SMTP settings before enabling the email service</span>
                         </p>
                       </div>
@@ -1044,7 +1044,7 @@ function SystemSettings() {
                       service.connectionStatus === CONNECTION_STATUS.INITIALIZING) && (
                       <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                         <p className="text-sm text-blue-800 dark:text-blue-200 flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                           <span>WhatsApp is initializing. A QR code will appear when ready to scan.</span>
                         </p>
                       </div>
@@ -1086,7 +1086,7 @@ function SystemSettings() {
           </div>
           <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-900/20 p-4 mt-4">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 mt-0.5 flex-shrink-0" />
+              <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 mt-0.5 shrink-0" />
               <div>
                 <p className="font-medium text-yellow-800 dark:text-yellow-400">Coming Soon</p>
                 <p className="text-sm text-yellow-700 dark:text-yellow-500">

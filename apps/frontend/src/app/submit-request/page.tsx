@@ -315,10 +315,10 @@ function UploadAssetContent() {
       <AppLayout>
         <PageContainer>
           <div className="max-w-2xl mx-auto text-center py-12">
-            <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+            <div className="w-20 h-20 bg-linear-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
               <CheckCircle className="h-10 w-10 text-white" />
             </div>
-            <h1 className="text-3xl font-bold mb-4 bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold mb-4 bg-linear-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
               Request Submitted Successfully!
             </h1>
             <p className="text-muted-foreground mb-8 text-lg">
@@ -373,7 +373,7 @@ function UploadAssetContent() {
 
           {/* Asset Details Card */}
           <Card className="overflow-hidden border-2">
-            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border-b">
+            <CardHeader className="bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border-b">
               <CardTitle className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                   <Package className="h-5 w-5 text-blue-600" />
@@ -503,7 +503,7 @@ function UploadAssetContent() {
 
           {/* Loan Details Card */}
           <Card className="overflow-hidden border-2">
-            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/50 dark:to-emerald-950/50 border-b">
+            <CardHeader className="bg-linear-to-r from-green-50 to-emerald-50 dark:from-green-950/50 dark:to-emerald-950/50 border-b">
               <CardTitle className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
                   <IndianRupee className="h-5 w-5 text-green-600" />
@@ -563,7 +563,7 @@ function UploadAssetContent() {
 
           {/* Documents Card */}
           <Card className="overflow-hidden border-2">
-            <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/50 dark:to-pink-950/50 border-b">
+            <CardHeader className="bg-linear-to-r from-purple-50 to-pink-50 dark:from-purple-950/50 dark:to-pink-950/50 border-b">
               <CardTitle className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
                   <FileStack className="h-5 w-5 text-purple-600" />
@@ -592,7 +592,7 @@ function UploadAssetContent() {
           </Card>
 
           {/* Submit Section */}
-          <Card className="overflow-hidden border-2 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+          <Card className="overflow-hidden border-2 bg-linear-to-r from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
             <CardContent className="p-6">
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="text-center sm:text-left">

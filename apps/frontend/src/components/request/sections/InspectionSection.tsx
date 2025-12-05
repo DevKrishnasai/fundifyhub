@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { REQUEST_STATUS } from '@fundifyhub/types';
 import type { RequestType, UserType, InspectionType } from '@fundifyhub/types';
+import { getDistrictName } from '@/lib/type-guards';
 import { 
   SectionCard, 
   SectionRow, 
@@ -91,7 +92,7 @@ export function InspectionSection({
   const isAssetMismatch = currentStatus === REQUEST_STATUS.ASSET_MISMATCH;
 
   // Track staged photos count for enabling/disabling complete button
-  const handlePhotosChange = useCallback((photos: any[]) => {
+  const handlePhotosChange = useCallback((photos: { fileKey: string }[]) => {
     setStagedPhotosCount(photos.length);
   }, []);
 
@@ -225,7 +226,7 @@ export function InspectionSection({
         />
         <SectionRow
           label="District"
-          value={(request.district as any)?.name || 'N/A'}
+          value={getDistrictName(request)}
         />
       </SectionGrid>
 

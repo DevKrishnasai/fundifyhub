@@ -10,6 +10,7 @@ import { useToast } from '@/hooks';
 import { REQUEST_STATUS, WORKFLOW_EVENTS } from '@fundifyhub/types';
 import { useRequestActions } from '../context/RequestActionContext';
 import { cn } from '@/lib/utils';
+import type { UploadedFileResult } from '@/lib/type-guards';
 
 interface ResponseSectionProps {
   requestId: string;
@@ -73,16 +74,16 @@ export function ResponseSection({
     return null;
   }
 
-  const handleUploadComplete = async (res: any[]) => {
+  const handleUploadComplete = async (res: UploadedFileResult[]) => {
     try {
       const newFiles: StagedFile[] = [];
       
       for (const file of res) {
         // UploadThing returns: key, name, size, type (and serverData with our custom return)
-        const fileKey = file.key || file.serverData?.fileKey || file.fileKey;
-        const fileName = file.name || file.serverData?.fileName || file.fileName;
-        const fileSize = file.size || file.serverData?.fileSize || file.fileSize;
-        const fileType = file.type || file.serverData?.fileType || file.fileType;
+        const fileKey = file.key || file.serverData?.fileKey || '';
+        const fileName = file.name || file.serverData?.fileName || '';
+        const fileSize = file.size || file.serverData?.fileSize || 0;
+        const fileType = file.type || file.serverData?.fileType || '';
         
         // Save to database
         const category = 'OTHER'; 

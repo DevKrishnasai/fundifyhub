@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { AlertCircle, Loader2, UserCheck, Calendar, CalendarClock } from 'lucide-react';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
-import { api, getWithResult } from '@/lib/api-client';
+import { api, getWithResult, getErrorMessage } from '@/lib/api-client';
 
 interface AssignAgentModalProps {
   open: boolean;
@@ -41,10 +41,11 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
       } else {
         const list = Array.isArray(resp.data?.agents) ? resp.data.agents : [];
         setAgents(list);
-        if (!agentId && list.length > 0) setAgentId(list[0].id);
+        // Set first agent as default if none selected
+        setAgentId((current) => (!current && list.length > 0) ? list[0].id : current);
       }
-    } catch (err: any) {
-      setError(err?.message || String(err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to fetch agents'));
       setAgents([]);
     } finally {
       setLoadingAgents(false);
@@ -176,8 +177,8 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
                   } else {
                     setError(isReschedule ? 'Failed to reschedule inspection. Please try again.' : 'Failed to assign agent. Please try again.');
                   }
-                } catch (err: any) {
-                  setError(err?.message || String(err) || (isReschedule ? 'Failed to reschedule inspection' : 'Failed to assign agent'));
+                } catch (err: unknown) {
+                  setError(getErrorMessage(err, isReschedule ? 'Failed to reschedule inspection' : 'Failed to assign agent'));
                 }
                 finally { setSubmitting(false); }
               }

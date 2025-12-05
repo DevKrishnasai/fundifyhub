@@ -101,9 +101,9 @@ function UsersSkeleton() {
             <CardContent className="p-4">
               <div className="flex flex-wrap gap-4">
                 <Skeleton className="h-10 flex-1 min-w-[200px]" />
-                <Skeleton className="h-10 w-[160px]" />
-                <Skeleton className="h-10 w-[160px]" />
-                <Skeleton className="h-10 w-[160px]" />
+                <Skeleton className="h-10 w-40" />
+                <Skeleton className="h-10 w-40" />
+                <Skeleton className="h-10 w-40" />
               </div>
             </CardContent>
           </Card>
@@ -447,7 +447,7 @@ function UsersContent() {
 
               {/* Role Filter */}
               <Select value={roleFilter} onValueChange={setRoleFilter}>
-                <SelectTrigger className="w-full lg:w-[160px]">
+                <SelectTrigger className="w-full lg:w-40">
                   <SelectValue placeholder="All Roles" />
                 </SelectTrigger>
                 <SelectContent>

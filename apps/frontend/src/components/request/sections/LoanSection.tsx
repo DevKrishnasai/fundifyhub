@@ -27,6 +27,7 @@ import {
 } from './SectionCard';
 import { format, formatDistanceToNow, isPast, isToday, isFuture } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { isStatusIn } from '@/lib/type-guards';
 
 /**
  * LoanSection - Displays active loan details and EMI schedule
@@ -56,13 +57,10 @@ export function LoanSection({
   const emis = loan?.emisSchedule || request.emisSchedule || [];
   const isCustomer = userRole === 'CUSTOMER';
 
-  const hasActiveLoan = loan && [
-    LOAN_STATUS.ACTIVE,
-    REQUEST_STATUS.ACTIVE,
-    REQUEST_STATUS.PAYMENT_OVERDUE,
-    REQUEST_STATUS.DEFAULTED,
-    REQUEST_STATUS.COMPLETED,
-  ].includes((loan.status || request.currentStatus) as any);
+  const hasActiveLoan = loan && isStatusIn(
+    loan.status || request.currentStatus,
+    [LOAN_STATUS.ACTIVE, REQUEST_STATUS.ACTIVE, REQUEST_STATUS.PAYMENT_OVERDUE, REQUEST_STATUS.DEFAULTED, REQUEST_STATUS.COMPLETED] as const
+  );
 
   // Format currency
   const formatCurrency = (amount: number | null | undefined) => {

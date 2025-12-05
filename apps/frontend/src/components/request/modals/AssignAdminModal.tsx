@@ -8,7 +8,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { AlertCircle, Loader2, UserCog, Shield } from 'lucide-react';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
-import { getWithResult } from '@/lib/api-client';
+import { getWithResult, getErrorMessage } from '@/lib/api-client';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface AdminUser {
@@ -64,8 +64,8 @@ export function AssignAdminModal({
           setAdminId(list[0].id);
         }
       }
-    } catch (err: any) {
-      setError(err?.message || String(err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to fetch admins'));
       setAdmins([]);
     } finally {
       setLoadingAdmins(false);
@@ -181,8 +181,8 @@ export function AssignAdminModal({
                   setSubmitting(true);
                   await onSubmit(adminId);
                   handleClose();
-                } catch (err: any) {
-                  setError(err?.message || String(err) || 'Failed to assign admin');
+                } catch (err: unknown) {
+                  setError(getErrorMessage(err, 'Failed to assign admin'));
                 } finally { 
                   setSubmitting(false); 
                 }

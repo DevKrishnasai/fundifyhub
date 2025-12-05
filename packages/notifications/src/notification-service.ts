@@ -142,6 +142,14 @@ export class NotificationService {
       }));
     }
 
+    if (this.config.enabledChannels?.includes(NotificationChannel.PUSH)) {
+      const { getPushAdapter } = await import('./channel-adapters/push-adapter');
+      const pushAdapter = getPushAdapter();
+      initPromises.push(pushAdapter.initialize().then(() => {
+        this.adapters.set(NotificationChannel.PUSH, pushAdapter);
+      }));
+    }
+
     await Promise.all(initPromises);
 
     this.initialized = true;

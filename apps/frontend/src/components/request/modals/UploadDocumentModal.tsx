@@ -9,6 +9,7 @@ import { UploadDropzone } from '@/components/uploadthing-components';
 import { postWithResult } from '@/lib/api-client';
 import { useToast } from '@/hooks';
 import { DOCUMENT_TYPE } from '@fundifyhub/types';
+import type { UploadedFileResult } from '@/lib/type-guards';
 
 interface UploadDocumentModalProps {
   open: boolean;
@@ -35,16 +36,16 @@ export function UploadDocumentModal({
     }
   };
 
-  const handleUploadComplete = async (res: any[]) => {
+  const handleUploadComplete = async (res: UploadedFileResult[]) => {
     setIsUploading(true);
     try {
       // Process each uploaded file
       for (const file of res) {
         // UploadThing returns: key, name, size, type (and serverData with our custom return)
-        const fileKey = file.key || file.serverData?.fileKey || file.fileKey;
-        const fileName = file.name || file.serverData?.fileName || file.fileName;
-        const fileSize = file.size || file.serverData?.fileSize || file.fileSize;
-        const fileType = file.type || file.serverData?.fileType || file.fileType;
+        const fileKey = file.key || file.serverData?.fileKey || '';
+        const fileName = file.name || file.serverData?.fileName || '';
+        const fileSize = file.size || file.serverData?.fileSize || 0;
+        const fileType = file.type || file.serverData?.fileType || '';
         
         await postWithResult(`/api/v1/requests/${requestId}/documents`, {
           fileKey,

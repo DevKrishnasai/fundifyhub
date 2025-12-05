@@ -181,7 +181,7 @@ export function PaymentSection({
       {/* Overdue Warning */}
       {overdueEmis.length > 0 && (
         <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg mb-4">
-          <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+          <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
           <div className="text-sm">
             <p className="font-medium text-red-700 dark:text-red-400">
               {overdueEmis.length} overdue payment(s)
@@ -231,7 +231,7 @@ export function PaymentSection({
 
           {onPayEmi && (
             <Button
-              className="w-full min-h-[44px]"
+              className="w-full min-h-11"
               onClick={() => handlePay(nextDueEmi)}
               disabled={payingEmiId === nextDueEmi.id || isLoading}
             >
@@ -297,7 +297,7 @@ export function PaymentSection({
                       variant="outline"
                       onClick={() => handlePay(emi)}
                       disabled={payingEmiId === emi.id}
-                      className="min-h-[36px]"
+                      className="min-h-9"
                     >
                       Pay
                     </Button>

@@ -4,42 +4,59 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import config from '@/lib/config';
-import { ServerEvent, ClientEvent } from '@fundifyhub/types';
+import { ServerEvent, ClientEvent, NotificationPayload, NotificationCountPayload, PaymentReceivedPayload, EmiReminderPayload } from '@fundifyhub/types';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+
+/**
+ * Generic event handler type for socket events
+ * Uses unknown instead of any for type safety - handlers should narrow the type
+ */
+type SocketEventHandler<T = unknown> = (data: T) => void;
 
 interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
   isFallbackMode: boolean;
-  subscribe: (event: string, callback: (data: any) => void) => void;
-  unsubscribe: (event: string, callback: (data: any) => void) => void;
+  subscribe: <T = unknown>(event: string, callback: SocketEventHandler<T>) => void;
+  unsubscribe: <T = unknown>(event: string, callback: SocketEventHandler<T>) => void;
+  joinRoom: (room: string) => void;
+  leaveRoom: (room: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoggedIn } = useAuth();
+  const queryClient = useQueryClient();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isFallbackMode, setIsFallbackMode] = useState(false);
   
   // Store event listeners to re-attach if socket reconnects
-  const listenersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
+  // Socket.IO handlers require flexible typing for internal storage,
+  // type safety is enforced at subscribe/unsubscribe boundary
+  const listenersRef = useRef<Map<string, Set<SocketEventHandler>>>(new Map());
+  // Track joined rooms for reconnection
+  const joinedRoomsRef = useRef<Set<string>>(new Set());
+  // Track socket instance to avoid recreating when already connected
+  const socketRef = useRef<Socket | null>(null);
 
   // Initialize socket connection
   useEffect(() => {
     // Only connect if logged in and we have a WS URL
     if (!isLoggedIn || !user || !config.public.wsUrl) {
-      if (socket) {
-        socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
         setSocket(null);
         setIsConnected(false);
       }
       return;
     }
 
-    // Don't reconnect if already connected with same user (unless token changed? AuthContext handles that by re-rendering)
-    if (socket?.connected) {
+    // Don't reconnect if already connected with same user
+    if (socketRef.current?.connected) {
       return;
     }
 
@@ -61,8 +78,20 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       setIsConnected(true);
       setIsFallbackMode(false);
       
-      // Authenticate if needed (though handshake auth is preferred)
-      // socketInstance.emit(ClientEvent.AUTHENTICATE, { token: ... });
+      // Join user room for personalized notifications
+      if (user?.id) {
+        socketInstance.emit(ClientEvent.JOIN_USER, user.id);
+        joinedRoomsRef.current.add(`user:${user.id}`);
+      }
+      
+      // Re-join any rooms we were previously in (after reconnect)
+      joinedRoomsRef.current.forEach(room => {
+        if (room.startsWith('request:')) {
+          socketInstance.emit(ClientEvent.JOIN_REQUEST, room.replace('request:', ''));
+        } else if (room.startsWith('auction:')) {
+          socketInstance.emit(ClientEvent.JOIN_AUCTION, room.replace('auction:', ''));
+        }
+      });
     });
 
     socketInstance.on('disconnect', (reason) => {
@@ -87,58 +116,128 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       });
     });
 
+    socketRef.current = socketInstance;
     setSocket(socketInstance);
 
     return () => {
       socketInstance.disconnect();
+      socketRef.current = null;
       setSocket(null);
       setIsConnected(false);
     };
   }, [isLoggedIn, user]);
 
   // Subscribe to events
-  const subscribe = useCallback((event: string, callback: (data: any) => void) => {
+  const subscribe = useCallback(<T = unknown>(event: string, callback: SocketEventHandler<T>) => {
     if (!listenersRef.current.has(event)) {
       listenersRef.current.set(event, new Set());
     }
-    listenersRef.current.get(event)?.add(callback);
+    listenersRef.current.get(event)?.add(callback as SocketEventHandler);
 
     if (socket) {
-      socket.on(event, callback);
+      socket.on(event, callback as SocketEventHandler);
     }
   }, [socket]);
 
   // Unsubscribe from events
-  const unsubscribe = useCallback((event: string, callback: (data: any) => void) => {
+  const unsubscribe = useCallback(<T = unknown>(event: string, callback: SocketEventHandler<T>) => {
     const callbacks = listenersRef.current.get(event);
     if (callbacks) {
-      callbacks.delete(callback);
+      callbacks.delete(callback as SocketEventHandler);
       if (callbacks.size === 0) {
         listenersRef.current.delete(event);
       }
     }
 
     if (socket) {
-      socket.off(event, callback);
+      socket.off(event, callback as SocketEventHandler);
     }
   }, [socket]);
 
-  // Global event handlers (e.g. notifications)
+  // Join a room (request, auction, etc.)
+  const joinRoom = useCallback((room: string) => {
+    if (!socket) return;
+    
+    if (room.startsWith('request:')) {
+      socket.emit(ClientEvent.JOIN_REQUEST, room.replace('request:', ''));
+    } else if (room.startsWith('auction:')) {
+      socket.emit(ClientEvent.JOIN_AUCTION, room.replace('auction:', ''));
+    }
+    joinedRoomsRef.current.add(room);
+  }, [socket]);
+
+  // Leave a room
+  const leaveRoom = useCallback((room: string) => {
+    if (!socket) return;
+    
+    if (room.startsWith('request:')) {
+      socket.emit(ClientEvent.LEAVE_REQUEST, room.replace('request:', ''));
+    } else if (room.startsWith('auction:')) {
+      socket.emit(ClientEvent.LEAVE_AUCTION, room.replace('auction:', ''));
+    }
+    joinedRoomsRef.current.delete(room);
+  }, [socket]);
+
+  // Global event handlers (e.g. notifications, payments)
   useEffect(() => {
     if (!socket) return;
 
-    const handleNewNotification = (data: any) => {
+    // Handle new notification - show toast and invalidate cache
+    const handleNewNotification = (data: NotificationPayload) => {
       toast.info(data.title || 'New Notification', {
         description: data.message,
+      });
+      // Invalidate notification queries to update badge count
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    };
+
+    // Handle notification count update
+    const handleNotificationCount = (data: NotificationCountPayload) => {
+      // Update the unread count in cache
+      queryClient.setQueryData(['notifications', 'unreadCount'], data.unreadCount);
+    };
+
+    // Handle payment received - show toast and invalidate relevant queries
+    const handlePaymentReceived = (data: PaymentReceivedPayload) => {
+      const formattedAmount = new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+      }).format(data.amount);
+      
+      toast.success('Payment Received!', {
+        description: `EMI #${data.emiNumber} of ${formattedAmount} has been confirmed. ${data.remainingEmis} EMIs remaining.`,
+      });
+      
+      // Invalidate loan and request queries to reflect updated payment status
+      queryClient.invalidateQueries({ queryKey: ['requests', data.requestId] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+    };
+
+    // Handle EMI reminder
+    const handleEmiReminder = (data: EmiReminderPayload) => {
+      const formattedAmount = new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+      }).format(data.amount);
+      
+      toast.warning('EMI Reminder', {
+        description: `Your EMI of ${formattedAmount} is due in ${data.daysUntilDue} day${data.daysUntilDue === 1 ? '' : 's'}.`,
       });
     };
 
     socket.on(ServerEvent.NOTIFICATION_NEW, handleNewNotification);
+    socket.on(ServerEvent.NOTIFICATION_COUNT, handleNotificationCount);
+    socket.on(ServerEvent.PAYMENT_RECEIVED, handlePaymentReceived);
+    socket.on(ServerEvent.EMI_REMINDER, handleEmiReminder);
 
     return () => {
       socket.off(ServerEvent.NOTIFICATION_NEW, handleNewNotification);
+      socket.off(ServerEvent.NOTIFICATION_COUNT, handleNotificationCount);
+      socket.off(ServerEvent.PAYMENT_RECEIVED, handlePaymentReceived);
+      socket.off(ServerEvent.EMI_REMINDER, handleEmiReminder);
     };
-  }, [socket]);
+  }, [socket, queryClient]);
 
   return (
     <SocketContext.Provider value={{ 
@@ -146,7 +245,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       isConnected, 
       isFallbackMode,
       subscribe,
-      unsubscribe 
+      unsubscribe,
+      joinRoom,
+      leaveRoom,
     }}>
       {children}
     </SocketContext.Provider>

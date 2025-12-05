@@ -104,7 +104,7 @@ export default function LandingPage() {
               <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6">Why choose FundifyHub?</h2>
               <div className="space-y-6">
                 <div className="flex gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
                     <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                   </div>
                   <div>
@@ -116,7 +116,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="flex gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent/10 rounded-lg flex items-center justify-center shrink-0">
                     <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-accent" />
                   </div>
                   <div>
@@ -128,7 +128,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="flex gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-chart-3/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-chart-3/10 rounded-lg flex items-center justify-center shrink-0">
                     <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-chart-3" />
                   </div>
                   <div>
@@ -142,7 +142,7 @@ export default function LandingPage() {
             </div>
 
             <div className="relative">
-              <Card className="p-6 sm:p-8 bg-gradient-to-br from-primary/5 to-accent/5 border-2">
+              <Card className="p-6 sm:p-8 bg-linear-to-br from-primary/5 to-accent/5 border-2">
                 <CardContent className="p-0">
                   <div className="text-center mb-6">
                     <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">₹50,000</div>

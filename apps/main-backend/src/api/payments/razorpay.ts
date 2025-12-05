@@ -18,6 +18,7 @@ import {
 } from '@fundifyhub/types';
 import { calculateEmiBreakdown } from '@fundifyhub/utils';
 import { sendEMIReminderNotification } from '../../utils/notifications';
+import { emitPaymentReceived } from '../../socket';
 import baseLogger from '../../utils/logger';
 import config from '../../utils/config';
 
@@ -42,6 +43,42 @@ const verifyPaymentSchema = z.object({
   loanId: z.string().min(1, 'Loan ID is required'),
   emiId: z.string().min(1, 'EMI ID is required'),
 });
+
+// ============================================================================
+// RAZORPAY WEBHOOK TYPES
+// ============================================================================
+
+/** Razorpay payment entity from webhook */
+interface RazorpayPaymentEntity {
+  id: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  method?: string;
+  notes?: Record<string, string>;
+  error_code?: string;
+  error_description?: string;
+  error_source?: string;
+  error_step?: string;
+  error_reason?: string;
+}
+
+/** Razorpay order entity from webhook */
+interface RazorpayOrderEntity {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  notes?: Record<string, string>;
+}
+
+/** Razorpay webhook payload structure */
+interface RazorpayWebhookPayload {
+  payment?: { entity: RazorpayPaymentEntity };
+  order?: { entity: RazorpayOrderEntity };
+  refund?: { entity: { id: string } };
+}
 
 // ============================================================================
 // CONFIGURATION (from centralized config)
@@ -394,7 +431,20 @@ async function processPayment(params: {
     // Check for loan completion
     const isCompleted = await checkAndCompleteLoan(tx, actualLoanId, actualRequestId);
 
-    return { emiNumber: emi.emiNumber, isCompleted };
+    // Get remaining unpaid EMIs count for socket payload
+    const remainingEmis = await tx.eMISchedule.count({
+      where: {
+        loanId: actualLoanId,
+        status: { not: EMI_STATUS.PAID },
+      },
+    });
+
+    return { 
+      emiNumber: emi.emiNumber, 
+      isCompleted,
+      remainingEmis,
+      paymentId: paymentRecord.id,
+    };
   });
 
   if ('alreadyProcessed' in result) {
@@ -406,6 +456,20 @@ async function processPayment(params: {
   }
 
   logger.info(`[${source.toUpperCase()}] ✅ EMI #${result.emiNumber} PAID successfully (₹${amount})`);
+
+  // Emit socket event for real-time update
+  if (actualCustomerId) {
+    emitPaymentReceived(actualCustomerId, {
+      paymentId: result.paymentId,
+      loanId: actualLoanId,
+      requestId: actualRequestId,
+      amount,
+      emiNumber: result.emiNumber,
+      remainingEmis: result.remainingEmis,
+      isLoanCompleted: result.isCompleted,
+      paidAt: new Date().toISOString(),
+    });
+  }
 
   // Send notification via job queue (background worker handles delivery)
   try {
@@ -597,9 +661,9 @@ export const createRazorpayOrderController = async (req: Request, res: Response)
     });
 
     // If an active (CREATED/ATTEMPTED) non-expired order exists, return it
-    if (existingOrder && 
-        [PAYMENT_ORDER_STATUS.CREATED, PAYMENT_ORDER_STATUS.ATTEMPTED].includes(existingOrder.status as any) &&
-        new Date() < existingOrder.expiresAt) {
+    const isActiveStatus = existingOrder?.status === PaymentOrderStatus.CREATED || 
+                          existingOrder?.status === PaymentOrderStatus.ATTEMPTED;
+    if (existingOrder && isActiveStatus && new Date() < existingOrder.expiresAt) {
       
       logger.info(`Returning existing active PaymentOrder: ${existingOrder.razorpayOrderId}`);
       
@@ -655,8 +719,9 @@ export const createRazorpayOrderController = async (req: Request, res: Response)
       let order;
 
       // If there's an existing failed/expired order for this EMI, update it with new Razorpay order
-      if (existingOrder && 
-          [PAYMENT_ORDER_STATUS.FAILED, PAYMENT_ORDER_STATUS.EXPIRED].includes(existingOrder.status as any)) {
+      const isFailedOrExpired = existingOrder?.status === PaymentOrderStatus.FAILED || 
+                                existingOrder?.status === PaymentOrderStatus.EXPIRED;
+      if (existingOrder && isFailedOrExpired) {
         
         logger.info(`Updating existing failed/expired PaymentOrder ${existingOrder.id} with new Razorpay order`);
         
@@ -1038,7 +1103,7 @@ async function updatePaymentOrderStatus(orderId: string | undefined, status: Pay
  * 
  * IMPORTANT: Throws error on transient failures to trigger webhook retry via 500 response
  */
-async function handlePaymentCaptured(payload: any, webhookLogger: typeof logger): Promise<void> {
+async function handlePaymentCaptured(payload: RazorpayWebhookPayload, webhookLogger: typeof logger): Promise<void> {
   const payment = payload?.payment?.entity;
   if (!payment) {
     webhookLogger.warn('No payment entity in captured payload');
@@ -1048,8 +1113,8 @@ async function handlePaymentCaptured(payload: any, webhookLogger: typeof logger)
   const paymentId = payment.id;
   const orderId = payment.order_id;
   const amount = Number(payment.amount) / 100;
-  const method = payment.method || null;
-  const notes = payment.notes || {};
+  const method = payment.method ?? null;
+  const notes = payment.notes ?? {};
 
   webhookLogger.info(`Processing captured payment: ${paymentId}`);
   webhookLogger.info(`   Order: ${orderId}, Amount: ₹${amount}, Method: ${method}`);
@@ -1082,7 +1147,7 @@ async function handlePaymentCaptured(payload: any, webhookLogger: typeof logger)
 /**
  * Handle payment.failed webhook event
  */
-async function handlePaymentFailed(payload: any, webhookLogger: typeof logger): Promise<void> {
+async function handlePaymentFailed(payload: RazorpayWebhookPayload, webhookLogger: typeof logger): Promise<void> {
   try {
     const payment = payload?.payment?.entity;
     if (!payment) {
@@ -1097,7 +1162,7 @@ async function handlePaymentFailed(payload: any, webhookLogger: typeof logger): 
     const errorSource = payment.error_source;
     const errorStep = payment.error_step;
     const errorReason = payment.error_reason;
-    const notes = payment.notes || {};
+    const notes = payment.notes ?? {};
 
     webhookLogger.warn(`❌ Payment FAILED: ${paymentId}`);
     webhookLogger.warn(`   Order: ${orderId}`);
@@ -1333,9 +1398,9 @@ export const getEMIPaymentHistoryController = async (req: Request, res: Response
         paymentOrders,
         paymentHistory,
         summary: {
-          totalAttempts: paymentOrders.reduce((sum: number, order: any) => sum + order.attempts, 0),
-          successfulPayments: paymentOrders.filter((order: any) => order.status === PAYMENT_ORDER_STATUS.PAID).length,
-          failedPayments: paymentOrders.filter((order: any) => order.status === PAYMENT_ORDER_STATUS.FAILED).length,
+          totalAttempts: paymentOrders.reduce((sum, order) => sum + order.attempts, 0),
+          successfulPayments: paymentOrders.filter((order) => order.status === PaymentOrderStatus.PAID).length,
+          failedPayments: paymentOrders.filter((order) => order.status === PaymentOrderStatus.FAILED).length,
           lastAttemptAt: paymentOrders.length > 0 ? paymentOrders[0].lastAttemptAt : null,
         }
       }

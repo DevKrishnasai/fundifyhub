@@ -18,6 +18,7 @@ import {
 import type { RequestType, UserType, UserRole } from '@fundifyhub/types';
 import { REQUEST_STATUS } from '@fundifyhub/types';
 import { cn } from '@/lib/utils';
+import { getDistrictName } from '@/lib/type-guards';
 import { useAuth } from '@/contexts/AuthContext';
 
 /**
@@ -293,7 +294,7 @@ export function QuickInfo({ request, className }: QuickInfoProps) {
         <Separator />
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">District</span>
-          <span>{(request.district as any)?.name || 'N/A'}</span>
+          <span>{getDistrictName(request)}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Asset</span>

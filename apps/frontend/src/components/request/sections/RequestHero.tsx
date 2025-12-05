@@ -20,6 +20,7 @@ import {
 import { REQUEST_STATUS, LOAN_STATUS, EMI_STATUS, ROLES } from '@fundifyhub/types';
 import type { RequestType } from '@fundifyhub/types';
 import { cn } from '@/lib/utils';
+import { getDistrictName, isStatusIn } from '@/lib/type-guards';
 import { formatDistanceToNow, format, isPast } from 'date-fns';
 
 interface RequestHeroProps {
@@ -45,12 +46,10 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
   };
 
   // 1. Active Loan View
-  const hasActiveLoan = loan && [
-    LOAN_STATUS.ACTIVE,
-    REQUEST_STATUS.ACTIVE,
-    REQUEST_STATUS.PAYMENT_OVERDUE,
-    REQUEST_STATUS.DEFAULTED,
-  ].includes((loan.status || request.currentStatus) as any);
+  const hasActiveLoan = loan && isStatusIn(
+    loan.status || request.currentStatus,
+    [LOAN_STATUS.ACTIVE, REQUEST_STATUS.ACTIVE, REQUEST_STATUS.PAYMENT_OVERDUE, REQUEST_STATUS.DEFAULTED] as const
+  );
 
   if (hasActiveLoan && loan) {
     const nextDueEmi = loan.emisSchedule?.find(
@@ -64,8 +63,8 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
         <div className={cn(
           "absolute inset-0 opacity-10",
           overdueCount > 0 
-            ? "bg-gradient-to-r from-red-500 to-orange-500" 
-            : "bg-gradient-to-r from-emerald-500 to-blue-500"
+            ? "bg-linear-to-r from-red-500 to-orange-500" 
+            : "bg-linear-to-r from-emerald-500 to-blue-500"
         )} />
         
         <CardContent className="relative p-6">
@@ -146,24 +145,27 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
   }
 
   // 2. Offer Phase View
-  const hasOffer = request.adminOfferedAmount && [
-    REQUEST_STATUS.OFFER_SENT,
-    REQUEST_STATUS.OFFER_ACCEPTED,
-    REQUEST_STATUS.OFFER_DECLINED,
-    REQUEST_STATUS.INSPECTION_SCHEDULED,
-    REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-    REQUEST_STATUS.INSPECTION_COMPLETED,
-    REQUEST_STATUS.APPROVED,
-    REQUEST_STATUS.PENDING_SIGNATURE,
-    REQUEST_STATUS.PENDING_BANK_DETAILS,
-    REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-    REQUEST_STATUS.TRANSFER_FAILED,
-    REQUEST_STATUS.AMOUNT_DISBURSED,
-  ].includes(request.currentStatus as any);
+  const hasOffer = request.adminOfferedAmount && isStatusIn(
+    request.currentStatus,
+    [
+      REQUEST_STATUS.OFFER_SENT,
+      REQUEST_STATUS.OFFER_ACCEPTED,
+      REQUEST_STATUS.OFFER_DECLINED,
+      REQUEST_STATUS.INSPECTION_SCHEDULED,
+      REQUEST_STATUS.INSPECTION_IN_PROGRESS,
+      REQUEST_STATUS.INSPECTION_COMPLETED,
+      REQUEST_STATUS.APPROVED,
+      REQUEST_STATUS.PENDING_SIGNATURE,
+      REQUEST_STATUS.PENDING_BANK_DETAILS,
+      REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
+      REQUEST_STATUS.TRANSFER_FAILED,
+      REQUEST_STATUS.AMOUNT_DISBURSED,
+    ] as const
+  );
 
   if (hasOffer) {
     return (
-      <Card className={cn("overflow-hidden border-0 bg-gradient-to-r from-primary/10 via-primary/5 to-background shadow-sm", className)}>
+      <Card className={cn("overflow-hidden border-0 bg-linear-to-r from-primary/10 via-primary/5 to-background shadow-sm", className)}>
         <CardContent className="p-0">
           <div className="grid divide-x divide-border/50 grid-cols-2 lg:grid-cols-4">
             <div className="p-4 sm:p-6">
@@ -222,7 +224,7 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
 
   // 3. Default View (Initial Request)
   return (
-    <Card className={cn("overflow-hidden border-0 bg-gradient-to-r from-muted/50 to-background shadow-sm", className)}>
+    <Card className={cn("overflow-hidden border-0 bg-linear-to-r from-muted/50 to-background shadow-sm", className)}>
       <CardContent className="p-0">
         <div className="grid divide-x divide-border/50 grid-cols-2 lg:grid-cols-4">
           <div className="p-4 sm:p-6">
@@ -262,7 +264,7 @@ export function RequestHero({ request, userRole, onAction, className }: RequestH
             <p className="text-lg font-medium text-foreground">
                {userRole === ROLES.CUSTOMER 
                  ? (request.createdAt ? format(new Date(request.createdAt), 'MMM d, yyyy') : '—')
-                 : (request.district as any)?.name || 'N/A'
+                 : getDistrictName(request)
                }
             </p>
           </div>

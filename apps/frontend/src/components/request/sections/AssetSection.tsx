@@ -12,6 +12,7 @@ import {
   ASSET_CONDITION_OPTIONS,
 } from '@fundifyhub/types';
 import type { RequestType } from '@fundifyhub/types';
+import { getDistrictName } from '@/lib/type-guards';
 import { 
   SectionCard, 
   SectionRow, 
@@ -100,7 +101,7 @@ export function AssetSection({ request, isLoading, className }: AssetSectionProp
         />
         <SectionRow 
           label="District" 
-          value={(request.district as any)?.name || 'N/A'}
+          value={getDistrictName(request)}
           inline
         />
       </SectionGrid>

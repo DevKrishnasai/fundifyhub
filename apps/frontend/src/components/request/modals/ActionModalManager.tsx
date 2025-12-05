@@ -5,6 +5,7 @@ import { useRequest } from '../context/RequestContext';
 import { useRequestActions } from '../context/RequestActionContext';
 import { ACTION_CONFIG } from '@fundifyhub/utils';
 import { WORKFLOW_EVENTS, MODAL_COMPONENTS, AGENT_ISSUE_TYPES, LOCAL_STORAGE_KEYS } from '@fundifyhub/types';
+import { getDistrictName, type StagedPhoto } from '@/lib/type-guards';
 
 // Import all modals
 import CreateOfferModal from '../CreateOfferModal';
@@ -45,7 +46,7 @@ export function ActionModalManager() {
   if (!config) return null;
 
   // Helper to handle simple submissions
-  const handleSimpleSubmit = async (data?: any) => {
+  const handleSimpleSubmit = async (data?: Record<string, unknown>) => {
     await executeAction(activeActionId, data);
   };
 
@@ -79,7 +80,7 @@ export function ActionModalManager() {
         <AssignAgentModal
           open={true}
           onOpenChange={(open) => !open && closeAction()}
-          district={(request.district as any)?.name}
+          district={getDistrictName(request)}
           isReschedule={activeActionId === WORKFLOW_EVENTS.RESCHEDULE_INSPECTION}
           onSubmit={async (agentId, date) => {
             await executeAction(activeActionId, { agentId, inspectionDate: date });
@@ -93,7 +94,7 @@ export function ActionModalManager() {
         <AssignAdminModal
           open={true}
           onOpenChange={(open) => !open && closeAction()}
-          district={(request.district as any)?.name}
+          district={getDistrictName(request)}
           onSubmit={async (adminId) => {
             await executeAction(activeActionId, { adminId });
           }}
@@ -218,7 +219,7 @@ export function ActionModalManager() {
         const saved = localStorage.getItem(key);
         if (saved) {
           try {
-            return JSON.parse(saved) as any[];
+            return JSON.parse(saved) as StagedPhoto[];
           } catch {
             return [];
           }

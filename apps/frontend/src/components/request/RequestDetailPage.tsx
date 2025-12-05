@@ -34,6 +34,7 @@ import {
 import { REQUEST_STATUS, WORKFLOW_EVENTS, ROLES } from '@fundifyhub/types';
 import { ACTION_CONFIG } from '@fundifyhub/utils';
 import { cn } from '@/lib/utils';
+import { getMetadataString } from '@/lib/type-guards';
 import { formatDistanceToNow, format } from 'date-fns';
 
 // Contexts
@@ -174,16 +175,18 @@ export function RequestDetailPage() {
     // Find the most recent history item that transitioned TO the current status
     const historyItem = request.requestHistory.find(
       (h) => {
-        const meta = h.metadata as any;
+        const toStatus = getMetadataString(h.metadata, 'toStatus');
+        const status = getMetadataString(h.metadata, 'status');
         // Check for both action types (mapped vs raw) and status field location
         return (h.action === 'STATUS_UPDATED' || h.action === 'REQUEST_STATUS_CHANGED') && 
-               (meta?.toStatus === currentStatus || meta?.status === currentStatus);
+               (toStatus === currentStatus || status === currentStatus);
       }
     );
     
     if (!historyItem) return undefined;
-    const meta = historyItem.metadata as any;
-    return meta?.reason || meta?.note || meta?.message;
+    return getMetadataString(historyItem.metadata, 'reason') 
+      || getMetadataString(historyItem.metadata, 'note') 
+      || getMetadataString(historyItem.metadata, 'message');
   }, [request, currentStatus]);
 
   // Convert available actions to UI actions
@@ -284,7 +287,7 @@ export function RequestDetailPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-muted/30 to-background flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-b from-muted/30 to-background flex items-center justify-center">
         <Card className="shadow-lg max-w-md">
           <CardContent className="p-6 text-center">
             <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -306,9 +309,9 @@ export function RequestDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-muted/30 to-background">
+    <div className="min-h-screen bg-linear-to-b from-muted/30 to-background">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-14 items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
@@ -390,7 +393,7 @@ export function RequestDetailPage() {
           status={currentStatus}
           userRole={userRole}
           showPhaseProgress={false}
-          customDescription={statusReason}
+          customDescription={statusReason ?? undefined}
           context={{
             inspectionDate: request.inspectionScheduledAt ? format(new Date(request.inspectionScheduledAt), 'PPp') : undefined,
             agentName: request.assignedAgent ? `${request.assignedAgent.firstName} ${request.assignedAgent.lastName}` : undefined,
@@ -400,7 +403,7 @@ export function RequestDetailPage() {
 
         {/* Workflow Actions */}
         {uiActions.length > 0 && (
-          <Card className="mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+          <Card className="mb-6 border-primary/20 bg-linear-to-r from-primary/5 to-transparent">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <AlertCircle className="h-4 w-4 text-primary" />
@@ -467,8 +470,8 @@ export function RequestDetailPage() {
                 <SignatureSection
                   requestId={request.id}
                   currentStatus={currentStatus}
-                  agreementUrl={(request as any).agreementUrl}
-                  signedAgreementUrl={(request as any).signedAgreementUrl}
+                  agreementUrl={request.agreementUrl}
+                  signedAgreementUrl={request.signedAgreementUrl}
                   isCustomer={isCustomer && isRequestOwner}
                   onSign={async (dataUrl) => { await executeAction(WORKFLOW_EVENTS.SIGN_AGREEMENT, { notes: dataUrl }); }}
                   onGenerateAgreement={async () => { await executeAction(WORKFLOW_EVENTS.GENERATE_AGREEMENT); }}

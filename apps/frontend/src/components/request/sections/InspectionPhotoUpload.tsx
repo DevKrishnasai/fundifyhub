@@ -14,6 +14,7 @@ import { UploadDropzone } from '@/components/uploadthing-components';
 import { postWithResult, deleteWithResult } from '@/lib/api-client';
 import { useToast } from '@/hooks';
 import { DOCUMENT_TYPE, LOCAL_STORAGE_KEYS } from '@fundifyhub/types';
+import type { UploadedFileResult } from '@/lib/type-guards';
 
 interface InspectionPhotoUploadProps {
   requestId: string;
@@ -62,15 +63,15 @@ export function InspectionPhotoUpload({
     onPhotosChange?.(stagedPhotos);
   }, [stagedPhotos, requestId, onPhotosChange]);
 
-  const handleUploadComplete = async (res: any[]) => {
+  const handleUploadComplete = async (res: UploadedFileResult[]) => {
     try {
       const newPhotos: StagedPhoto[] = [];
       
       for (const file of res) {
-        const fileKey = file.key || file.serverData?.fileKey || file.fileKey;
-        const fileName = file.name || file.serverData?.fileName || file.fileName;
-        const fileSize = file.size || file.serverData?.fileSize || file.fileSize;
-        const fileType = file.type || file.serverData?.fileType || file.fileType;
+        const fileKey = file.key || file.serverData?.fileKey || '';
+        const fileName = file.name || file.serverData?.fileName || '';
+        const fileSize = file.size || file.serverData?.fileSize || 0;
+        const fileType = file.type || file.serverData?.fileType || '';
         
         // Save to database with INSPECTION_PHOTO type
         const result = await postWithResult<{ document: { id: string } }>(`/api/v1/requests/${requestId}/documents`, {
@@ -178,6 +179,8 @@ export function InspectionPhotoUpload({
                   className="relative group rounded-lg overflow-hidden border border-blue-100 dark:border-blue-900 bg-background aspect-square"
                 >
                   {photo.url ? (
+                    // Using img for inspection photos - user-uploaded with unknown dimensions
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img 
                       src={photo.url} 
                       alt={photo.fileName}

@@ -32,6 +32,7 @@ FundifyHub is a **pawn/loan application** monorepo with a consolidated microserv
 | `@fundifyhub/logger` | Structured logging with service prefixes |
 | `@fundifyhub/templates` | Email/WhatsApp message templates (React Email) |
 | `@fundifyhub/notifications` | Multi-channel notification service |
+| `@fundifyhub/providers` | External service providers (Razorpay, UploadThing, etc.) |
 
 ### Infrastructure
 
@@ -694,6 +695,126 @@ Add these only when implementing the related feature and update `package.json` i
 
 ---
 
+## 📁 File & Folder Naming Conventions (MANDATORY)
+
+### Package Structure Standards
+
+All packages MUST follow this structure:
+
+```
+packages/<package-name>/
+├── package.json            # Package manifest
+├── tsconfig.json           # TS config with references
+├── src/                    # Source files ONLY
+│   ├── index.ts            # Main barrel export
+│   └── <domain>/           # Domain-specific folders
+│       ├── index.ts        # Domain barrel export
+│       └── <name>.ts       # Implementation files
+└── dist/                   # Compiled output (auto-generated)
+```
+
+### File Naming Rules
+
+| Type | Convention | Example |
+|------|------------|---------|
+| **Types/Interfaces** | `<domain>.types.ts` | `payment.types.ts`, `auth.types.ts` |
+| **Constants/Enums** | `<domain>.constants.ts` | `request.constants.ts`, `loan.constants.ts` |
+| **Schemas (Zod)** | `<domain>.schemas.ts` | `auth.schemas.ts`, `payment.schemas.ts` |
+| **Barrel exports** | `index.ts` | Each folder has an `index.ts` |
+| **Provider impl** | `<provider-name>.ts` | `razorpay.ts`, `uploadthing.ts` |
+| **Services** | `<name>.service.ts` or `<name>-service.ts` | `email.service.ts` |
+| **Controllers** | `<name>.controller.ts` or `controllers.ts` | `auth.controller.ts` |
+
+### Folder Naming Rules
+
+- Use **kebab-case** for multi-word folders: `channel-adapters/`, `job-worker/`
+- Use **singular** for domain folders: `payment/`, `request/`, `auth/`
+- Use **plural** for collection folders: `payments/`, `notifications/`, `providers/`
+- Group by domain, not by type: `payments/razorpay.ts` NOT `providers/razorpay-payment.ts`
+
+### Provider Package Structure (`@fundifyhub/providers`)
+
+```
+packages/providers/
+├── src/
+│   ├── index.ts              # Main barrel export
+│   ├── payments/             # Payment providers
+│   │   ├── index.ts
+│   │   ├── razorpay.ts       # RazorpayProvider
+│   │   └── manual.ts         # ManualPaymentProvider
+│   ├── storage/              # Storage providers
+│   │   ├── index.ts
+│   │   └── uploadthing.ts    # UploadThingProvider
+│   └── notifications/        # Notification channels
+│       ├── index.ts
+│       ├── email.ts
+│       ├── whatsapp.ts
+│       └── in-app.ts
+└── dist/                     # Compiled (NEVER commit)
+```
+
+### Types Package Structure (`@fundifyhub/types`)
+
+```
+packages/types/
+├── src/
+│   ├── index.ts              # Main barrel export
+│   ├── constants.ts          # Legacy (being phased out)
+│   ├── types.ts              # Legacy core types
+│   │
+│   ├── auth/                 # Auth domain
+│   │   ├── index.ts
+│   │   ├── auth.constants.ts
+│   │   ├── auth.types.ts
+│   │   └── auth.schemas.ts
+│   │
+│   ├── payment/              # Payment domain
+│   │   ├── index.ts
+│   │   ├── payment.constants.ts
+│   │   └── payment.types.ts
+│   │
+│   ├── providers/            # Provider interfaces
+│   │   ├── index.ts
+│   │   ├── payment-provider.types.ts
+│   │   └── storage-provider.types.ts
+│   │
+│   └── <domain>/             # Other domains follow same pattern
+└── dist/
+```
+
+### Build Output Rules
+
+- **NEVER commit compiled files** (`.js`, `.d.ts`, `.js.map`, `.d.ts.map`)
+- All compiled output MUST go to `dist/` folder
+- Source files MUST stay in `src/` folder only
+- Each package's `tsconfig.json` MUST have:
+  ```json
+  {
+    "compilerOptions": {
+      "outDir": "dist",
+      "rootDir": "src"
+    }
+  }
+  ```
+
+### Import/Export Standards
+
+```typescript
+// ✅ CORRECT: Import from package
+import { PaymentProviderType, IPaymentProvider } from '@fundifyhub/types';
+import { RazorpayProvider } from '@fundifyhub/providers';
+
+// ✅ CORRECT: Barrel exports in index.ts
+export * from './payments';
+export * from './storage';
+export type { RazorpayProviderConfig } from './payments/razorpay';
+
+// ❌ WRONG: Deep imports
+import { PaymentProviderType } from '@fundifyhub/types/src/providers/payment-provider.types';
+```
+
+---
+
 ## 🚫 Common Mistakes to Avoid
 
 | ❌ Don't | ✅ Do |
@@ -721,9 +842,11 @@ Add these only when implementing the related feature and update `package.json` i
 | Zod Schemas | `packages/types/src/auth-schemas.ts` |
 | Workflow Engine | `packages/utils/src/workflow/` |
 | Socket Types | `packages/types/src/socket-types.ts` |
+| **Provider Types** | `packages/types/src/providers/` |
+| **Provider Impls** | `packages/providers/src/` |
 | API Endpoints | `apps/frontend/src/lib/urls.ts` |
 | Server Setup | `apps/main-backend/src/server.ts` |
-| **TODO Tracker** | `TODO_GEOGRAPHY_HIERARCHY.md` |
+| **TODO Tracker** | `ROADMAP.md` |
 
 ---
 

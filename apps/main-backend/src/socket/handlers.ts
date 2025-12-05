@@ -527,3 +527,100 @@ export function emitAuctionWon(userId: string, payload: { auctionId: string; auc
     room: userRoom,
   });
 }
+
+// ============================================
+// PAYMENT EMIT HELPERS
+// ============================================
+
+export interface PaymentReceivedPayload {
+  paymentId: string;
+  loanId: string;
+  requestId: string;
+  amount: number;
+  emiNumber: number;
+  remainingEmis: number;
+  isLoanCompleted: boolean;
+  paidAt: string;
+}
+
+/**
+ * Emit payment received event to the customer
+ */
+export function emitPaymentReceived(userId: string, payload: PaymentReceivedPayload): void {
+  if (!ioInstance) {
+    logger.warn('[Socket] IO instance not initialized, skipping emit');
+    return;
+  }
+
+  const userRoom = getRoomName(RoomType.USER, userId);
+  ioInstance.to(userRoom).emit(ServerEvent.PAYMENT_RECEIVED, payload);
+
+  // Also emit to the request room for admins watching
+  const requestRoom = getRoomName(RoomType.REQUEST, payload.requestId);
+  ioInstance.to(requestRoom).emit(ServerEvent.PAYMENT_RECEIVED, payload);
+
+  logger.debug('[Socket] Emitted payment_received', {
+    userId,
+    loanId: payload.loanId,
+    amount: payload.amount,
+    emiNumber: payload.emiNumber,
+  });
+}
+
+export interface EMIReminderPayload {
+  loanId: string;
+  requestId: string;
+  emiNumber: number;
+  emiAmount: number;
+  dueDate: string;
+  daysUntilDue: number;
+}
+
+/**
+ * Emit EMI reminder to customer
+ */
+export function emitEMIReminder(userId: string, payload: EMIReminderPayload): void {
+  if (!ioInstance) {
+    logger.warn('[Socket] IO instance not initialized, skipping emit');
+    return;
+  }
+
+  const userRoom = getRoomName(RoomType.USER, userId);
+  ioInstance.to(userRoom).emit(ServerEvent.EMI_REMINDER, payload);
+
+  logger.debug('[Socket] Emitted emi_reminder', {
+    userId,
+    loanId: payload.loanId,
+    emiNumber: payload.emiNumber,
+  });
+}
+
+export interface EMIOverduePayload {
+  loanId: string;
+  requestId: string;
+  emiNumber: number;
+  emiAmount: number;
+  dueDate: string;
+  daysOverdue: number;
+  penaltyAmount: number;
+}
+
+/**
+ * Emit EMI overdue notification to customer
+ */
+export function emitEMIOverdue(userId: string, payload: EMIOverduePayload): void {
+  if (!ioInstance) {
+    logger.warn('[Socket] IO instance not initialized, skipping emit');
+    return;
+  }
+
+  const userRoom = getRoomName(RoomType.USER, userId);
+  ioInstance.to(userRoom).emit(ServerEvent.EMI_OVERDUE, payload);
+
+  logger.debug('[Socket] Emitted emi_overdue', {
+    userId,
+    loanId: payload.loanId,
+    emiNumber: payload.emiNumber,
+    daysOverdue: payload.daysOverdue,
+  });
+}

@@ -239,5 +239,37 @@ export const patch = async <T, D = unknown>(url: string, data?: D, config?: Axio
   return res.data;
 };
 
+/**
+ * Extract a user-friendly error message from an unknown error.
+ * Handles Axios errors, standard Errors, and backend envelope responses.
+ * 
+ * @param error - The caught error (unknown type)
+ * @param fallback - Fallback message if error cannot be parsed
+ * @returns A string error message suitable for display
+ */
+export const getErrorMessage = (error: unknown, fallback = "An unexpected error occurred"): string => {
+  if (!error) return fallback;
+  
+  if (isAxiosError(error)) {
+    const data = error.response?.data;
+    if (isErrorPayload(data)) {
+      return data.message || data.error || error.message || fallback;
+    }
+    return error.message || fallback;
+  }
+  
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  
+  // Handle plain objects with message property
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const msg = (error as { message: unknown }).message;
+    if (typeof msg === 'string') return msg;
+  }
+  
+  return fallback;
+};
+
 export const apiClient = api;
 export default api;

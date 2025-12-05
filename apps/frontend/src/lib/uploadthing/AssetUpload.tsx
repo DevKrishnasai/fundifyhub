@@ -9,7 +9,7 @@ import { X, FileText } from "lucide-react";
 import Image from "next/image";
 import PreviewModal from '@/components/common/PreviewModal';
 import { useAuth } from "@/contexts/AuthContext";
-import { getWithResult } from '@/lib/api-client';
+import { getWithResult, getErrorMessage } from '@/lib/api-client';
 import { BACKEND_API_CONFIG } from '@/lib/urls';
 import { trackEvent } from '@/lib/analytics';
 import type { UploadedFile } from "@fundifyhub/types";
@@ -355,9 +355,9 @@ export function AssetUpload({
     setUploadedFiles(prev => prev.map(u => u.tempId === tempId ? { ...u, status: 'uploading' } : u));
     try {
       await startUpload([entry.tempFile]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setUploadedFiles(prev => prev.map(u => u.tempId === tempId ? { ...u, status: 'error' } : u));
-      setErrorMsg(err?.message || 'Retry failed');
+      setErrorMsg(getErrorMessage(err, 'Retry failed'));
     }
   };
 
@@ -393,17 +393,15 @@ export function AssetUpload({
             BACKEND_API_CONFIG.ENDPOINTS.DOCUMENTS.GET_SIGNED_URL_BY_FILEKEY(f.fileKey)
           );
           if (res.ok && res.data?.url) {
-            // update in-state preview
-            setUploadedFiles(prev => prev.map(u => u.fileKey === f.fileKey ? { ...u, url: res.data!.url, signedUrl: res.data!.url, status: 'done' } : u));
-            // notify parent of update
-            const uploadedFileResults: UploadedFile[] = uploadedFiles.map(file => ({
-              fileKey: file.fileKey || "",
-              fileName: file.name,
-              fileSize: file.fileSize || 0,
-              fileType: file.fileType || "",
-              url: file.url,
-            }));
-            onFilesChange?.(uploadedFileResults);
+            // update in-state preview and notify parent in one go
+            setUploadedFiles(prev => {
+              const updated = prev.map(u => 
+                u.fileKey === f.fileKey 
+                  ? { ...u, url: res.data!.url, signedUrl: res.data!.url, status: 'done' as const } 
+                  : u
+              );
+              return updated;
+            });
             trackEvent('document_signed_url_refreshed', { fileKey: f.fileKey });
           }
         } catch {
@@ -497,10 +495,10 @@ export function AssetUpload({
                     (async () => {
                       try {
                         await startUpload(allowedFiles as File[]);
-                      } catch (err: any) {
-                        const msg = err?.message || 'Upload failed';
+                      } catch (err: unknown) {
+                        const msg = getErrorMessage(err, 'Upload failed');
                         setErrorMsg(msg);
-                        onUploadError?.(err);
+                        onUploadError?.(err instanceof Error ? err : new Error(msg));
                         // mark placeholders as error
                         setUploadedFiles(prev => prev.map(u => u.status === 'uploading' ? { ...u, status: 'error' } : u));
                       }

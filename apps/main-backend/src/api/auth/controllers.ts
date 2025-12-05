@@ -222,7 +222,7 @@ export async function verifyOTP(
       return res.status(400).json({ success: false, message: 'OTP already used' } as APIResponseType);
     }
     if (result.status === 'too_many_attempts') {
-      const retryMs = (result as any).retryAfterMs ?? Number(config.otp.attemptsWindowMs)
+      const retryMs = result.retryAfterMs ?? Number(config.otp.attemptsWindowMs)
       const retrySeconds = Math.ceil(retryMs / 1000)
       res.setHeader('Retry-After', String(retrySeconds))
       return res.status(429).json({ success: false, message: 'Maximum OTP attempts exceeded', retryAfterMs: retryMs } as APIResponseType);

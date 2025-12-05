@@ -190,7 +190,17 @@ export {
   getUserConnections,
   isUserOnline,
   getTotalConnections,
-};
+  // Payment events
+  emitPaymentReceived,
+  emitEMIReminder,
+  emitEMIOverdue,
+  // Auction events
+  emitAuctionBid,
+  emitAuctionOutbid,
+  emitAuctionEnded,
+  emitAuctionWon,
+} from './handlers';
 
 // Export types
 export * from './types';
+export type { PaymentReceivedPayload, EMIReminderPayload, EMIOverduePayload } from './handlers';

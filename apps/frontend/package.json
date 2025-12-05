@@ -32,6 +32,7 @@
     "@tanstack/react-query-devtools": "^5.91.1",
     "@types/react-signature-canvas": "^1.0.7",
     "@uploadthing/react": "^7.3.3",
+    "@uploadthing/shared": "^7.1.10",
     "@vercel/analytics": "1.4.0",
     "axios": "^1.5.0",
     "class-variance-authority": "^0.7.1",

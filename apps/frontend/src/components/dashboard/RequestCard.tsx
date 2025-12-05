@@ -18,6 +18,7 @@ import {
   User
 } from "lucide-react"
 import type { RequestType } from "@fundifyhub/types"
+import { getDistrictName } from "@/lib/type-guards"
 
 interface RequestCardProps {
   /** Request data */
@@ -46,16 +47,38 @@ export function RequestCard({
   className,
 }: RequestCardProps) {
   const isCompact = variant === "compact"
+  
+  // Get border color based on stage (new system) or fallback to currentStatus (legacy)
+  const stage = request.stage || '';
+  const getBorderColor = () => {
+    switch (stage) {
+      case 'DRAFT':
+      case 'REVIEW':
+        return 'border-l-yellow-500';
+      case 'OFFER':
+        return 'border-l-indigo-500';
+      case 'INSPECTION':
+        return 'border-l-purple-500';
+      case 'DOCUMENTATION':
+        return 'border-l-violet-500';
+      case 'DISBURSEMENT':
+        return 'border-l-cyan-500';
+      case 'ACTIVE':
+        return 'border-l-green-500';
+      case 'COMPLETED':
+        return 'border-l-emerald-500';
+      case 'REJECTED':
+      case 'CANCELLED':
+        return 'border-l-red-500';
+      default:
+        return 'border-l-muted-foreground';
+    }
+  };
 
   const content = (
     <Card className={cn(
       "group transition-all duration-200 hover:shadow-md border-l-4",
-      request.currentStatus === "PENDING" && "border-l-yellow-500",
-      request.currentStatus === "APPROVED" && "border-l-green-500",
-      request.currentStatus === "REJECTED" && "border-l-red-500",
-      request.currentStatus === "DISBURSED" && "border-l-blue-500",
-      request.currentStatus === "INSPECTION_SCHEDULED" && "border-l-purple-500",
-      !["PENDING", "APPROVED", "REJECTED", "DISBURSED", "INSPECTION_SCHEDULED"].includes(request.currentStatus) && "border-l-muted-foreground",
+      getBorderColor(),
       href && "cursor-pointer hover:bg-accent/30",
       className
     )}>
@@ -125,7 +148,7 @@ export function RequestCard({
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <MapPin className="w-3.5 h-3.5" />
                 <span className={cn(isCompact ? "text-xs" : "text-sm")}>
-                  {(request.district as any)?.name || 'N/A'}
+                  {getDistrictName(request)}
                 </span>
               </div>
 

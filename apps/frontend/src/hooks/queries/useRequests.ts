@@ -6,7 +6,7 @@
 import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query'
 import { getWithResult, postWithResult, patch } from '@/lib/api-client'
 import { BACKEND_API_CONFIG } from '@/lib/urls'
-import type { RequestType } from '@fundifyhub/types'
+import type { RequestType, PaginatedResponse } from '@fundifyhub/types'
 
 const { ENDPOINTS } = BACKEND_API_CONFIG
 const { REQUESTS, ADMIN, USER } = ENDPOINTS
@@ -140,7 +140,7 @@ export function useUserRequests(
   return useQuery({
     queryKey: requestKeys.userRequests(),
     queryFn: async () => {
-      const result = await getWithResult<{requests: RequestType[], pagination: any}>(USER.LIST_REQUESTS)
+      const result = await getWithResult<{requests: RequestType[], pagination: PaginatedResponse<unknown>}>(USER.LIST_REQUESTS)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch your requests')
       }

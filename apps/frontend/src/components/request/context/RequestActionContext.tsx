@@ -36,6 +36,11 @@ export function RequestActionProvider({ children }: { children: React.ReactNode 
   const availableActions = useMemo(() => {
     if (!request || !user) return [];
 
+    // Extract district ID string (handles both string and DistrictType)
+    const districtId = typeof request.district === 'string' 
+      ? request.district 
+      : request.district?.id || '';
+
     const context: WorkflowContext = {
       user: {
         id: user.id,
@@ -43,9 +48,12 @@ export function RequestActionProvider({ children }: { children: React.ReactNode 
         districts: user.districts,
       },
       request: {
-        ...request,
+        id: request.id,
+        customerId: request.customerId,
+        district: districtId,
+        assignedAgentId: request.assignedAgentId,
         amount: request.requestedAmount,
-      } as any
+      }
     };
 
     return WorkflowEngine.getAvailableActions(context);

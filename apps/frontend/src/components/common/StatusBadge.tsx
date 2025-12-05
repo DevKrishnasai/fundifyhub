@@ -6,13 +6,20 @@ import {
   REQUEST_STATUS, 
   REQUEST_STATUS_COLORS, 
   REQUEST_STATUS_LABELS,
+  REQUEST_STAGE,
+  STAGE_LABELS,
+  STAGE_COLORS,
+  SUB_STATUS_DISPLAY,
   LOAN_STATUS,
   EMI_STATUS,
   PAYMENT_STATUS,
 } from "@fundifyhub/types"
 
 interface StatusBadgeProps {
+  /** The status value - can be stage, stage:subStatus, or legacy status */
   status: string
+  /** Optional sub-status for stage-based display */
+  subStatus?: string | null
   type?: "request" | "loan" | "emi" | "payment"
   size?: "sm" | "default"
   className?: string
@@ -20,23 +27,56 @@ interface StatusBadgeProps {
 }
 
 /**
- * Consistent status badge component using centralized constants
+ * Consistent status badge component
+ * 
+ * Supports both:
+ * - Stage-based: REQUEST_STAGE (10 values) with optional subStatus
+ * - Legacy: REQUEST_STATUS (28 values) for backward compatibility
  */
-export function StatusBadge({ status, type = "request", size = "default", className, showIcon = false }: StatusBadgeProps) {
+export function StatusBadge({ status, subStatus, type = "request", size = "default", className, showIcon = false }: StatusBadgeProps) {
   const sizeClasses = size === "sm" ? "text-xs px-1.5 py-0.5" : "";
-  // Get colors from centralized constants for request status
-  if (type === "request" && status in REQUEST_STATUS_COLORS) {
-    const colors = REQUEST_STATUS_COLORS[status as REQUEST_STATUS]
-    const label = REQUEST_STATUS_LABELS[status as REQUEST_STATUS] || status.replace(/_/g, " ")
+  
+  // Handle request type with stage-based or legacy status
+  if (type === "request") {
+    // Check if it's a stage (new system)
+    if (status in REQUEST_STAGE || Object.values(REQUEST_STAGE).includes(status as REQUEST_STAGE)) {
+      const stage = status as REQUEST_STAGE;
+      const colors = STAGE_COLORS[stage];
+      
+      // If we have a subStatus, try to get a more specific label
+      let label = STAGE_LABELS[stage];
+      if (subStatus) {
+        const displayKey = `${stage}:${subStatus}`;
+        const subStatusConfig = SUB_STATUS_DISPLAY[displayKey];
+        if (subStatusConfig) {
+          label = subStatusConfig.label;
+        }
+      }
+      
+      return (
+        <Badge
+          variant="outline"
+          className={cn(colors.bg, colors.text, colors.border, "border", sizeClasses, className)}
+        >
+          {label}
+        </Badge>
+      );
+    }
     
-    return (
-      <Badge
-        variant="outline"
-        className={cn(colors.bg, colors.text, colors.border, "border", sizeClasses, className)}
-      >
-        {label}
-      </Badge>
-    )
+    // Legacy status support
+    if (status in REQUEST_STATUS_COLORS) {
+      const colors = REQUEST_STATUS_COLORS[status as REQUEST_STATUS]
+      const label = REQUEST_STATUS_LABELS[status as REQUEST_STATUS] || status.replace(/_/g, " ")
+      
+      return (
+        <Badge
+          variant="outline"
+          className={cn(colors.bg, colors.text, colors.border, "border", sizeClasses, className)}
+        >
+          {label}
+        </Badge>
+      )
+    }
   }
 
   // Loan status colors

@@ -9,6 +9,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSocket } from '@/contexts/SocketContext'
 import { 
@@ -399,20 +400,26 @@ export default function AuctionDetailPage() {
             <CardContent className="p-0">
               {auction.asset.photos?.length ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-4">
-                  <div className="md:col-span-2">
-                    <img
+                  <div className="md:col-span-2 relative h-80">
+                    <Image
                       src={auction.asset.photos[0]}
                       alt={auction.title}
-                      className="w-full h-80 object-cover rounded-lg"
+                      fill
+                      className="object-cover rounded-lg"
+                      sizes="(max-width: 768px) 100vw, 66vw"
+                      priority
                     />
                   </div>
                   {auction.asset.photos.slice(1, 5).map((photo, idx) => (
-                    <img
-                      key={idx}
-                      src={photo}
-                      alt={`${auction.title} - ${idx + 2}`}
-                      className="w-full h-40 object-cover rounded-lg"
-                    />
+                    <div key={idx} className="relative h-40">
+                      <Image
+                        src={photo}
+                        alt={`${auction.title} - ${idx + 2}`}
+                        fill
+                        className="object-cover rounded-lg"
+                        sizes="(max-width: 768px) 100vw, 33vw"
+                      />
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -819,11 +826,15 @@ export default function AuctionDetailPage() {
                     <div className="py-4">
                       <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
                         {auction.asset.photos?.[0] && (
-                          <img
-                            src={auction.asset.photos[0]}
-                            alt={auction.title}
-                            className="w-20 h-20 object-cover rounded"
-                          />
+                          <div className="relative w-20 h-20 shrink-0">
+                            <Image
+                              src={auction.asset.photos[0]}
+                              alt={auction.title}
+                              fill
+                              className="object-cover rounded"
+                              sizes="80px"
+                            />
+                          </div>
                         )}
                         <div>
                           <p className="font-medium">{auction.title}</p>

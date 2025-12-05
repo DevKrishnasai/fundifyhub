@@ -6,6 +6,9 @@
  * 
  * Import this in backend services:
  * import { createEnqueueClient } from '@fundifyhub/utils/server'
+ * 
+ * For providers, use:
+ * import { createRazorpayProvider } from '@fundifyhub/providers'
  */
 
 export * from './enqueue';

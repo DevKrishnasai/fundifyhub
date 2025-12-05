@@ -54,37 +54,37 @@ export class NotificationWorker extends BaseWorker<NotificationJobData> {
 
   /**
    * Setup pause/resume based on service availability
+   * 
+   * NOTE: Worker should NEVER pause because In-App notifications are always available
+   * as long as the database is up. Email/WhatsApp availability only affects those channels.
    */
   private async setupServiceAvailabilityHandler(logger: Logger, queueName: QUEUE_NAMES): Promise<void> {
     const contextLogger = logger.child(`[${queueName}]`);
 
-    // Subscribe to service status changes
+    // Log service status changes for monitoring, but don't pause the worker
+    // In-App notifications are always available when the database is up
     serviceManager.onServiceStatus(async ({ serviceName, available }) => {
       // Only care about email and whatsapp services
       if (serviceName !== SERVICE_NAMES.EMAIL && serviceName !== SERVICE_NAMES.WHATSAPP) {
         return;
       }
 
-      // Check if we have at least one channel available
+      // Check channel availability for logging
       const emailAvailable = await serviceManager.isEmailAvailable().catch(() => false);
       const whatsAppAvailable = await serviceManager.isWhatsAppAvailable().catch(() => false);
 
-      const anyChannelAvailable = emailAvailable || whatsAppAvailable;
+      contextLogger.info(`Service status update: ${serviceName}=${available ? 'available' : 'unavailable'}`, {
+        email: emailAvailable,
+        whatsapp: whatsAppAvailable,
+        // In-App is always available when DB is up
+        inApp: true,
+      });
 
-      if (anyChannelAvailable) {
-        try {
-          await this.worker.resume();
-          contextLogger.info('At least one channel available — resuming worker');
-        } catch (e) {
-          contextLogger.error(`Failed to resume worker: ${e}`);
-        }
-      } else {
-        try {
-          await this.worker.pause();
-          contextLogger.info('No channels available — pausing worker');
-        } catch (e) {
-          contextLogger.error(`Failed to pause worker: ${e}`);
-        }
+      // Ensure worker is running - In-App is always available
+      try {
+        await this.worker.resume();
+      } catch (e) {
+        // Ignore if already running
       }
     });
   }

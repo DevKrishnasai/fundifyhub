@@ -14,3 +14,4 @@ export * from './base-adapter';
 export * from './email-adapter';
 export * from './whatsapp-adapter';
 export * from './in-app-adapter';
+export * from './push-adapter';

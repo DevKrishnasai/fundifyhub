@@ -72,6 +72,9 @@ export * from './template-types';
 // WebSocket event types
 export * from './socket-types';
 
+// Provider interface types (Payment, Storage, etc.)
+export * from './providers';
+
 // ============================================
 // LEGACY EXPORTS (backward compatibility)
 // These will be migrated to domain modules over time
@@ -123,6 +126,14 @@ export {
   RATE_LIMIT_CONFIG,
   RATE_LIMIT_PREFIX,
 } from './constants';
+
+// Geography types
+export type {
+  CountryType,
+  StateType,
+  DistrictType,
+  WarehouseType,
+} from './types';
 
 // Asset management (used by frontend and backend)
 export {

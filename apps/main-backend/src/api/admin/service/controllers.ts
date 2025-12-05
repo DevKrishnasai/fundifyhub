@@ -1,11 +1,20 @@
 import { Request, Response } from 'express';
-import { prisma } from '@fundifyhub/prisma';
+import { prisma, Prisma } from '@fundifyhub/prisma';
 import { SERVICE_NAMES, CONNECTION_STATUS, SERVICE_CONTROL_ACTIONS } from '@fundifyhub/types';
 import { createEnqueueClient } from '@fundifyhub/utils/server';
 import logger from 'apps/main-backend/src/utils/logger';
 import { APIResponseType } from 'apps/main-backend/src/types';
 import { cache, CACHE_KEYS, CACHE_TTL } from 'apps/main-backend/src/utils/cache';
 import config from 'apps/main-backend/src/utils/config';
+
+/** Email config shape for transformation */
+interface EmailConfigTransformed {
+  host: unknown;
+  port: unknown;
+  user: unknown;
+  password: unknown;
+  from: unknown;
+}
 
 // Create enqueue client for service control jobs
 const enqueueClient = createEnqueueClient({
@@ -59,9 +68,10 @@ export async function getAllServicesController(req: Request, res: Response): Pro
               configuredBy: 'system',
             }
           });
-        } catch (createError: any) {
+        } catch (createError) {
           // Ignore unique constraint errors - record was created by another concurrent request
-          if (createError?.code !== 'P2002') {
+          const isPrismaUniqueError = createError instanceof Prisma.PrismaClientKnownRequestError && createError.code === 'P2002';
+          if (!isPrismaUniqueError) {
             throw createError;
           }
         }
@@ -70,7 +80,7 @@ export async function getAllServicesController(req: Request, res: Response): Pro
     
     configs = await prisma.serviceConfig.findMany({ orderBy: { serviceName: 'asc' } });
     const serviceStatuses = configs.map((cfg) => {
-      let transformedConfig = cfg.config;
+      let transformedConfig: Prisma.JsonValue | EmailConfigTransformed = cfg.config;
       
       if (cfg.serviceName === 'EMAIL' && cfg.config && typeof cfg.config === 'object') {
         const emailConfig = cfg.config as Record<string, unknown>;
@@ -80,7 +90,7 @@ export async function getAllServicesController(req: Request, res: Response): Pro
           user: emailConfig.smtpUser,
           password: emailConfig.smtpPass,
           from: emailConfig.from,
-        } as any;
+        };
       }
       
       return {

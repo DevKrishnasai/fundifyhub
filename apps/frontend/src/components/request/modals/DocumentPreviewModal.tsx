@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import NextImage from 'next/image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Download, File, X } from 'lucide-react';
@@ -60,11 +61,14 @@ export function DocumentPreviewModal({ document, open, onOpenChange }: DocumentP
         
         <div className="flex-1 overflow-auto bg-muted/10 p-4 flex items-center justify-center">
           {isImage && document.url && (
-            <img 
-              src={document.url} 
-              alt={document.fileName}
-              className="max-w-full max-h-full object-contain"
-            />
+            <div className="relative max-w-full max-h-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src={document.url} 
+                alt={document.fileName}
+                className="max-w-full max-h-full object-contain"
+              />
+            </div>
           )}
           {isPdf && document.url && (
             <iframe

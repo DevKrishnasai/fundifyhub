@@ -42,6 +42,7 @@ import {
 import type { RequestType, RequestHistoryItem } from '@fundifyhub/types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { getMetadataString, getMetadataSearchableText, getMetadataNumber, hasMetadata } from '@/lib/type-guards';
 
 /**
  * TimelineSidebar - Shows request history/activity timeline
@@ -170,17 +171,12 @@ export function TimelineSidebar({
         const config = REQUEST_HISTORY_ACTION_CONFIG[item.action as REQUEST_HISTORY_ACTION];
         const actionLabel = config?.label || item.action;
         const actorName = item.actor ? `${item.actor.firstName || ''} ${item.actor.lastName || ''}`.trim() : '';
-        const metadata = item.metadata as any;
         
         // Search in action label, actor name, and common metadata fields
         const searchableText = [
           actionLabel,
           actorName,
-          metadata?.toStatus,
-          metadata?.fromStatus,
-          metadata?.reason,
-          metadata?.fileName,
-          metadata?.notes,
+          getMetadataSearchableText(item.metadata),
         ].filter(Boolean).join(' ').toLowerCase();
         
         if (!searchableText.includes(query)) {
@@ -224,7 +220,6 @@ export function TimelineSidebar({
   const renderTimelineItem = (item: RequestHistoryItem, showExpand: boolean = false) => {
     const Icon = getActionIcon(item.action);
     const colorClass = getActionColor(item.action);
-    const metadata = item.metadata as any;
     const isExpanded = expandedItems.has(item.id);
     const actorName = item.actor ? `${item.actor.firstName || ''} ${item.actor.lastName || ''}`.trim() : null;
     const actorRoles = item.actor?.roles as string[] | undefined;
@@ -257,7 +252,7 @@ export function TimelineSidebar({
             <p className="text-sm font-medium">
               {getActionLabel(item)}
             </p>
-            {showExpand && isAdmin && metadata && Object.keys(metadata).length > 0 && (
+            {showExpand && isAdmin && hasMetadata(item.metadata) && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -274,24 +269,24 @@ export function TimelineSidebar({
           </div>
           
           {/* Status change info */}
-          {item.action === REQUEST_HISTORY_ACTION.STATUS_UPDATED && metadata?.toStatus && (
+          {item.action === REQUEST_HISTORY_ACTION.STATUS_UPDATED && getMetadataString(item.metadata, 'toStatus') && (
             <div className="mt-1 space-y-1">
               <div className="flex items-center gap-2 text-xs">
-                {metadata.fromStatus && (
+                {getMetadataString(item.metadata, 'fromStatus') && (
                   <>
                     <Badge variant="outline" className="text-[10px] h-5 bg-muted">
-                      {formatStatus(metadata.fromStatus)}
+                      {formatStatus(getMetadataString(item.metadata, 'fromStatus') || '')}
                     </Badge>
                     <ArrowRight className="h-3 w-3 text-muted-foreground" />
                   </>
                 )}
                 <Badge variant="secondary" className="text-[10px] h-5">
-                  {formatStatus(metadata.toStatus)}
+                  {formatStatus(getMetadataString(item.metadata, 'toStatus') || '')}
                 </Badge>
               </div>
-              {metadata.reason && (
+              {getMetadataString(item.metadata, 'reason') && (
                 <p className="text-[10px] text-muted-foreground italic">
-                  Note: {metadata.reason}
+                  Note: {getMetadataString(item.metadata, 'reason')}
                 </p>
               )}
             </div>
@@ -300,23 +295,23 @@ export function TimelineSidebar({
           {/* Document upload info */}
           {item.action === REQUEST_HISTORY_ACTION.DOCUMENT_UPLOADED && (
             <div className="mt-1 space-y-1">
-              {metadata?.fileName && (
+              {getMetadataString(item.metadata, 'fileName') && (
                 <p className="text-xs text-muted-foreground truncate">
-                  {metadata.fileName}
+                  {getMetadataString(item.metadata, 'fileName')}
                 </p>
               )}
-              {metadata?.category && (
+              {getMetadataString(item.metadata, 'category') && (
                 <Badge variant="outline" className="text-[10px] h-4 px-1">
-                  {metadata.category.replace(/_/g, ' ')}
+                  {(getMetadataString(item.metadata, 'category') || '').replace(/_/g, ' ')}
                 </Badge>
               )}
             </div>
           )}
 
           {/* Agent assignment info */}
-          {item.action === REQUEST_HISTORY_ACTION.ASSIGNED_AGENT && metadata?.agentEmail && (
+          {item.action === REQUEST_HISTORY_ACTION.ASSIGNED_AGENT && getMetadataString(item.metadata, 'agentEmail') && (
             <p className="text-xs text-muted-foreground mt-1">
-              Assigned to {metadata.agentEmail}
+              Assigned to {getMetadataString(item.metadata, 'agentEmail')}
             </p>
           )}
 
@@ -326,16 +321,16 @@ export function TimelineSidebar({
           )}
 
           {/* Payment info */}
-          {item.action === REQUEST_HISTORY_ACTION.PAYMENT_SUCCESS && metadata?.totalAmount && (
+          {item.action === REQUEST_HISTORY_ACTION.PAYMENT_SUCCESS && getMetadataNumber(item.metadata, 'totalAmount') && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-              ₹{metadata.totalAmount.toLocaleString()} received
+              ₹{(getMetadataNumber(item.metadata, 'totalAmount') || 0).toLocaleString()} received
             </p>
           )}
 
           {/* Submit info */}
-          {item.action === 'SUBMIT_INFO' && metadata?.notes && (
+          {item.action === 'SUBMIT_INFO' && getMetadataString(item.metadata, 'notes') && (
             <p className="text-[10px] text-muted-foreground mt-1 italic">
-              {metadata.notes}
+              {getMetadataString(item.metadata, 'notes')}
             </p>
           )}
 
@@ -358,13 +353,13 @@ export function TimelineSidebar({
           </div>
 
           {/* Expanded details for admins */}
-          {showExpand && isAdmin && isExpanded && metadata && Object.keys(metadata).length > 0 && (
+          {showExpand && isAdmin && isExpanded && hasMetadata(item.metadata) && (
             <div className="mt-2 p-2 bg-muted/50 rounded-md text-[10px] space-y-1">
               <p className="font-medium text-muted-foreground flex items-center gap-1">
                 <Info className="h-3 w-3" />
                 Details
               </p>
-              {Object.entries(metadata).map(([key, value]) => (
+              {Object.entries(item.metadata as Record<string, unknown>).map(([key, value]) => (
                 <div key={key} className="flex gap-2">
                   <span className="text-muted-foreground font-medium">{key}:</span>
                   <span className="text-foreground break-all">
@@ -440,7 +435,7 @@ export function TimelineSidebar({
         }
       }}>
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
-          <DialogHeader className="flex-shrink-0">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <History className="h-5 w-5" />
               All Activities ({sortedHistory.length})

@@ -48,10 +48,11 @@ export async function generateSignedUrl(
       expiresAt,
     };
   } catch (err) {
-    const e = err as any;
-    // If the error indicates the file was not found, return empty URL (best-effort)
-    const status = e?.response?.status || e?.status || null;
-    const body = e?.response?.body || e?.message || JSON.stringify(e);
+    // Extract error info safely without using `any`
+    const e = err as Record<string, unknown> | null;
+    const response = e?.response as Record<string, unknown> | undefined;
+    const status = response?.status ?? (e?.status as number | undefined) ?? null;
+    const body = response?.body ?? (e?.message as string | undefined) ?? (err instanceof Error ? err.message : JSON.stringify(err));
     logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey} status=${status} body=${String(body)}`);
 
     if (status === 404 || String(body).toLowerCase().includes('file not found')) {
@@ -105,9 +106,11 @@ export async function generateSignedUrls(
             expiresAt: new Date(Date.now() + expiresIn * 1000),
           };
         } catch (e) {
-          const ee = e as any;
-          const status = ee?.response?.status || ee?.status || null;
-          const body = ee?.response?.body || ee?.message || JSON.stringify(ee);
+          // Extract error info safely without using `any`
+          const ee = e as Record<string, unknown> | null;
+          const response = ee?.response as Record<string, unknown> | undefined;
+          const status = response?.status ?? (ee?.status as number | undefined) ?? null;
+          const body = response?.body ?? (ee?.message as string | undefined) ?? (e instanceof Error ? e.message : JSON.stringify(e));
           logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey} status=${status} body=${String(body)}`);
 
           // If it's a 404, return empty URL for that file, continue other files
@@ -123,8 +126,8 @@ export async function generateSignedUrls(
     
     return results;
   } catch (error) {
-    const e = error as any;
-    logger.error(`Failed to generate signed URLs: ${String(e?.message || e)}`);
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to generate signed URLs: ${message}`);
     throw new Error("Failed to generate signed URLs");
   }
 }

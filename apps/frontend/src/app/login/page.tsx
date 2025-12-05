@@ -86,7 +86,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted/20">
+    <div className="min-h-screen bg-linear-to-br from-background to-muted/20">
       <PublicHeader />
       <div className="flex items-center justify-center p-4 pt-8 sm:pt-12">
         <div className="w-full max-w-md space-y-4 sm:space-y-6">

@@ -6,6 +6,7 @@
 import type { UserType } from '../auth/auth.types';
 import type { LoanType, EMIScheduleType, PaymentType, PaymentOrderType } from '../loan/loan.types';
 import type { DocumentType } from '../document/document.types';
+import type { DistrictType } from '../types';
 
 // ============================================
 // ASSET TYPE
@@ -128,7 +129,24 @@ export interface RequestType {
   requestNumber: string;
   customerId: string;
   requestedAmount: number;
-  district: string;
+  /** District ID (string) or hydrated DistrictType when included */
+  district: string | DistrictType;
+  
+  // Stage-based status (new system - 10 stages)
+  stage: string;
+  subStatus: string | null;
+  
+  // Action flags for filtering
+  requiresCustomerAction: boolean;
+  requiresAdminAction: boolean;
+  requiresAgentAction: boolean;
+  isBlocked: boolean;
+  
+  // Failure tracking
+  failureReason?: string | null;
+  failureType?: string | null;
+  
+  // Computed legacy status for backward compatibility
   currentStatus: string;
 
   // Asset (relation - new normalized model)
@@ -172,6 +190,10 @@ export interface RequestType {
   bankIfscCode?: string | null;
   bankAccountName?: string | null;
   upiId?: string | null;
+
+  // Agreement fields
+  agreementUrl?: string | null;
+  signedAgreementUrl?: string | null;
 
   // Assignment
   assignedAgentId: string | null;
