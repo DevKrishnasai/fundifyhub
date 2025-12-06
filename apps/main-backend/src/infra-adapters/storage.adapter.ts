@@ -6,22 +6,25 @@
  * 
  * @module infra-adapters/storage
  */
+import { createUploadThingProvider } from '@fundifyhub/providers';
+import logger from '../utils/logger';
 
-/**
- * UploadThing wrapper for document storage
- * 
- * In production: use uploadthing package
- * For now: stub implementation with TODO markers
- */
 export class StorageAdapter {
   private uploadThingApiKey: string;
+  private provider: ReturnType<typeof createUploadThingProvider>;
 
   constructor() {
-    this.uploadThingApiKey = process.env.UPLOADTHING_API_KEY || '';
+    this.uploadThingApiKey = process.env.UPLOADTHING_TOKEN || '';
 
     if (!this.uploadThingApiKey) {
-      console.warn('[StorageAdapter] UploadThing key not configured');
+      logger.warn('[StorageAdapter] UploadThing key not configured');
     }
+
+    this.provider = createUploadThingProvider({
+      token: this.uploadThingApiKey,
+    });
+
+    logger.info('[StorageAdapter] Initialized with UploadThing provider');
   }
 
   /**
@@ -35,17 +38,21 @@ export class StorageAdapter {
     expiresIn: number = 3600
   ): Promise<{ uploadUrl: string; fileKey: string }> {
     try {
-      // TODO: (agent) Call UploadThing API to generate upload token
-      // TODO: (agent) Return upload URL and fileKey for later reference
-      // TODO: (agent) URL should expire after expiresIn seconds
+      const fileKey = `${documentType}_${customerId}_${Date.now()}`;
 
-      console.log('[StorageAdapter] Upload URL generated (stub):', { documentType, customerId });
+      const result = await this.provider.generateSignedUrl(fileKey, { expiresIn });
+
+      if (!result.success || !result.url) {
+        throw new Error(result.error || 'Failed to generate upload URL');
+      }
+
+      logger.info('[StorageAdapter] Upload URL generated', { documentType, customerId, fileKey });
       return {
-        uploadUrl: `https://uploadthing.example.com/upload?key=${Date.now()}`,
-        fileKey: `${documentType}_${customerId}_${Date.now()}`,
+        uploadUrl: result.url,
+        fileKey,
       };
     } catch (err) {
-      console.error('[StorageAdapter] Failed to generate upload URL:', err);
+      logger.error('[StorageAdapter] Failed to generate upload URL', { error: err, documentType, customerId });
       throw err;
     }
   }
@@ -57,13 +64,16 @@ export class StorageAdapter {
    */
   async getDownloadUrl(fileKey: string, expiresIn: number = 3600): Promise<string> {
     try {
-      // TODO: (agent) Generate signed download URL using UploadThing API
-      // TODO: (agent) URL should expire after expiresIn seconds
+      const result = await this.provider.generateSignedUrl(fileKey, { expiresIn });
 
-      console.log('[StorageAdapter] Download URL generated (stub):', { fileKey });
-      return `https://uploadthing.example.com/download/${fileKey}`;
+      if (!result.success || !result.url) {
+        throw new Error(result.error || 'Failed to generate download URL');
+      }
+
+      logger.info('[StorageAdapter] Download URL generated', { fileKey });
+      return result.url;
     } catch (err) {
-      console.error('[StorageAdapter] Failed to generate download URL:', err);
+      logger.error('[StorageAdapter] Failed to generate download URL', { error: err, fileKey });
       throw err;
     }
   }
@@ -73,12 +83,15 @@ export class StorageAdapter {
    */
   async deleteFile(fileKey: string): Promise<void> {
     try {
-      // TODO: (agent) Call UploadThing API to delete file
-      // TODO: (agent) Handle errors gracefully (file already deleted, etc.)
+      const result = await this.provider.deleteFile(fileKey);
 
-      console.log('[StorageAdapter] File deleted (stub):', { fileKey });
+      if (!result.success) {
+        logger.warn('[StorageAdapter] Delete reported failure', { fileKey, error: result.error });
+      }
+
+      logger.info('[StorageAdapter] File deleted', { fileKey });
     } catch (err) {
-      console.error('[StorageAdapter] Failed to delete file:', err);
+      logger.error('[StorageAdapter] Failed to delete file', { error: err, fileKey });
       // Don't re-throw - deletion is best-effort
     }
   }
@@ -88,14 +101,13 @@ export class StorageAdapter {
    */
   async verifyFile(fileKey: string): Promise<boolean> {
     try {
-      // TODO: (agent) Call UploadThing API to verify file exists
-      // TODO: (agent) Check file size, type, etc.
-      // TODO: (agent) Return true if valid, false otherwise
+      const result = await this.provider.generateSignedUrl(fileKey, { expiresIn: 60 });
+      const exists = result.success && !!result.url;
 
-      console.log('[StorageAdapter] File verified (stub):', { fileKey });
-      return true;
+      logger.info('[StorageAdapter] File verified', { fileKey, exists });
+      return exists;
     } catch (err) {
-      console.error('[StorageAdapter] Failed to verify file:', err);
+      logger.error('[StorageAdapter] Failed to verify file', { error: err, fileKey });
       return false;
     }
   }

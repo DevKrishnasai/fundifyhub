@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAuth } from "@/contexts/AuthContext"
 import { UserMenu } from "@/components/UserMenu"
-import { NotificationCenter } from "@/components/common/NotificationCenter"
+import { NotificationCenter } from "@/components/features/notifications/NotificationCenter"
 
 /**
  * Minimal header for public pages (landing, auth, etc.)

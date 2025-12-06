@@ -14,6 +14,7 @@
 import { prisma } from '@fundifyhub/prisma';
 import { ValidationError, NotFoundError, ForbiddenError, ErrorCode } from '@fundifyhub/utils';
 import type { InAppNotification, NotificationPreference } from '@fundifyhub/types';
+import type { RBACUser } from '../access-control/rbac';
 
 export interface NotificationPreferencesInput {
   emailNotifications?: boolean;
@@ -65,7 +66,7 @@ export class NotificationsService {
    * @throws NotFoundError if user doesn't exist
    * @throws ForbiddenError if not own profile or admin
    */
-  async getPreferences(userId: string, user: any): Promise<NotificationPreference> {
+  async getPreferences(userId: string, user: RBACUser): Promise<NotificationPreference> {
     try {
       if (!userId) {
         throw new ValidationError('User ID required', ErrorCode.INVALID_INPUT);
@@ -100,7 +101,7 @@ export class NotificationsService {
    * @throws NotFoundError if user doesn't exist
    * @throws ForbiddenError if not own profile
    */
-  async updatePreferences(userId: string, input: NotificationPreferencesInput, user: any): Promise<NotificationPreference> {
+  async updatePreferences(userId: string, input: NotificationPreferencesInput, user: RBACUser): Promise<NotificationPreference> {
     try {
       if (!userId) {
         throw new ValidationError('User ID required', ErrorCode.INVALID_INPUT);
@@ -184,7 +185,7 @@ export class NotificationsService {
    * @throws NotFoundError if notification doesn't exist
    * @throws ForbiddenError if not owner
    */
-  async markAsRead(notificationId: string, userId: string, user: any): Promise<InAppNotification> {
+  async markAsRead(notificationId: string, userId: string, user: RBACUser): Promise<InAppNotification> {
     try {
       if (!notificationId || !userId) {
         throw new ValidationError('Missing required fields', ErrorCode.INVALID_INPUT);
@@ -217,7 +218,7 @@ export class NotificationsService {
    * 
    * @throws ForbiddenError if not own user
    */
-  async markAllAsRead(userId: string, user: any): Promise<{ markedCount: number }> {
+  async markAllAsRead(userId: string, user: RBACUser): Promise<{ markedCount: number }> {
     try {
       if (!userId) {
         throw new ValidationError('User ID required', ErrorCode.INVALID_INPUT);
@@ -251,7 +252,7 @@ export class NotificationsService {
    * @throws NotFoundError if notification doesn't exist
    * @throws ForbiddenError if not owner
    */
-  async deleteNotification(notificationId: string, userId: string, user: any): Promise<void> {
+  async deleteNotification(notificationId: string, userId: string, user: RBACUser): Promise<void> {
     try {
       if (!notificationId || !userId) {
         throw new ValidationError('Missing required fields', ErrorCode.INVALID_INPUT);

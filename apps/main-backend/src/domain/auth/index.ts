@@ -5,3 +5,4 @@
 
 export { AuthService, authService } from './auth.service';
 export type { RegisterInput, LoginInput, PasswordResetRequestInput, PasswordResetConfirmInput, AuthTokens } from './auth.service';
+export { SessionService, sessionService } from './session.service';

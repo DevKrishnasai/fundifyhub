@@ -28,6 +28,7 @@ import {
   ROLES,
   ServerEvent,
   ClientEvent,
+  type AssetType,
   type AuctionBidPayload,
   type AuctionEndedPayload,
   type AuctionOutbidPayload,
@@ -118,7 +119,7 @@ export default function AuctionDetailPage() {
   const { data: bidsData, isLoading: loadingBids, refetch: refetchBids } = useAuctionBids(auctionId)
 
   // Mutations
-  const placeBidMutation = usePlaceBid(auctionId)
+  const placeBidMutation = usePlaceBid()
   const buyNowMutation = useBuyNow(auctionId)
   const cancelMutation = useCancelAuction(auctionId)
 
@@ -134,7 +135,7 @@ export default function AuctionDetailPage() {
 
   const isUserHighestBidder = useMemo(() => {
     if (!auction?.bids?.length || !user) return false
-    const highestBid = auction.bids.reduce((max, bid) => 
+    const highestBid = auction.bids.reduce((max: typeof auction.bids[0], bid: typeof auction.bids[0]) => 
       bid.amount > max.amount ? bid : max, auction.bids[0])
     return highestBid?.bidder?.id === user.id
   }, [auction?.bids, user])
@@ -246,7 +247,10 @@ export default function AuctionDetailPage() {
     }
 
     try {
-      const result = await placeBidMutation.mutateAsync({ amount })
+      const result = await placeBidMutation.mutateAsync({ 
+        auctionId, 
+        payload: { amount } 
+      })
       toast(`Bid placed successfully! Current high bid: ${formatCurrency(result.currentHighBid)}`)
       setBidAmount('')
       if (result.wasExtended) {
@@ -328,6 +332,19 @@ export default function AuctionDetailPage() {
     )
   }
 
+  const assetPhotos = (auction.asset as { photos?: string[] } | undefined)?.photos ?? []
+  const assetDetails = auction.asset as (AssetType & {
+    assetNumber?: string
+    category?: string
+    subcategory?: string
+    metalType?: string
+    purity?: string
+    grossWeight?: number
+    netWeight?: number
+    description?: string
+    warehouse?: { name?: string; district?: { name?: string } }
+  }) | undefined
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
@@ -339,7 +356,7 @@ export default function AuctionDetailPage() {
           <div>
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold">{auction.title}</h1>
-              {renderStatusBadge(auction.status)}
+              {renderStatusBadge(auction.status as AUCTION_STATUS)}
             </div>
             <p className="text-muted-foreground font-mono text-sm">
               {auction.listingNumber}
@@ -398,11 +415,11 @@ export default function AuctionDetailPage() {
           {/* Asset Photos */}
           <Card>
             <CardContent className="p-0">
-              {auction.asset.photos?.length ? (
+              {assetPhotos.length ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-4">
                   <div className="md:col-span-2 relative h-80">
                     <Image
-                      src={auction.asset.photos[0]}
+                      src={assetPhotos[0]}
                       alt={auction.title}
                       fill
                       className="object-cover rounded-lg"
@@ -410,7 +427,7 @@ export default function AuctionDetailPage() {
                       priority
                     />
                   </div>
-                  {auction.asset.photos.slice(1, 5).map((photo, idx) => (
+                  {assetPhotos.slice(1, 5).map((photo: string, idx: number) => (
                     <div key={idx} className="relative h-40">
                       <Image
                         src={photo}
@@ -431,77 +448,89 @@ export default function AuctionDetailPage() {
           </Card>
 
           {/* Asset Details Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Asset Details
-              </CardTitle>
-              <CardDescription>
-                Asset Number: {auction.asset.assetNumber}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Category</p>
-                  <p className="font-medium">{auction.asset.category}</p>
+          {auction.asset ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Asset Details
+                </CardTitle>
+                <CardDescription>
+                  Asset Number: {assetDetails?.assetNumber ?? 'N/A'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Category</p>
+                    <p className="font-medium">{assetDetails?.category ?? 'N/A'}</p>
+                  </div>
+                    {assetDetails?.subcategory && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Subcategory</p>
+                        <p className="font-medium">{assetDetails.subcategory}</p>
+                    </div>
+                  )}
+                    {assetDetails?.metalType && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Metal Type</p>
+                        <p className="font-medium">{assetDetails.metalType}</p>
+                    </div>
+                  )}
+                    {assetDetails?.purity && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Purity</p>
+                        <p className="font-medium">{assetDetails.purity}</p>
+                    </div>
+                  )}
+                    {assetDetails?.grossWeight && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Gross Weight</p>
+                        <p className="font-medium">{assetDetails.grossWeight}g</p>
+                    </div>
+                  )}
+                    {assetDetails?.netWeight && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Net Weight</p>
+                        <p className="font-medium">{assetDetails.netWeight}g</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm text-muted-foreground">Estimated Value</p>
+                      <p className="font-medium">{formatCurrency(assetDetails?.estimatedValue ?? 0)}</p>
+                  </div>
                 </div>
-                {auction.asset.subcategory && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Subcategory</p>
-                    <p className="font-medium">{auction.asset.subcategory}</p>
-                  </div>
-                )}
-                {auction.asset.metalType && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Metal Type</p>
-                    <p className="font-medium">{auction.asset.metalType}</p>
-                  </div>
-                )}
-                {auction.asset.purity && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Purity</p>
-                    <p className="font-medium">{auction.asset.purity}</p>
-                  </div>
-                )}
-                {auction.asset.grossWeight && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Gross Weight</p>
-                    <p className="font-medium">{auction.asset.grossWeight}g</p>
-                  </div>
-                )}
-                {auction.asset.netWeight && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Net Weight</p>
-                    <p className="font-medium">{auction.asset.netWeight}g</p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-sm text-muted-foreground">Estimated Value</p>
-                  <p className="font-medium">{formatCurrency(auction.asset.estimatedValue)}</p>
-                </div>
-              </div>
 
-              {auction.asset.description && (
-                <div className="mt-4">
-                  <p className="text-sm text-muted-foreground mb-2">Description</p>
-                  <p className="text-sm">{auction.asset.description}</p>
-                </div>
-              )}
-
-              {auction.asset.warehouse && (
-                <div className="mt-4 pt-4 border-t">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <MapPin className="h-4 w-4" />
-                    <span className="text-sm">
-                      {auction.asset.warehouse.name}, {auction.asset.warehouse.district.name}
-                    </span>
+                  {assetDetails?.description && (
+                  <div className="mt-4">
+                    <p className="text-sm text-muted-foreground mb-2">Description</p>
+                      <p className="text-sm">{assetDetails.description}</p>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+
+                  {assetDetails?.warehouse && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span className="text-sm">
+                          {assetDetails.warehouse?.name}, {assetDetails.warehouse?.district?.name}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Asset Details Unavailable
+                </CardTitle>
+                <CardDescription>Asset information could not be loaded.</CardDescription>
+              </CardHeader>
+            </Card>
+          )}
 
           {/* Auction Description */}
           {auction.description && (
@@ -535,7 +564,7 @@ export default function AuctionDetailPage() {
                     <Skeleton key={i} className="h-12" />
                   ))}
                 </div>
-              ) : bidsData?.bids && bidsData.bids.length > 0 ? (
+              ) : bidsData && bidsData.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -546,45 +575,52 @@ export default function AuctionDetailPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {bidsData.bids.map((bid: AuctionBid, index: number) => (
-                      <TableRow 
-                        key={bid.id}
-                        className={cn(
-                          index === 0 && bid.status === BID_STATUS.WINNING && 'bg-green-50 dark:bg-green-900/20'
-                        )}
-                      >
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {index === 0 && bid.status === BID_STATUS.WINNING && (
-                              <Crown className="h-4 w-4 text-yellow-500" />
+                    {bidsData.map((bid, index: number) => {
+                      const bidStatus = bid.status as BID_STATUS
+                      const bidderName = bid.bidder
+                        ? `${bid.bidder.firstName} ${bid.bidder.lastName?.[0] ?? ''}.`
+                        : 'Unknown bidder'
+
+                      return (
+                        <TableRow 
+                          key={bid.id}
+                          className={cn(
+                            index === 0 && bidStatus === BID_STATUS.WINNING && 'bg-green-50 dark:bg-green-900/20'
+                          )}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {index === 0 && bidStatus === BID_STATUS.WINNING && (
+                                <Crown className="h-4 w-4 text-yellow-500" />
+                              )}
+                              <span className="font-medium">
+                                {bidderName}
+                              </span>
+                              {bid.isAutoBid && (
+                                <Badge variant="secondary" className="text-xs">Auto</Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-bold">
+                            {formatCurrency(bid.amount)}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDateTime(bid.placedAt)}
+                          </TableCell>
+                          <TableCell>
+                            {bidStatus === BID_STATUS.WINNING && (
+                              <Badge className="bg-green-100 text-green-700">Highest</Badge>
                             )}
-                            <span className="font-medium">
-                              {bid.bidder.firstName} {bid.bidder.lastName[0]}.
-                            </span>
-                            {bid.isAutoBid && (
-                              <Badge variant="secondary" className="text-xs">Auto</Badge>
+                            {bidStatus === BID_STATUS.OUTBID && (
+                              <Badge variant="secondary">Outbid</Badge>
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right font-bold">
-                          {formatCurrency(bid.amount)}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(bid.placedAt)}
-                        </TableCell>
-                        <TableCell>
-                          {bid.status === BID_STATUS.WINNING && (
-                            <Badge className="bg-green-100 text-green-700">Highest</Badge>
-                          )}
-                          {bid.status === BID_STATUS.OUTBID && (
-                            <Badge variant="secondary">Outbid</Badge>
-                          )}
-                          {bid.status === BID_STATUS.WON && (
-                            <Badge className="bg-yellow-100 text-yellow-700">Won</Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                            {bidStatus === BID_STATUS.WON && (
+                              <Badge className="bg-yellow-100 text-yellow-700">Won</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               ) : (
@@ -634,7 +670,7 @@ export default function AuctionDetailPage() {
                 ) : (
                   <div>
                     <p className="text-2xl font-bold mb-2">
-                      {AUCTION_STATUS_LABELS[auction.status]}
+                      {AUCTION_STATUS_LABELS[auction.status as AUCTION_STATUS]}
                     </p>
                     {auction.winner && (
                       <p className="text-sm text-muted-foreground">
@@ -714,7 +750,7 @@ export default function AuctionDetailPage() {
                   <p className="text-muted-foreground">View Count</p>
                   <p className="font-medium flex items-center gap-1">
                     <Eye className="h-4 w-4" />
-                    {auction.viewCount}
+                    {(auction as { viewCount?: number }).viewCount ?? 0}
                   </p>
                 </div>
               </div>
@@ -825,10 +861,10 @@ export default function AuctionDetailPage() {
                     </DialogHeader>
                     <div className="py-4">
                       <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-                        {auction.asset.photos?.[0] && (
+                        {assetPhotos[0] && (
                           <div className="relative w-20 h-20 shrink-0">
                             <Image
-                              src={auction.asset.photos[0]}
+                              src={assetPhotos[0]}
                               alt={auction.title}
                               fill
                               className="object-cover rounded"
@@ -917,12 +953,12 @@ export default function AuctionDetailPage() {
               )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Extension Time</span>
-                <span>{auction.extensionMinutes} minutes</span>
+                <span>{(auction as { extensionMinutes?: number }).extensionMinutes ?? 0} minutes</span>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Listed By</span>
-                <span>{auction.createdBy.firstName} {auction.createdBy.lastName}</span>
+                <span>{auction.createdBy?.firstName ?? 'Unknown'} {auction.createdBy?.lastName ?? ''}</span>
               </div>
             </CardContent>
           </Card>

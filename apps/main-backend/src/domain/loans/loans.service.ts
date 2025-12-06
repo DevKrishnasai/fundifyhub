@@ -14,6 +14,17 @@
 import { prisma } from '@fundifyhub/prisma';
 import { NotFoundError, ValidationError, ForbiddenError, ErrorCode } from '@fundifyhub/utils';
 import type { Loan, EMISchedule } from '@fundifyhub/types';
+import { 
+  ROLES, 
+  PAYMENT_METHOD,
+  PAYMENT_TYPE, 
+  CLOSURE_TYPE, 
+  LATE_FEE_RATE, 
+  DAYS_PER_MONTH,
+} from '@fundifyhub/types';
+import { canViewLoan, canMakePayment, hasRole, type RBACUser } from '../access-control/rbac';
+import { eventBus } from '../events/bus';
+import logger from '../../utils/logger';
 
 export interface EMIWithBreakdown {
   principalAmount: number;
@@ -34,15 +45,18 @@ export interface EMIWithBreakdown {
 export interface PaymentInput {
   loanId: string;
   amount: number;
-  paymentDate?: Date;
-  referenceId?: string;
-  notes?: string;
+  paymentMethod: PAYMENT_METHOD;
+  transactionReference: string; // Transaction ID/reference
+  processedBy?: string; // User ID who processed payment
+  remarks?: string;
 }
 
 export interface PrepaymentInput {
   loanId: string;
   amount: number;
-  prepaymentDate?: Date;
+  paymentMethod: PAYMENT_METHOD;
+  transactionReference: string;
+  processedBy?: string;
   reason?: string;
 }
 
@@ -75,29 +89,34 @@ export class LoansService {
    * @throws NotFoundError if loan doesn't exist
    * @throws ForbiddenError if user lacks access
    */
-  async getLoanById(loanId: string, user: any): Promise<Loan> {
+  async getLoanById(loanId: string, user: RBACUser): Promise<Loan> {
     try {
       const loan = await prisma.loan.findUnique({
         where: { id: loanId },
         include: {
-          request: { include: { customer: true } },
+          request: { include: { customer: true, district: true } },
           emisSchedule: { orderBy: { dueDate: 'asc' } },
           payments: { orderBy: { createdAt: 'desc' } },
         },
       });
 
       if (!loan) {
-        throw new NotFoundError('Loan not found', 'LOAN_NOT_FOUND');
+        throw new NotFoundError('Loan not found', ErrorCode.RESOURCE_NOT_FOUND);
       }
 
-      // TODO: (agent) Check user access via RBAC
-      // TODO: (agent) Verify user is customer, agent, or admin with access
+      // Check user access via RBAC
+      const customerId = loan.request.customer.id;
+      const districtId = loan.request.districtId;
+      
+      if (!canViewLoan(user, customerId, districtId)) {
+        throw new ForbiddenError('You do not have permission to view this loan', ErrorCode.FORBIDDEN);
+      }
 
-      console.log(`[LoansService.getLoanById] Loan retrieved: ${loanId}`);
+      logger.info('[LoansService.getLoanById] Loan retrieved', { loanId, userId: user.id });
 
-      return loan as any; // Placeholder
+      return loan as unknown as Loan;
     } catch (err) {
-      console.error(`[LoansService.getLoanById] Failed to get loan ${loanId}:`, err);
+      logger.error('[LoansService.getLoanById] Failed to get loan', { error: err, loanId, userId: user.id });
       throw err;
     }
   }
@@ -108,7 +127,7 @@ export class LoansService {
    * @throws ValidationError if pagination invalid
    */
   async listLoans(
-    user: any,
+    user: RBACUser,
     filters: { page?: number; pageSize?: number; status?: string }
   ): Promise<{ loans: Loan[]; total: number }> {
     try {
@@ -119,16 +138,58 @@ export class LoansService {
         throw new ValidationError('Invalid pagination', ErrorCode.INVALID_INPUT);
       }
 
-      // TODO: (agent) Build WHERE clause based on user role
-      // TODO: (agent) Apply status filter if provided
-      // TODO: (agent) Fetch loans with pagination
-      // TODO: (agent) Return paginated results
+      const skip = (page - 1) * pageSize;
 
-      console.log('[LoansService.listLoans] Loans listed', { userId: user.id, page, pageSize });
+      // Build WHERE clause based on user role
+      const where: any = {};
 
-      return { loans: [], total: 0 };
+      if (hasRole(user, ROLES.CUSTOMER)) {
+        // Customer sees only their own loans via request.customerId
+        where.request = { customerId: user.id };
+      } else if (hasRole(user, ROLES.AGENT) || hasRole(user, ROLES.DISTRICT_ADMIN)) {
+        // Agent/District admin sees loans in their districts
+        where.request = { districtId: { in: user.districts || [] } };
+      } else if (hasRole(user, ROLES.STATE_ADMIN)) {
+        // State admin sees loans in their state (via districts)
+        where.request = { districtId: { in: user.districts || [] } };
+      }
+      // SUPER_ADMIN sees all - no filter
+
+      // Apply status filter if provided
+      if (filters.status) {
+        where.status = filters.status;
+      }
+
+      // Fetch loans with pagination
+      const [loans, total] = await Promise.all([
+        prisma.loan.findMany({
+          where,
+          skip,
+          take: pageSize,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            request: {
+              include: {
+                customer: { select: { id: true, firstName: true, lastName: true } },
+                district: { select: { id: true, name: true } },
+              },
+            },
+          },
+        }),
+        prisma.loan.count({ where }),
+      ]);
+
+      logger.info('[LoansService.listLoans] Loans listed', { 
+        userId: user.id, 
+        page, 
+        pageSize, 
+        count: loans.length,
+        total 
+      });
+
+      return { loans: loans as unknown as Loan[], total };
     } catch (err) {
-      console.error('[LoansService.listLoans] Failed to list loans:', err);
+      logger.error('[LoansService.listLoans] Failed to list loans', { error: err, userId: user.id });
       throw err;
     }
   }
@@ -153,28 +214,100 @@ export class LoansService {
 
       const loan = await prisma.loan.findUnique({
         where: { id: input.loanId },
-        include: { emisSchedule: { where: { status: 'PENDING' }, orderBy: { dueDate: 'asc' } } },
+        include: { 
+          request: { select: { customerId: true, districtId: true } },
+          emisSchedule: { where: { status: 'PENDING' }, orderBy: { dueDate: 'asc' } } 
+        },
       });
 
       if (!loan) {
-        throw new NotFoundError('Loan not found', 'LOAN_NOT_FOUND');
+        throw new NotFoundError('Loan not found', ErrorCode.RESOURCE_NOT_FOUND);
       }
 
-      // TODO: (agent) Get current due EMI
-      // TODO: (agent) Calculate late fee if EMI is overdue
-      // TODO: (agent) Create Payment record
-      // TODO: (agent) Update EMI schedule (mark as PAID/PARTIAL)
-      // TODO: (agent) Update loan outstanding balance
-      // TODO: (agent) Emit PaymentRecorded event
-      // TODO: (agent) Return payment and updated loan
+      // Get current due EMI
+      if (!loan.emisSchedule || loan.emisSchedule.length === 0) {
+        throw new ValidationError('No pending EMIs found', ErrorCode.INVALID_INPUT);
+      }
 
-      console.log(`[LoansService.applyEMIPayment] Payment applied: ${input.amount}`, {
-        loanId: input.loanId,
+      const currentEMI = loan.emisSchedule[0];
+
+      // Calculate late fee if EMI is overdue
+      let lateFee = 0;
+      const today = new Date();
+      if (today > currentEMI.dueDate) {
+        const daysOverdue = Math.floor((today.getTime() - currentEMI.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+        const monthsOverdue = Math.ceil(daysOverdue / DAYS_PER_MONTH);
+        lateFee = currentEMI.emiAmount * LATE_FEE_RATE * monthsOverdue;
+      }
+
+      const totalDue = currentEMI.emiAmount + lateFee;
+
+      if (input.amount < totalDue) {
+        throw new ValidationError(
+          `Payment amount insufficient. Required: ${totalDue} (EMI: ${currentEMI.emiAmount}, Late Fee: ${lateFee})`,
+          ErrorCode.INVALID_INPUT
+        );
+      }
+
+      // Use transaction for atomic updates
+      const result = await prisma.$transaction(async (tx) => {
+        // Create Payment record
+        const payment = await tx.payment.create({
+          data: {
+            loanId: input.loanId,
+            requestId: loan.requestId,
+            emiScheduleId: currentEMI.id,
+            amount: input.amount,
+            paymentMethod: input.paymentMethod,
+            paymentReference: input.transactionReference,
+            paidDate: today,
+            processedBy: input.processedBy || 'system',
+          },
+        });
+
+        // Update EMI schedule (mark as PAID)
+        await tx.eMISchedule.update({
+          where: { id: currentEMI.id },
+          data: {
+            status: 'PAID',
+            paidDate: today,
+            paidAmount: input.amount,
+          },
+        });
+
+        // Update loan outstanding balance
+        const updatedLoan = await tx.loan.update({
+          where: { id: input.loanId },
+          data: {
+            remainingAmount: { decrement: currentEMI.principalAmount },
+            remainingEMIs: { decrement: 1 },
+          },
+        });
+
+        return { payment, updatedLoan };
       });
 
-      return { payment: {}, updatedLoan: loan as any };
+      // Emit PaymentRecorded event
+      eventBus.emit('loan.paymentRecorded', {
+        loanId: input.loanId,
+        customerId: loan.request.customerId,
+        emiId: currentEMI.id,
+        emiNumber: currentEMI.emiNumber,
+        amount: input.amount,
+        lateFee,
+        paymentDate: today,
+        remainingEMIs: result.updatedLoan.remainingEMIs,
+      });
+
+      logger.info('[LoansService.applyEMIPayment] Payment applied', {
+        loanId: input.loanId,
+        amount: input.amount,
+        lateFee,
+      });
+
+      return { payment: result.payment, updatedLoan: result.updatedLoan as unknown as Loan };
     } catch (err) {
-      console.error('[LoansService.applyEMIPayment] Failed to apply payment:', err);
+      logger.error('[LoansService.applyEMIPayment] Failed to apply payment', { error: err, loanId: input.loanId });
       throw err;
     }
   }
@@ -190,22 +323,37 @@ export class LoansService {
     try {
       const loan = await prisma.loan.findUnique({
         where: { id: loanId },
-        include: { emisSchedule: { orderBy: { dueDate: 'asc' } } },
+        include: { 
+          emisSchedule: { 
+            orderBy: { emiNumber: 'asc' },
+          } 
+        },
       });
 
       if (!loan) {
-        throw new NotFoundError('Loan not found', 'LOAN_NOT_FOUND');
+        throw new NotFoundError('Loan not found', ErrorCode.RESOURCE_NOT_FOUND);
       }
 
-      // TODO: (agent) Fetch EMI schedules from database
-      // TODO: (agent) Add payment information to each schedule
-      // TODO: (agent) Calculate days overdue if applicable
+      // Add days overdue calculation
+      const today = new Date();
+      const enrichedSchedule = (loan.emisSchedule || []).map((emi: any) => {
+        let daysOverdue = 0;
+        if (emi.status !== 'PAID' && today > emi.dueDate) {
+          daysOverdue = Math.floor((today.getTime() - emi.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+        }
 
-      console.log(`[LoansService.getEMISchedule] EMI schedule retrieved: ${loanId}`);
+        return {
+          ...emi,
+          daysOverdue,
+          payment: emi.payment || null,
+        };
+      });
 
-      return (loan as any).emisSchedule || [];
+      logger.info('[LoansService.getEMISchedule] EMI schedule retrieved', { loanId, count: enrichedSchedule.length });
+
+      return enrichedSchedule as EMISchedule[];
     } catch (err) {
-      console.error(`[LoansService.getEMISchedule] Failed to get EMI schedule for ${loanId}:`, err);
+      logger.error('[LoansService.getEMISchedule] Failed to get EMI schedule', { error: err, loanId });
       throw err;
     }
   }
@@ -230,27 +378,84 @@ export class LoansService {
 
       const loan = await prisma.loan.findUnique({
         where: { id: input.loanId },
+        include: { request: { select: { customerId: true } } },
       });
 
       if (!loan) {
-        throw new NotFoundError('Loan not found', 'LOAN_NOT_FOUND');
+        throw new NotFoundError('Loan not found', ErrorCode.RESOURCE_NOT_FOUND);
       }
 
-      // TODO: (agent) Get current outstanding balance
-      // TODO: (agent) Verify prepayment amount <= outstanding balance
-      // TODO: (agent) Create Prepayment record
-      // TODO: (agent) Update loan outstanding balance
-      // TODO: (agent) Check if full prepayment - if yes, close loan
-      // TODO: (agent) Optionally recalculate remaining EMI schedule
-      // TODO: (agent) Emit PrepaymentRecorded event
+      // Get current outstanding balance
+      const outstandingBalance = loan.remainingAmount;
 
-      console.log(`[LoansService.recordPrepayment] Prepayment recorded: ${input.amount}`, {
-        loanId: input.loanId,
+      // Verify prepayment amount <= outstanding balance
+      if (input.amount > outstandingBalance) {
+        throw new ValidationError(
+          `Prepayment amount exceeds outstanding balance: ${outstandingBalance}`,
+          ErrorCode.INVALID_INPUT
+        );
+      }
+
+      const today = new Date();
+      const isFullPrepayment = input.amount >= outstandingBalance;
+
+      // Use transaction for atomic updates
+      const result = await prisma.$transaction(async (tx) => {
+        // Create Prepayment record (using Payment table with special type)
+        const prepayment = await tx.payment.create({
+          data: {
+            loanId: input.loanId,
+            requestId: loan.requestId,
+            amount: input.amount,
+            paymentType: PAYMENT_TYPE.ADVANCE,
+            paymentMethod: input.paymentMethod,
+            paymentReference: input.transactionReference,
+            paidDate: today,
+            processedBy: input.processedBy || 'system',
+          },
+        });
+
+        // Update loan outstanding balance
+        const updatedLoan = await tx.loan.update({
+          where: { id: input.loanId },
+          data: {
+            remainingAmount: { decrement: input.amount },
+            totalPaidAmount: { increment: input.amount },
+            ...(isFullPrepayment ? { status: 'COMPLETED', closedDate: today } : {}),
+          },
+        });
+
+        // If full prepayment, mark all pending EMIs as PAID (or leave them, loan is closed)
+        if (isFullPrepayment) {
+          // Optionally mark remaining EMIs - commenting out as loan COMPLETED status is sufficient
+          // await tx.eMISchedule.updateMany({
+          //   where: { loanId: input.loanId, status: 'PENDING' },
+          //   data: { status: 'PAID' },
+          // });
+        }
+
+        return { prepayment, remainingBalance: updatedLoan.remainingAmount };
       });
 
-      return { prepayment: {}, remainingBalance: 0 };
+      // Emit PrepaymentRecorded event
+      eventBus.emit('loan.prepaymentRecorded', {
+        loanId: input.loanId,
+        customerId: loan.request.customerId,
+        amount: input.amount,
+        remainingBalance: result.remainingBalance,
+        isFullPrepayment,
+        prepaymentDate: today,
+      });
+
+      logger.info('[LoansService.recordPrepayment] Prepayment recorded', {
+        loanId: input.loanId,
+        amount: input.amount,
+        isFullPrepayment,
+      });
+
+      return { prepayment: result.prepayment, remainingBalance: result.remainingBalance };
     } catch (err) {
-      console.error('[LoansService.recordPrepayment] Failed to record prepayment:', err);
+      logger.error('[LoansService.recordPrepayment] Failed to record prepayment', { error: err, loanId: input.loanId });
       throw err;
     }
   }
@@ -271,24 +476,59 @@ export class LoansService {
     try {
       const loan = await prisma.loan.findUnique({
         where: { id: loanId },
+        include: { request: { select: { customerId: true } } },
       });
 
       if (!loan) {
-        throw new NotFoundError('Loan not found', 'LOAN_NOT_FOUND');
+        throw new NotFoundError('Loan not found', ErrorCode.RESOURCE_NOT_FOUND);
       }
 
-      // TODO: (agent) Get outstanding balance
-      // TODO: (agent) Verify balance = 0 (full payment) or closure initiated
-      // TODO: (agent) Update loan status to CLOSED
-      // TODO: (agent) Mark all pending EMIs as CLOSED
-      // TODO: (agent) Generate/upload closure certificate
-      // TODO: (agent) Emit LoanClosed event
+      // Get outstanding balance
+      const outstandingBalance = loan.remainingAmount;
 
-      console.log(`[LoansService.closeLoan] Loan closed: ${loanId}`);
+      // Verify balance = 0 (full payment) or closure initiated
+      if (outstandingBalance > 0) {
+        throw new ValidationError(
+          `Cannot close loan with outstanding balance: ${outstandingBalance}`,
+          ErrorCode.INVALID_INPUT
+        );
+      }
 
-      return { closureDate: new Date(), certificateUrl: undefined };
+      if (loan.status === 'COMPLETED') {
+        throw new ValidationError('Loan already closed', ErrorCode.INVALID_INPUT);
+      }
+
+      const today = new Date();
+
+      // Use transaction for atomic updates
+      await prisma.$transaction(async (tx) => {
+        // Update loan status to COMPLETED
+        await tx.loan.update({
+          where: { id: loanId },
+          data: {
+            status: 'COMPLETED',
+            closedDate: today,
+            closureType: CLOSURE_TYPE.NORMAL,
+          },
+        });
+
+        // No need to update EMIs - they should all be PAID already
+      });
+
+      // Emit LoanClosed event
+      eventBus.emit('loan.closed', {
+        loanId,
+        customerId: loan.request.customerId,
+        closureDate: today,
+        loanNumber: loan.loanNumber,
+      });
+
+      logger.info('[LoansService.closeLoan] Loan closed', { loanId, closureDate: today });
+
+      // TODO: Generate/upload closure certificate in future
+      return { closureDate: today, certificateUrl: undefined };
     } catch (err) {
-      console.error(`[LoansService.closeLoan] Failed to close loan ${loanId}:`, err);
+      logger.error('[LoansService.closeLoan] Failed to close loan', { error: err, loanId });
       throw err;
     }
   }
@@ -304,25 +544,21 @@ export class LoansService {
     try {
       const loan = await prisma.loan.findUnique({
         where: { id: loanId },
-        include: {
-          emisSchedule: true,
-          payments: true,
-        },
+        select: { remainingAmount: true },
       });
 
       if (!loan) {
-        throw new NotFoundError('Loan not found', 'LOAN_NOT_FOUND');
+        throw new NotFoundError('Loan not found', ErrorCode.RESOURCE_NOT_FOUND);
       }
 
-      // TODO: (agent) Sum all paid amounts from payments
-      // TODO: (agent) Calculate total due amount
-      // TODO: (agent) Return outstanding = total due - paid
+      // remainingAmount is maintained up-to-date via transactions
+      const outstandingBalance = loan.remainingAmount;
 
-      console.log(`[LoansService.getOutstandingBalance] Balance calculated for: ${loanId}`);
+      logger.info('[LoansService.getOutstandingBalance] Balance calculated', { loanId, outstandingBalance });
 
-      return 0;
+      return outstandingBalance;
     } catch (err) {
-      console.error(`[LoansService.getOutstandingBalance] Failed to get balance for ${loanId}:`, err);
+      logger.error('[LoansService.getOutstandingBalance] Failed to get balance', { error: err, loanId });
       throw err;
     }
   }
@@ -339,24 +575,47 @@ export class LoansService {
     filters?: { startDate?: Date; endDate?: Date }
   ): Promise<Array<{ id: string; amount: number; date: Date; type: string; status: string }>> {
     try {
-      const loan = await prisma.loan.findUnique({
-        where: { id: loanId },
-        include: { payments: { orderBy: { createdAt: 'desc' } } },
-      });
-
-      if (!loan) {
-        throw new NotFoundError('Loan not found', 'LOAN_NOT_FOUND');
+      // Build where clause with date filters
+      const where: any = { loanId };
+      if (filters?.startDate || filters?.endDate) {
+        where.paymentDate = {};
+        if (filters.startDate) {
+          where.paymentDate.gte = filters.startDate;
+        }
+        if (filters.endDate) {
+          where.paymentDate.lte = filters.endDate;
+        }
       }
 
-      // TODO: (agent) Fetch payments from database
-      // TODO: (agent) Apply date filters if provided
-      // TODO: (agent) Return payment history
+      const payments = await prisma.payment.findMany({
+        where,
+        orderBy: { paidDate: 'desc' },
+        include: {
+          emiSchedule: { select: { emiNumber: true } },
+        },
+      });
 
-      console.log(`[LoansService.getPaymentHistory] Payment history retrieved for: ${loanId}`);
+      // Map to return format
+      const paymentHistory = payments.map((payment: any) => ({
+        id: payment.id,
+        amount: payment.amount,
+        date: payment.paidDate,
+        type: payment.emiScheduleId 
+          ? `EMI #${payment.emiSchedule?.emiNumber || 'N/A'}` 
+          : payment.paymentType === PAYMENT_TYPE.ADVANCE ? 'Prepayment' : 'Late Fee',
+        status: 'SUCCESS', // All payments in DB are successful
+        transactionReference: payment.paymentReference,
+        paymentType: payment.paymentType,
+      }));
 
-      return [];
+      logger.info('[LoansService.getPaymentHistory] Payment history retrieved', { 
+        loanId, 
+        count: paymentHistory.length 
+      });
+
+      return paymentHistory;
     } catch (err) {
-      console.error(`[LoansService.getPaymentHistory] Failed to get payment history for ${loanId}:`, err);
+      logger.error('[LoansService.getPaymentHistory] Failed to get payment history', { error: err, loanId });
       throw err;
     }
   }

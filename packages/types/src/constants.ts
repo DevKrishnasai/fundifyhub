@@ -84,15 +84,9 @@ export enum SERVICE_CONTROL_ACTIONS {
   TEST = 'TEST',
 }
 
-export enum CONNECTION_STATUS {
-  CONNECTED = 'CONNECTED',
-  DISCONNECTED = 'DISCONNECTED',
-  ERROR = 'ERROR',
-  CONNECTING = 'CONNECTING',
-  WAITING_FOR_QR_SCAN = 'WAITING_FOR_QR_SCAN',
-  AUTHENTICATED = 'AUTHENTICATED',
-  INITIALIZING = 'INITIALIZING',
-}
+// CONNECTION_STATUS moved to common/service.types.ts
+// Re-exported here for backward compatibility
+export { CONNECTION_STATUS } from './common/service.types';
 
 // ----------- REQUEST RELATED -----------
 
@@ -119,54 +113,6 @@ export enum ASSET_CONDITION {
   FAIR = 'FAIR',
   POOR = 'POOR',
   DAMAGED = 'DAMAGED',
-}
-
-// ============================================
-// REQUEST STATUS (Legacy - 28 values)
-// @deprecated Use REQUEST_STAGE from stage-constants.ts for new code
-// Kept for backward compatibility with workflow.ts and database
-// ============================================
-
-export enum REQUEST_STATUS {
-  // Submission Phase
-  PENDING = 'PENDING',
-  UNDER_REVIEW = 'UNDER_REVIEW',
-  MORE_INFO_REQUIRED = 'MORE_INFO_REQUIRED',
-  
-  // Offer Phase
-  OFFER_SENT = 'OFFER_SENT',
-  OFFER_ACCEPTED = 'OFFER_ACCEPTED',
-  OFFER_DECLINED = 'OFFER_DECLINED',
-  OFFER_EXPIRED = 'OFFER_EXPIRED',
-  
-  // Inspection Phase
-  INSPECTION_SCHEDULED = 'INSPECTION_SCHEDULED',
-  INSPECTION_RESCHEDULE_REQUESTED = 'INSPECTION_RESCHEDULE_REQUESTED',
-  INSPECTION_IN_PROGRESS = 'INSPECTION_IN_PROGRESS',
-  INSPECTION_COMPLETED = 'INSPECTION_COMPLETED',
-  CUSTOMER_NOT_AVAILABLE = 'CUSTOMER_NOT_AVAILABLE',
-  ASSET_MISMATCH = 'ASSET_MISMATCH',
-  AGENT_NOT_AVAILABLE = 'AGENT_NOT_AVAILABLE',
-  
-  // Approval Phase
-  APPROVED = 'APPROVED',
-  PENDING_SIGNATURE = 'PENDING_SIGNATURE',
-  
-  // Disbursement Phase
-  PENDING_BANK_DETAILS = 'PENDING_BANK_DETAILS',
-  BANK_DETAILS_SUBMITTED = 'BANK_DETAILS_SUBMITTED',
-  TRANSFER_FAILED = 'TRANSFER_FAILED',
-  AMOUNT_DISBURSED = 'AMOUNT_DISBURSED',
-  
-  // Repayment Phase
-  ACTIVE = 'ACTIVE',
-  PAYMENT_OVERDUE = 'PAYMENT_OVERDUE',
-  DEFAULTED = 'DEFAULTED',
-  COMPLETED = 'COMPLETED',
-  
-  // Terminal States
-  REJECTED = 'REJECTED',
-  CANCELLED = 'CANCELLED',
 }
 
 // ============================================
@@ -369,95 +315,6 @@ export const ADMIN_AGENT_ROLES = [
   ROLES.DISTRICT_ADMIN,
   ROLES.AGENT,
 ] as const;
-
-export const ALLOWED_UPDATE_STATUSES = [
-  REQUEST_STATUS.PENDING,
-  REQUEST_STATUS.OFFER_DECLINED,
-  REQUEST_STATUS.REJECTED,
-  REQUEST_STATUS.CANCELLED,
-];
-
-export const PENDING_REQUEST_STATUSES = [
-  REQUEST_STATUS.PENDING,
-  REQUEST_STATUS.UNDER_REVIEW,
-  REQUEST_STATUS.MORE_INFO_REQUIRED,
-  REQUEST_STATUS.OFFER_SENT,
-  REQUEST_STATUS.OFFER_ACCEPTED,
-  REQUEST_STATUS.OFFER_DECLINED,
-  REQUEST_STATUS.OFFER_EXPIRED,
-  REQUEST_STATUS.INSPECTION_SCHEDULED,
-  REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-  REQUEST_STATUS.INSPECTION_COMPLETED,
-  REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE,
-  REQUEST_STATUS.ASSET_MISMATCH,
-  REQUEST_STATUS.AGENT_NOT_AVAILABLE,
-];
-
-// Statuses where customer action is required
-export const CUSTOMER_ACTION_REQUIRED = [
-  REQUEST_STATUS.MORE_INFO_REQUIRED,
-  REQUEST_STATUS.OFFER_SENT,
-  REQUEST_STATUS.PENDING_SIGNATURE,
-  REQUEST_STATUS.PENDING_BANK_DETAILS,
-  REQUEST_STATUS.TRANSFER_FAILED,
-];
-
-// Statuses where admin action is required
-export const ADMIN_ACTION_REQUIRED = [
-  REQUEST_STATUS.PENDING,
-  REQUEST_STATUS.UNDER_REVIEW,
-  REQUEST_STATUS.OFFER_EXPIRED,
-  REQUEST_STATUS.INSPECTION_COMPLETED,
-  REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-];
-
-// Statuses where agent action is required
-export const AGENT_ACTION_REQUIRED = [
-  REQUEST_STATUS.INSPECTION_SCHEDULED,
-  REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-];
-
-// Statuses where agents should no longer have UI access to the request
-// (their responsibility for the request is completed and further steps are admin/customer flows)
-export const AGENT_ACCESS_DENY_STATUSES = [
-  REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-  REQUEST_STATUS.TRANSFER_FAILED,
-  REQUEST_STATUS.AMOUNT_DISBURSED,
-  REQUEST_STATUS.ACTIVE,
-  REQUEST_STATUS.PAYMENT_OVERDUE,
-  REQUEST_STATUS.DEFAULTED,
-  REQUEST_STATUS.COMPLETED,
-];
-
-// Role-based status transition permissions
-export const CUSTOMER_ALLOWED_STATUSES = [
-  REQUEST_STATUS.OFFER_ACCEPTED,
-  REQUEST_STATUS.OFFER_DECLINED,
-  REQUEST_STATUS.CANCELLED,
-  REQUEST_STATUS.PENDING,
-  REQUEST_STATUS.INSPECTION_SCHEDULED,
-  REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED,
-  REQUEST_STATUS.PENDING_BANK_DETAILS,
-  REQUEST_STATUS.BANK_DETAILS_SUBMITTED,
-];
-
-export const AGENT_ALLOWED_STATUSES = [
-  REQUEST_STATUS.INSPECTION_IN_PROGRESS,
-  REQUEST_STATUS.INSPECTION_COMPLETED,
-  REQUEST_STATUS.INSPECTION_SCHEDULED,
-  REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE,
-  REQUEST_STATUS.ASSET_MISMATCH,
-  REQUEST_STATUS.AGENT_NOT_AVAILABLE,
-  REQUEST_STATUS.APPROVED,
-  REQUEST_STATUS.REJECTED,
-];
-
-// Statuses that allow loan creation
-export const LOAN_CREATION_ALLOWED_STATUSES = [
-  REQUEST_STATUS.OFFER_ACCEPTED,
-  REQUEST_STATUS.INSPECTION_COMPLETED,
-  REQUEST_STATUS.APPROVED,
-];
 
 // Request History Action Types
 export enum REQUEST_HISTORY_ACTION {
@@ -1257,245 +1114,6 @@ export const NAV_ITEMS: NavMenuItem[] = [
 
 // ----------- STATUS DISPLAY CONSTANTS -----------
 
-// Status badge color mapping for consistent UI
-export const REQUEST_STATUS_COLORS: Record<
-  REQUEST_STATUS,
-  { bg: string; text: string; border: string }
-> = {
-  [REQUEST_STATUS.PENDING]: {
-    bg: 'bg-yellow-100 dark:bg-yellow-900/30',
-    text: 'text-yellow-700 dark:text-yellow-400',
-    border: 'border-yellow-300',
-  },
-  [REQUEST_STATUS.UNDER_REVIEW]: {
-    bg: 'bg-blue-100 dark:bg-blue-900/30',
-    text: 'text-blue-700 dark:text-blue-400',
-    border: 'border-blue-300',
-  },
-  [REQUEST_STATUS.MORE_INFO_REQUIRED]: {
-    bg: 'bg-orange-100 dark:bg-orange-900/30',
-    text: 'text-orange-700 dark:text-orange-400',
-    border: 'border-orange-300',
-  },
-  [REQUEST_STATUS.OFFER_SENT]: {
-    bg: 'bg-indigo-100 dark:bg-indigo-900/30',
-    text: 'text-indigo-700 dark:text-indigo-400',
-    border: 'border-indigo-300',
-  },
-  [REQUEST_STATUS.OFFER_ACCEPTED]: {
-    bg: 'bg-green-100 dark:bg-green-900/30',
-    text: 'text-green-700 dark:text-green-400',
-    border: 'border-green-300',
-  },
-  [REQUEST_STATUS.OFFER_DECLINED]: {
-    bg: 'bg-red-100 dark:bg-red-900/30',
-    text: 'text-red-700 dark:text-red-400',
-    border: 'border-red-300',
-  },
-  [REQUEST_STATUS.OFFER_EXPIRED]: {
-    bg: 'bg-gray-100 dark:bg-gray-800',
-    text: 'text-gray-700 dark:text-gray-400',
-    border: 'border-gray-300',
-  },
-  [REQUEST_STATUS.INSPECTION_SCHEDULED]: {
-    bg: 'bg-purple-100 dark:bg-purple-900/30',
-    text: 'text-purple-700 dark:text-purple-400',
-    border: 'border-purple-300',
-  },
-  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: {
-    bg: 'bg-amber-100 dark:bg-amber-900/30',
-    text: 'text-amber-700 dark:text-amber-400',
-    border: 'border-amber-300',
-  },
-  [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: {
-    bg: 'bg-cyan-100 dark:bg-cyan-900/30',
-    text: 'text-cyan-700 dark:text-cyan-400',
-    border: 'border-cyan-300',
-  },
-  [REQUEST_STATUS.INSPECTION_COMPLETED]: {
-    bg: 'bg-teal-100 dark:bg-teal-900/30',
-    text: 'text-teal-700 dark:text-teal-400',
-    border: 'border-teal-300',
-  },
-  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: {
-    bg: 'bg-orange-100 dark:bg-orange-900/30',
-    text: 'text-orange-700 dark:text-orange-400',
-    border: 'border-orange-300',
-  },
-  [REQUEST_STATUS.ASSET_MISMATCH]: {
-    bg: 'bg-red-100 dark:bg-red-900/30',
-    text: 'text-red-700 dark:text-red-400',
-    border: 'border-red-300',
-  },
-  [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: {
-    bg: 'bg-amber-100 dark:bg-amber-900/30',
-    text: 'text-amber-700 dark:text-amber-400',
-    border: 'border-amber-300',
-  },
-  [REQUEST_STATUS.APPROVED]: {
-    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
-    text: 'text-emerald-700 dark:text-emerald-400',
-    border: 'border-emerald-300',
-  },
-  [REQUEST_STATUS.PENDING_SIGNATURE]: {
-    bg: 'bg-violet-100 dark:bg-violet-900/30',
-    text: 'text-violet-700 dark:text-violet-400',
-    border: 'border-violet-300',
-  },
-  [REQUEST_STATUS.PENDING_BANK_DETAILS]: {
-    bg: 'bg-sky-100 dark:bg-sky-900/30',
-    text: 'text-sky-700 dark:text-sky-400',
-    border: 'border-sky-300',
-  },
-  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: {
-    bg: 'bg-blue-100 dark:bg-blue-900/30',
-    text: 'text-blue-700 dark:text-blue-400',
-    border: 'border-blue-300',
-  },
-  [REQUEST_STATUS.TRANSFER_FAILED]: {
-    bg: 'bg-red-100 dark:bg-red-900/30',
-    text: 'text-red-700 dark:text-red-400',
-    border: 'border-red-300',
-  },
-  [REQUEST_STATUS.AMOUNT_DISBURSED]: {
-    bg: 'bg-green-100 dark:bg-green-900/30',
-    text: 'text-green-700 dark:text-green-400',
-    border: 'border-green-300',
-  },
-  [REQUEST_STATUS.ACTIVE]: {
-    bg: 'bg-green-100 dark:bg-green-900/30',
-    text: 'text-green-700 dark:text-green-400',
-    border: 'border-green-300',
-  },
-  [REQUEST_STATUS.PAYMENT_OVERDUE]: {
-    bg: 'bg-orange-100 dark:bg-orange-900/30',
-    text: 'text-orange-700 dark:text-orange-400',
-    border: 'border-orange-300',
-  },
-  [REQUEST_STATUS.DEFAULTED]: {
-    bg: 'bg-red-100 dark:bg-red-900/30',
-    text: 'text-red-700 dark:text-red-400',
-    border: 'border-red-300',
-  },
-  [REQUEST_STATUS.COMPLETED]: {
-    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
-    text: 'text-emerald-700 dark:text-emerald-400',
-    border: 'border-emerald-300',
-  },
-  [REQUEST_STATUS.REJECTED]: {
-    bg: 'bg-red-100 dark:bg-red-900/30',
-    text: 'text-red-700 dark:text-red-400',
-    border: 'border-red-300',
-  },
-  [REQUEST_STATUS.CANCELLED]: {
-    bg: 'bg-gray-100 dark:bg-gray-800',
-    text: 'text-gray-700 dark:text-gray-400',
-    border: 'border-gray-300',
-  },
-};
-
-// Status display labels (user-friendly names)
-export const REQUEST_STATUS_LABELS: Record<REQUEST_STATUS, string> = {
-  [REQUEST_STATUS.PENDING]: 'Pending Review',
-  [REQUEST_STATUS.UNDER_REVIEW]: 'Under Review',
-  [REQUEST_STATUS.MORE_INFO_REQUIRED]: 'More Info Required',
-  [REQUEST_STATUS.OFFER_SENT]: 'Offer Sent',
-  [REQUEST_STATUS.OFFER_ACCEPTED]: 'Offer Accepted',
-  [REQUEST_STATUS.OFFER_DECLINED]: 'Offer Declined',
-  [REQUEST_STATUS.OFFER_EXPIRED]: 'Offer Expired',
-  [REQUEST_STATUS.INSPECTION_SCHEDULED]: 'Inspection Scheduled',
-  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: 'Reschedule Requested',
-  [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: 'Inspection In Progress',
-  [REQUEST_STATUS.INSPECTION_COMPLETED]: 'Inspection Completed',
-  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: 'Customer Not Available',
-  [REQUEST_STATUS.ASSET_MISMATCH]: 'Asset Mismatch',
-  [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: 'Agent Not Available',
-  [REQUEST_STATUS.APPROVED]: 'Approved',
-  [REQUEST_STATUS.PENDING_SIGNATURE]: 'Pending Signature',
-  [REQUEST_STATUS.PENDING_BANK_DETAILS]: 'Pending Bank Details',
-  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: 'Bank Details Submitted',
-  [REQUEST_STATUS.TRANSFER_FAILED]: 'Transfer Failed',
-  [REQUEST_STATUS.AMOUNT_DISBURSED]: 'Amount Disbursed',
-  [REQUEST_STATUS.ACTIVE]: 'Active',
-  [REQUEST_STATUS.PAYMENT_OVERDUE]: 'Payment Overdue',
-  [REQUEST_STATUS.DEFAULTED]: 'Defaulted',
-  [REQUEST_STATUS.COMPLETED]: 'Completed',
-  [REQUEST_STATUS.REJECTED]: 'Rejected',
-  [REQUEST_STATUS.CANCELLED]: 'Cancelled',
-};
-
-// Status descriptions for tooltips
-export const REQUEST_STATUS_DESCRIPTION: Record<REQUEST_STATUS, string> = {
-  [REQUEST_STATUS.PENDING]: 'Your request is waiting for admin review',
-  [REQUEST_STATUS.UNDER_REVIEW]: 'Admin is reviewing your request details',
-  [REQUEST_STATUS.MORE_INFO_REQUIRED]:
-    'Please provide additional documents or information',
-  [REQUEST_STATUS.OFFER_SENT]: 'Review the loan offer and accept or decline',
-  [REQUEST_STATUS.OFFER_ACCEPTED]: 'Great! Waiting for inspection scheduling',
-  [REQUEST_STATUS.OFFER_DECLINED]:
-    'You declined the offer. You can submit a new request',
-  [REQUEST_STATUS.OFFER_EXPIRED]:
-    'The offer has expired. Contact support for assistance',
-  [REQUEST_STATUS.INSPECTION_SCHEDULED]:
-    'An agent will visit for asset inspection',
-  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]:
-    'Reschedule request pending approval',
-  [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: 'Agent is inspecting your asset',
-  [REQUEST_STATUS.INSPECTION_COMPLETED]:
-    'Inspection done, awaiting final approval',
-  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]:
-    'Agent visit failed. Will be rescheduled',
-  [REQUEST_STATUS.ASSET_MISMATCH]: 'Asset does not match description provided',
-  [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: 'Agent unavailable. Will be reassigned',
-  [REQUEST_STATUS.APPROVED]: 'Congratulations! Your loan is approved',
-  [REQUEST_STATUS.PENDING_SIGNATURE]: 'Please sign the loan agreement',
-  [REQUEST_STATUS.PENDING_BANK_DETAILS]:
-    'Provide bank details for disbursement',
-  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]:
-    'Bank details received, processing disbursement',
-  [REQUEST_STATUS.TRANSFER_FAILED]:
-    'Transfer failed. Please update bank details',
-  [REQUEST_STATUS.AMOUNT_DISBURSED]:
-    'Loan amount has been transferred to your account',
-  [REQUEST_STATUS.ACTIVE]: 'Your loan is active. Keep up with EMI payments',
-  [REQUEST_STATUS.PAYMENT_OVERDUE]: 'EMI payment is overdue. Please pay soon',
-  [REQUEST_STATUS.DEFAULTED]:
-    'Multiple payments missed. Contact support immediately',
-  [REQUEST_STATUS.COMPLETED]: 'Congratulations! Loan fully repaid',
-  [REQUEST_STATUS.REJECTED]: 'Request was rejected. See notes for details',
-  [REQUEST_STATUS.CANCELLED]: 'Request was cancelled',
-};
-
-// Status icons (lucide-react icon names)
-export const REQUEST_STATUS_ICON: Record<REQUEST_STATUS, string> = {
-  [REQUEST_STATUS.PENDING]: 'Clock',
-  [REQUEST_STATUS.UNDER_REVIEW]: 'Search',
-  [REQUEST_STATUS.MORE_INFO_REQUIRED]: 'AlertCircle',
-  [REQUEST_STATUS.OFFER_SENT]: 'BadgeDollarSign',
-  [REQUEST_STATUS.OFFER_ACCEPTED]: 'CheckCircle',
-  [REQUEST_STATUS.OFFER_DECLINED]: 'XCircle',
-  [REQUEST_STATUS.OFFER_EXPIRED]: 'Clock',
-  [REQUEST_STATUS.INSPECTION_SCHEDULED]: 'Calendar',
-  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: 'CalendarClock',
-  [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: 'ClipboardList',
-  [REQUEST_STATUS.INSPECTION_COMPLETED]: 'ClipboardCheck',
-  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: 'UserX',
-  [REQUEST_STATUS.ASSET_MISMATCH]: 'AlertTriangle',
-  [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: 'UserMinus',
-  [REQUEST_STATUS.APPROVED]: 'ThumbsUp',
-  [REQUEST_STATUS.PENDING_SIGNATURE]: 'FileSignature',
-  [REQUEST_STATUS.PENDING_BANK_DETAILS]: 'Building2',
-  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: 'Building2',
-  [REQUEST_STATUS.TRANSFER_FAILED]: 'XCircle',
-  [REQUEST_STATUS.AMOUNT_DISBURSED]: 'Banknote',
-  [REQUEST_STATUS.ACTIVE]: 'TrendingUp',
-  [REQUEST_STATUS.PAYMENT_OVERDUE]: 'AlertTriangle',
-  [REQUEST_STATUS.DEFAULTED]: 'Ban',
-  [REQUEST_STATUS.COMPLETED]: 'PartyPopper',
-  [REQUEST_STATUS.REJECTED]: 'XCircle',
-  [REQUEST_STATUS.CANCELLED]: 'XCircle',
-};
-
 // Workflow phases for progress tracking
 export enum REQUEST_PHASE {
   SUBMISSION = 'SUBMISSION',
@@ -1516,49 +1134,8 @@ export const REQUEST_PHASE_LABELS: Record<REQUEST_PHASE, string> = {
   [REQUEST_PHASE.REPAYMENT]: 'Repay',
 };
 
-// Map status to phase
-export const REQUEST_STATUS_PHASE: Record<REQUEST_STATUS, REQUEST_PHASE> = {
-  [REQUEST_STATUS.PENDING]: REQUEST_PHASE.SUBMISSION,
-  [REQUEST_STATUS.UNDER_REVIEW]: REQUEST_PHASE.SUBMISSION,
-  [REQUEST_STATUS.MORE_INFO_REQUIRED]: REQUEST_PHASE.SUBMISSION,
-  [REQUEST_STATUS.OFFER_SENT]: REQUEST_PHASE.OFFER,
-  [REQUEST_STATUS.OFFER_ACCEPTED]: REQUEST_PHASE.OFFER,
-  [REQUEST_STATUS.OFFER_DECLINED]: REQUEST_PHASE.OFFER,
-  [REQUEST_STATUS.OFFER_EXPIRED]: REQUEST_PHASE.OFFER,
-  [REQUEST_STATUS.INSPECTION_SCHEDULED]: REQUEST_PHASE.INSPECTION,
-  [REQUEST_STATUS.INSPECTION_RESCHEDULE_REQUESTED]: REQUEST_PHASE.INSPECTION,
-  [REQUEST_STATUS.INSPECTION_IN_PROGRESS]: REQUEST_PHASE.INSPECTION,
-  [REQUEST_STATUS.INSPECTION_COMPLETED]: REQUEST_PHASE.INSPECTION,
-  [REQUEST_STATUS.CUSTOMER_NOT_AVAILABLE]: REQUEST_PHASE.INSPECTION,
-  [REQUEST_STATUS.ASSET_MISMATCH]: REQUEST_PHASE.INSPECTION,
-  [REQUEST_STATUS.AGENT_NOT_AVAILABLE]: REQUEST_PHASE.INSPECTION,
-  [REQUEST_STATUS.APPROVED]: REQUEST_PHASE.APPROVAL,
-  [REQUEST_STATUS.PENDING_SIGNATURE]: REQUEST_PHASE.APPROVAL,
-  [REQUEST_STATUS.PENDING_BANK_DETAILS]: REQUEST_PHASE.DISBURSEMENT,
-  [REQUEST_STATUS.BANK_DETAILS_SUBMITTED]: REQUEST_PHASE.DISBURSEMENT,
-  [REQUEST_STATUS.TRANSFER_FAILED]: REQUEST_PHASE.DISBURSEMENT,
-  [REQUEST_STATUS.AMOUNT_DISBURSED]: REQUEST_PHASE.DISBURSEMENT,
-  [REQUEST_STATUS.ACTIVE]: REQUEST_PHASE.REPAYMENT,
-  [REQUEST_STATUS.PAYMENT_OVERDUE]: REQUEST_PHASE.REPAYMENT,
-  [REQUEST_STATUS.DEFAULTED]: REQUEST_PHASE.REPAYMENT,
-  [REQUEST_STATUS.COMPLETED]: REQUEST_PHASE.REPAYMENT,
-  [REQUEST_STATUS.REJECTED]: REQUEST_PHASE.SUBMISSION,
-  [REQUEST_STATUS.CANCELLED]: REQUEST_PHASE.SUBMISSION,
-};
 
-// Get phase number (1-6) for progress bar
-export const getPhaseNumber = (status: REQUEST_STATUS): number => {
-  const phaseOrder: REQUEST_PHASE[] = [
-    REQUEST_PHASE.SUBMISSION,
-    REQUEST_PHASE.OFFER,
-    REQUEST_PHASE.INSPECTION,
-    REQUEST_PHASE.APPROVAL,
-    REQUEST_PHASE.DISBURSEMENT,
-    REQUEST_PHASE.REPAYMENT,
-  ];
-  const phase = REQUEST_STATUS_PHASE[status];
-  return phaseOrder.indexOf(phase) + 1;
-};
+
 
 // ----------- STATUS DISPLAY CONSTANTS END -----------
 
@@ -1824,6 +1401,44 @@ export const RATE_LIMIT_CONFIG = {
 } as const;
 
 // ----------- RATE LIMITING CONSTANTS END -----------
+
+// ----------- PAYMENT & LOAN CONSTANTS -----------
+
+/**
+ * Transfer methods for loan disbursement
+ */
+export const TRANSFER_METHOD = {
+  BANK_TRANSFER: 'BANK_TRANSFER',
+  UPI: 'UPI',
+  CASH: 'CASH',
+  CHEQUE: 'CHEQUE',
+} as const;
+
+export type TransferMethodType = (typeof TRANSFER_METHOD)[keyof typeof TRANSFER_METHOD];
+
+/**
+ * Loan closure types
+ */
+export const CLOSURE_TYPE = {
+  NORMAL: 'NORMAL', // Regular completion of all EMIs
+  FORECLOSURE: 'FORECLOSURE', // Early closure via prepayment
+  DEFAULT: 'DEFAULT', // Closed due to default
+  WRITE_OFF: 'WRITE_OFF', // Written off as bad debt
+} as const;
+
+export type ClosureTypeValue = (typeof CLOSURE_TYPE)[keyof typeof CLOSURE_TYPE];
+
+/**
+ * Late fee calculation rate (2% per month)
+ */
+export const LATE_FEE_RATE = 0.02;
+
+/**
+ * Days in a month for late fee calculation
+ */
+export const DAYS_PER_MONTH = 30;
+
+// ----------- PAYMENT & LOAN CONSTANTS END -----------
 
 // ----------- CACHING CONSTANTS -----------
 

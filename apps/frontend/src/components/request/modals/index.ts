@@ -6,7 +6,7 @@
 export { BankDetailsModal } from './BankDetailsModal';
 export { RejectModal } from './RejectModal';
 export { ApproveModal } from './ApproveModal';
-export { DisbursementModal } from './DisbursementModal';
+export { DisbursementModal } from '../../features/loans/PaymentModal';
 export { AgentIssueModal } from './AgentIssueModal';
 export { OfferDeclineModal } from './OfferDeclineModal';
 export { CancelWithdrawModal } from './CancelWithdrawModal';

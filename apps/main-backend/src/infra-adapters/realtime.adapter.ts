@@ -6,44 +6,58 @@
  * 
  * @module infra-adapters/realtime
  */
+import type { Server as SocketIOServer } from 'socket.io';
+import { getIO } from '../socket/handlers';
+import { ServerEvent } from '@fundifyhub/types';
+import logger from '../utils/logger';
 
 /**
  * Socket.IO wrapper for real-time communication
- * 
- * In production: connect to Socket.IO server
- * For now: stub implementation with TODO markers
  */
 export class RealtimeAdapter {
-  private ioNamespace: any; // Socket.IO namespace
-
-  constructor() {
-    // TODO: (agent) Initialize Socket.IO client connection on app startup
-    // TODO: (agent) Store namespace reference
+  /**
+   * Get Socket.IO instance
+   */
+  private getSocketIO(): SocketIOServer | null {
+    try {
+      return getIO();
+    } catch (err) {
+      logger.warn('[RealtimeAdapter] Socket.IO not initialized', { error: err });
+      return null;
+    }
   }
 
   /**
    * Emit update to user
    * 
+   * Uses Socket.IO rooms (user:userId) to target specific users.
+   * 
    * @example
    * ```ts
-   * await realtimeAdapter.emitToUser(customerId, 'loan:updated', {
-   *   loanId: '123',
-   *   status: 'ACTIVE'
+   * await realtimeAdapter.emitToUser(customerId, ServerEvent.REQUEST_UPDATED, {
+   *   requestId: '123',
+   *   status: 'REVIEW'
    * })
    * ```
    */
-  async emitToUser(userId: string, eventName: string, data: any): Promise<void> {
+  async emitToUser(userId: string, eventName: ServerEvent, data: any): Promise<void> {
     try {
-      // TODO: (agent) Get socket for user from Socket.IO adapter
-      // TODO: (agent) If socket connected: emit event
-      // TODO: (agent) Otherwise: queue to cache for later delivery
+      const io = this.getSocketIO();
+      if (!io) {
+        logger.debug('[RealtimeAdapter] Socket.IO not available, event not sent', { userId, eventName });
+        return;
+      }
 
-      console.log('[RealtimeAdapter] Event emitted to user (stub):', {
+      // Emit to user's room (user:userId)
+      io.to(`user:${userId}`).emit(eventName, data);
+
+      logger.debug('[RealtimeAdapter] Event emitted to user', {
         userId,
         eventName,
+        room: `user:${userId}`,
       });
     } catch (err) {
-      console.error('[RealtimeAdapter] Failed to emit to user:', err);
+      logger.error('[RealtimeAdapter] Failed to emit to user', { error: err, userId, eventName });
     }
   }
 
@@ -60,15 +74,21 @@ export class RealtimeAdapter {
    */
   async broadcast(room: string, eventName: string, data: any): Promise<void> {
     try {
-      // TODO: (agent) Emit to all sockets in room via Socket.IO
-      // TODO: (agent) Handle case where no sockets in room
+      const io = this.getSocketIO();
+      if (!io) {
+        logger.debug('[RealtimeAdapter] Socket.IO not available, broadcast skipped', { room, eventName });
+        return;
+      }
 
-      console.log('[RealtimeAdapter] Broadcasted to room (stub):', {
+      // Emit to all sockets in the room
+      io.to(room).emit(eventName, data);
+
+      logger.debug('[RealtimeAdapter] Broadcasted to room', {
         room,
         eventName,
       });
     } catch (err) {
-      console.error('[RealtimeAdapter] Failed to broadcast:', err);
+      logger.error('[RealtimeAdapter] Failed to broadcast', { error: err, room, eventName });
     }
   }
 
@@ -77,13 +97,23 @@ export class RealtimeAdapter {
    */
   async joinRoom(userId: string, room: string): Promise<void> {
     try {
-      // TODO: (agent) Get socket for user
-      // TODO: (agent) Call socket.join(room)
-      // TODO: (agent) Store mapping in database for later reference
+      const io = this.getSocketIO();
+      if (!io) {
+        logger.debug('[RealtimeAdapter] Socket.IO not available, join room skipped', { userId, room });
+        return;
+      }
 
-      console.log('[RealtimeAdapter] User joined room (stub):', { userId, room });
+      // Get all sockets for this user
+      const sockets = await io.in(`user:${userId}`).fetchSockets();
+      
+      // Join all user's sockets to the room
+      for (const socket of sockets) {
+        await socket.join(room);
+      }
+
+      logger.debug('[RealtimeAdapter] User joined room', { userId, room, socketCount: sockets.length });
     } catch (err) {
-      console.error('[RealtimeAdapter] Failed to join room:', err);
+      logger.error('[RealtimeAdapter] Failed to join room', { error: err, userId, room });
     }
   }
 
@@ -92,13 +122,23 @@ export class RealtimeAdapter {
    */
   async leaveRoom(userId: string, room: string): Promise<void> {
     try {
-      // TODO: (agent) Get socket for user
-      // TODO: (agent) Call socket.leave(room)
-      // TODO: (agent) Update database mapping
+      const io = this.getSocketIO();
+      if (!io) {
+        logger.debug('[RealtimeAdapter] Socket.IO not available, leave room skipped', { userId, room });
+        return;
+      }
 
-      console.log('[RealtimeAdapter] User left room (stub):', { userId, room });
+      // Get all sockets for this user
+      const sockets = await io.in(`user:${userId}`).fetchSockets();
+      
+      // Remove all user's sockets from the room
+      for (const socket of sockets) {
+        await socket.leave(room);
+      }
+
+      logger.debug('[RealtimeAdapter] User left room', { userId, room, socketCount: sockets.length });
     } catch (err) {
-      console.error('[RealtimeAdapter] Failed to leave room:', err);
+      logger.error('[RealtimeAdapter] Failed to leave room', { error: err, userId, room });
     }
   }
 
@@ -118,16 +158,28 @@ export class RealtimeAdapter {
     updates: Record<string, any>
   ): Promise<void> {
     try {
-      // TODO: (agent) Store resource state in cache
-      // TODO: (agent) Broadcast update to all users viewing resource
-      // TODO: (agent) Use room pattern: "resource:{resourceId}"
+      const io = this.getSocketIO();
+      if (!io) {
+        logger.debug('[RealtimeAdapter] Socket.IO not available, resource update skipped', { resourceId });
+        return;
+      }
 
-      console.log('[RealtimeAdapter] Shared resource updated (stub):', {
+      // Construct room name using resource pattern
+      const room = `resource:${resourceId}`;
+      
+      // Broadcast update to all users viewing this resource
+      io.to(room).emit('resource:updated', {
         resourceId,
         updates,
+        timestamp: new Date().toISOString(),
+      });
+
+      logger.debug('[RealtimeAdapter] Shared resource updated', {
+        resourceId,
+        room,
       });
     } catch (err) {
-      console.error('[RealtimeAdapter] Failed to update shared resource:', err);
+      logger.error('[RealtimeAdapter] Failed to update shared resource', { error: err, resourceId });
     }
   }
 
@@ -136,13 +188,19 @@ export class RealtimeAdapter {
    */
   async getConnectedUsers(): Promise<number> {
     try {
-      // TODO: (agent) Get list of all connected sockets from Socket.IO adapter
-      // TODO: (agent) Return count
+      const io = this.getSocketIO();
+      if (!io) {
+        logger.debug('[RealtimeAdapter] Socket.IO not available');
+        return 0;
+      }
 
-      console.log('[RealtimeAdapter] Connected users retrieved (stub)');
-      return 0;
+      // Get all connected sockets
+      const sockets = await io.fetchSockets();
+      
+      logger.debug('[RealtimeAdapter] Connected users retrieved', { count: sockets.length });
+      return sockets.length;
     } catch (err) {
-      console.error('[RealtimeAdapter] Failed to get connected users:', err);
+      logger.error('[RealtimeAdapter] Failed to get connected users', { error: err });
       return 0;
     }
   }
@@ -152,13 +210,20 @@ export class RealtimeAdapter {
    */
   async isUserConnected(userId: string): Promise<boolean> {
     try {
-      // TODO: (agent) Query Socket.IO adapter for socket with userId
-      // TODO: (agent) Return true if connected, false otherwise
+      const io = this.getSocketIO();
+      if (!io) {
+        return false;
+      }
 
-      console.log('[RealtimeAdapter] User connection checked (stub):', { userId });
-      return false;
+      // Get all sockets in the user's room
+      const sockets = await io.in(`user:${userId}`).fetchSockets();
+      
+      const isConnected = sockets.length > 0;
+      logger.debug('[RealtimeAdapter] User connection checked', { userId, isConnected });
+      
+      return isConnected;
     } catch (err) {
-      console.error('[RealtimeAdapter] Failed to check user connection:', err);
+      logger.error('[RealtimeAdapter] Failed to check user connection', { error: err, userId });
       return false;
     }
   }

@@ -1,27 +1,76 @@
 /**
  * Cache Adapter
  * 
- * Wraps Redis for caching.
+ * Wraps Redis cache provider for application caching needs.
  * Handles session storage, token blacklisting, rate limiting.
  * 
  * @module infra-adapters/cache
  */
 
+import { createRedisCacheProvider, type RedisCacheProviderConfig } from '@fundifyhub/providers';
+import { CACHE_TTL } from '@fundifyhub/types';
+import logger from '../utils/logger';
+
 /**
- * Redis wrapper for caching
- * 
- * In production: use ioredis or redis package
- * For now: stub implementation with TODO markers
+ * Cache adapter using Redis provider
  */
 export class CacheAdapter {
-  private redisUrl: string;
-  private defaultTtl: number = 3600; // 1 hour
+  private provider: ReturnType<typeof createRedisCacheProvider> | null = null;
+  private defaultTtl: number = CACHE_TTL.SHORT; // 1 hour
 
-  constructor() {
-    this.redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  constructor(config?: RedisCacheProviderConfig) {
+    // If config is provided, use it; otherwise try to create from env
+    if (config) {
+      this.initializeProvider(config);
+    } else {
+      this.initializeFromEnv();
+    }
+  }
 
-    if (!this.redisUrl || this.redisUrl === 'redis://localhost:6379') {
-      console.warn('[CacheAdapter] Redis not configured - using in-memory fallback');
+  /**
+   * Initialize provider from environment variables
+   */
+  private initializeFromEnv(): void {
+    const redisUrl = process.env.REDIS_URL;
+    
+    if (!redisUrl) {
+      logger.warn('[CacheAdapter] Redis not configured - cache operations will be no-ops');
+      return;
+    }
+
+    // Parse Redis URL (redis://host:port or redis://:password@host:port)
+    try {
+      const url = new URL(redisUrl);
+      const config: RedisCacheProviderConfig = {
+        host: url.hostname,
+        port: parseInt(url.port) || 6379,
+        password: url.password || undefined,
+        db: 0,
+        keyPrefix: process.env.REDIS_KEY_PREFIX || 'fh:',
+        defaultTtl: this.defaultTtl,
+        maxRetries: 3,
+        connectTimeout: 10000,
+      };
+      
+      this.initializeProvider(config);
+    } catch (err) {
+      logger.error('[CacheAdapter] Failed to parse REDIS_URL:', { error: err });
+    }
+  }
+
+  /**
+   * Initialize provider with given config
+   */
+  private initializeProvider(config: RedisCacheProviderConfig): void {
+    try {
+      this.provider = createRedisCacheProvider(config);
+      this.provider.connect().catch((err) => {
+        logger.error('[CacheAdapter] Failed to connect to Redis:', err);
+        this.provider = null;
+      });
+      logger.info('[CacheAdapter] Redis provider initialized');
+    } catch (err) {
+      logger.error('[CacheAdapter] Failed to create Redis provider:', { error: err });
     }
   }
 
@@ -29,15 +78,15 @@ export class CacheAdapter {
    * Set cache value
    */
   async set(key: string, value: any, ttl: number = this.defaultTtl): Promise<void> {
-    try {
-      // TODO: (agent) Initialize Redis client if not exists
-      // TODO: (agent) Serialize value to JSON
-      // TODO: (agent) Call redis.set(key, json, 'EX', ttl)
-      // TODO: (agent) Handle connection errors gracefully
+    if (!this.provider) return;
 
-      console.log('[CacheAdapter] Value set (stub):', { key, ttl });
+    try {
+      const result = await this.provider.set(key, value, { ttl });
+      if (result.success) {
+        logger.debug('[CacheAdapter] Value set:', { key, ttl });
+      }
     } catch (err) {
-      console.error('[CacheAdapter] Failed to set value:', err);
+      logger.error('[CacheAdapter] Failed to set value:', { error: err });
       // Don't re-throw - cache is optional
     }
   }
@@ -46,16 +95,13 @@ export class CacheAdapter {
    * Get cache value
    */
   async get<T = any>(key: string): Promise<T | null> {
-    try {
-      // TODO: (agent) Initialize Redis client if not exists
-      // TODO: (agent) Call redis.get(key)
-      // TODO: (agent) Parse JSON and return
-      // TODO: (agent) Return null if not found or expired
+    if (!this.provider) return null;
 
-      console.log('[CacheAdapter] Value retrieved (stub):', { key });
-      return null;
+    try {
+      const result = await this.provider.get<T>(key);
+      return result.found ? result.value! : null;
     } catch (err) {
-      console.error('[CacheAdapter] Failed to get value:', err);
+      logger.error('[CacheAdapter] Failed to get value:', { error: err });
       return null; // Fallback to no cache
     }
   }
@@ -64,13 +110,13 @@ export class CacheAdapter {
    * Delete cache value
    */
   async delete(key: string): Promise<void> {
-    try {
-      // TODO: (agent) Initialize Redis client if not exists
-      // TODO: (agent) Call redis.del(key)
+    if (!this.provider) return;
 
-      console.log('[CacheAdapter] Value deleted (stub):', { key });
+    try {
+      await this.provider.delete(key);
+      logger.debug('[CacheAdapter] Value deleted:', { key });
     } catch (err) {
-      console.error('[CacheAdapter] Failed to delete value:', err);
+      logger.error('[CacheAdapter] Failed to delete value:', { error: err });
       // Don't re-throw - cache deletion is optional
     }
   }
@@ -79,22 +125,21 @@ export class CacheAdapter {
    * Clear all cache values matching pattern
    */
   async deletePattern(pattern: string): Promise<number> {
-    try {
-      // TODO: (agent) Initialize Redis client if not exists
-      // TODO: (agent) Call redis.keys(pattern)
-      // TODO: (agent) For each key: redis.del(key)
-      // TODO: (agent) Return count of deleted keys
+    if (!this.provider) return 0;
 
-      console.log('[CacheAdapter] Pattern cleared (stub):', { pattern });
-      return 0;
+    try {
+      const result = await this.provider.deletePattern(pattern);
+      logger.debug('[CacheAdapter] Pattern cleared:', { pattern, count: result.deletedCount });
+      return result.deletedCount;
     } catch (err) {
-      console.error('[CacheAdapter] Failed to clear pattern:', err);
+      logger.error('[CacheAdapter] Failed to clear pattern:', { error: err });
       return 0;
     }
   }
 
   /**
    * Check if rate limit exceeded
+   * Uses Redis INCR for atomic counter
    * 
    * @returns true if limit exceeded, false if within limit
    */
@@ -103,16 +148,24 @@ export class CacheAdapter {
     limit: number,
     windowSeconds: number
   ): Promise<boolean> {
-    try {
-      // TODO: (agent) Increment counter for key
-      // TODO: (agent) If first increment: set TTL to windowSeconds
-      // TODO: (agent) Return true if counter > limit
-      // TODO: (agent) Otherwise return false
+    if (!this.provider) return false; // Allow if cache not available
 
-      console.log('[CacheAdapter] Rate limit checked (stub):', { key, limit, windowSeconds });
-      return false; // Stub: always allow
+    try {
+      const current = await this.provider.incr(key, 1);
+      
+      // Set TTL only on first increment
+      if (current === 1) {
+        await this.provider.expire(key, windowSeconds);
+      }
+
+      const exceeded = current > limit;
+      if (exceeded) {
+        logger.warn('[CacheAdapter] Rate limit exceeded:', { key, current, limit });
+      }
+
+      return exceeded;
     } catch (err) {
-      console.error('[CacheAdapter] Failed to check rate limit:', err);
+      logger.error('[CacheAdapter] Failed to check rate limit:', { error: err });
       return false; // Fallback: allow
     }
   }
@@ -121,13 +174,14 @@ export class CacheAdapter {
    * Add token to blacklist (for logout)
    */
   async blacklistToken(token: string, expiresIn: number): Promise<void> {
-    try {
-      // TODO: (agent) Add token to Redis set with TTL = expiresIn
-      // TODO: (agent) Use pattern like "blacklist:token:{hash}"
+    if (!this.provider) return;
 
-      console.log('[CacheAdapter] Token blacklisted (stub):', { expiresIn });
+    try {
+      const key = `blacklist:token:${token}`;
+      await this.set(key, true, expiresIn);
+      logger.debug('[CacheAdapter] Token blacklisted:', { expiresIn });
     } catch (err) {
-      console.error('[CacheAdapter] Failed to blacklist token:', err);
+      logger.error('[CacheAdapter] Failed to blacklist token:', { error: err });
     }
   }
 
@@ -135,16 +189,30 @@ export class CacheAdapter {
    * Check if token is blacklisted
    */
   async isTokenBlacklisted(token: string): Promise<boolean> {
-    try {
-      // TODO: (agent) Check if token exists in blacklist set
-      // TODO: (agent) Return true if exists, false otherwise
+    if (!this.provider) return false;
 
-      console.log('[CacheAdapter] Token blacklist checked (stub)');
-      return false; // Stub: always allow
+    try {
+      const key = `blacklist:token:${token}`;
+      const exists = await this.provider.exists(key);
+      return exists.exists;
     } catch (err) {
-      console.error('[CacheAdapter] Failed to check blacklist:', err);
+      logger.error('[CacheAdapter] Failed to check blacklist:', { error: err });
       return false; // Fallback: allow
     }
+  }
+
+  /**
+   * Get provider instance for advanced operations
+   */
+  getProvider() {
+    return this.provider;
+  }
+
+  /**
+   * Check if cache is available
+   */
+  isAvailable(): boolean {
+    return this.provider !== null;
   }
 }
 

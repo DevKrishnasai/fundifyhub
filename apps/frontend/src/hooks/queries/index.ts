@@ -14,6 +14,7 @@ export * from './useAuctions'
 
 // Request/Loan management hooks
 export * from './useRequests'
+export * from './useLoans'
 
 // User management hooks
 export * from './useUsers'

@@ -17,6 +17,7 @@
 import { prisma } from '@fundifyhub/prisma';
 import { ValidationError, NotFoundError, BusinessRuleError, ErrorCode } from '@fundifyhub/utils';
 import type { Payment, EMISchedule } from '@fundifyhub/types';
+import type { RBACUser } from '../access-control/rbac';
 
 export interface CreatePaymentOrderInput {
   emiId: string;
@@ -77,7 +78,7 @@ export class PaymentsService {
    * @throws NotFoundError if EMI doesn't exist
    * @throws ValidationError if amount invalid
    */
-  async createPaymentOrder(input: CreatePaymentOrderInput, user: any): Promise<{
+  async createPaymentOrder(input: CreatePaymentOrderInput, user: RBACUser): Promise<{
     razorpayOrderId: string;
     amount: number;
     currency: string;
@@ -181,7 +182,7 @@ export class PaymentsService {
    * @throws NotFoundError if EMI doesn't exist
    * @throws ValidationError if amount invalid
    */
-  async recordManualPayment(input: RecordManualPaymentInput, user: any): Promise<{
+  async recordManualPayment(input: RecordManualPaymentInput, user: RBACUser): Promise<{
     paymentId: string;
     emiId: string;
     amountPaid: number;
@@ -227,7 +228,7 @@ export class PaymentsService {
    * @throws NotFoundError if loan doesn't exist
    * @throws ValidationError if pagination invalid
    */
-  async getPaymentHistory(input: GetPaymentHistoryInput, user: any): Promise<{
+  async getPaymentHistory(input: GetPaymentHistoryInput, user: RBACUser): Promise<{
     payments: Payment[];
     total: number;
   }> {
@@ -298,7 +299,7 @@ export class PaymentsService {
    * @throws ForbiddenError if not admin
    * @throws BusinessRuleError if payment not refundable
    */
-  async refund(paymentId: string, reason: string, user: any): Promise<{ refundId: string }> {
+  async refund(paymentId: string, reason: string, user: RBACUser): Promise<{ refundId: string }> {
     try {
       if (!paymentId || !reason) {
         throw new ValidationError('Missing required fields', ErrorCode.INVALID_INPUT);

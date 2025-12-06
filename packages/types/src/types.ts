@@ -1,5 +1,18 @@
 import { CONNECTION_STATUS, SERVICE_NAMES, TEMPLATE_NAMES, UserRole } from "./constants";
 
+// Import types that are used in this file
+import type {
+  CountryType,
+  StateType,
+  DistrictType,
+  WarehouseType,
+} from './common/geography.types';
+
+import type {
+  UserStateAssignmentType,
+  UserDistrictAssignmentType,
+} from './auth/auth.types';
+
 // ---------- JSON VALUE TYPE ---------------
 // Type-safe replacement for `any` when dealing with JSON data
 export type JsonPrimitive = string | number | boolean | null;
@@ -7,151 +20,39 @@ export type JsonArray = JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 export type JsonValue = JsonPrimitive | JsonArray | JsonObject;
 
-// ---------- SERVICE CONFIGURATION TYPES ---------------
-
-export interface EmailConfigType {
-  host: string;
-  port: number;
-  user: string;
-  password: string;
-  from: string;
-}
-
-export interface ServiceConfigType {
-  serviceName: SERVICE_NAMES;
-  status: string;
-  isEnabled: boolean;
-  isActive: boolean;
-  connectionStatus: CONNECTION_STATUS;
-  lastConnectedAt?: Date;
-  lastError?: string;
-  config?: EmailConfigType | Record<string, unknown>;
-  qrCode?: string;
-}
-
-// ---------- UTILS ENV CONFIG TYPE ---------------
-
-export interface UtilsEnvConfigType {
-  redis: {
-    host: string;
-    port: number;
-    url?: string;
-  };
-}
-
 // ============================================
-// GEOGRAPHY TYPES
+// SERVICE CONFIGURATION TYPES (moved to common/service.types.ts)
+// Re-exported here for backward compatibility
 // ============================================
 
-export interface CountryType {
-  id: string;
-  name: string;
-  code: string;  // ISO 3166-1 alpha-2
-  isActive: boolean;
-  deletedAt: Date | null;
-  deletedBy: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  
-  // Relations
-  states?: StateType[];
-}
-
-export interface StateType {
-  id: string;
-  name: string;
-  code: string;
-  countryId: string;
-  isActive: boolean;
-  deletedAt: Date | null;
-  deletedBy: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  
-  // Relations
-  country?: CountryType;
-  districts?: DistrictType[];
-}
-
-export interface DistrictType {
-  id: string;
-  name: string;
-  code: string;
-  stateId: string;
-  isActive: boolean;
-  deletedAt: Date | null;
-  deletedBy: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  
-  // Relations
-  state?: StateType;
-  warehouses?: WarehouseType[];
-}
-
-export interface WarehouseType {
-  id: string;
-  name: string;
-  code: string;
-  districtId: string;
-  address: string | null;
-  
-  // Geolocation
-  latitude: number | null;
-  longitude: number | null;
-  
-  // Contact
-  contactPerson: string | null;
-  contactPhone: string | null;
-  
-  // Capacity
-  capacity: number | null;
-  currentCount: number;
-  
-  isActive: boolean;
-  deletedAt: Date | null;
-  deletedBy: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  
-  // Relations
-  district?: DistrictType;
-  assets?: AssetType[];
-}
+export type {
+  EmailConfigType,
+  ServiceConfigType,
+  UtilsEnvConfigType,
+  CONNECTION_STATUS,
+} from './common/service.types';
 
 // ============================================
-// USER ASSIGNMENT TYPES
+// GEOGRAPHY TYPES (moved to common/geography.types.ts)
+// Re-exported here for backward compatibility
 // ============================================
 
-export interface UserStateAssignmentType {
-  id: string;
-  userId: string;
-  stateId: string;
-  isPrimary: boolean;
-  assignedAt: Date;
-  assignedBy: string | null;
-  deletedAt: Date | null;
-  deletedBy: string | null;
-  
-  // Relations
-  user?: UserType;
-  state?: StateType;
-}
+export type {
+  CountryType,
+  StateType,
+  DistrictType,
+  WarehouseType,
+} from './common/geography.types';
 
-export interface UserDistrictAssignmentType {
-  id: string;
-  userId: string;
-  districtId: string;
-  isPrimary: boolean;
-  assignedAt: Date;
-  assignedBy: string | null;
-  deletedAt: Date | null;
-  deletedBy: string | null;
-  
-  // Relations
-  user?: UserType;
-  district?: DistrictType;
-}
+// ============================================
+// USER ASSIGNMENT TYPES (moved to auth/auth.types.ts)
+// Re-exported here for backward compatibility
+// ============================================
+
+export type {
+  UserStateAssignmentType,
+  UserDistrictAssignmentType,
+} from './auth/auth.types';
 
 // ============================================
 // USER TYPE (Updated with multiple roles)
@@ -509,9 +410,24 @@ export interface HistoryEventDescription {
   value: string;
 }
 
-// ---------- TEMPLATE RELATED ---------------
+// ============================================
+// TEMPLATE RELATED (LEGACY - packages/providers only)
+// ============================================
+/**
+ * @deprecated Legacy template types used by packages/providers.
+ * 
+ * For NEW code, use the comprehensive template system from `template-types.ts`:
+ * - NotificationTemplateDefinition (instead of TemplateDefinitionType)
+ * - NotificationTemplateName enum
+ * - Template payloads from TemplatePayloadMap
+ * 
+ * These legacy types are maintained for backward compatibility with
+ * the existing provider package templates until full migration.
+ */
 
-// TODO [P-3]: Fix any type usage below
+/**
+ * @deprecated Use NotificationTemplateDefinition from template-types.ts
+ */
 export interface TemplateDefinitionType<T extends TEMPLATE_NAMES> {
   supportedServices: SERVICE_NAMES[];
   defaults?: {
@@ -524,6 +440,9 @@ export interface TemplateDefinitionType<T extends TEMPLATE_NAMES> {
   renderWhatsApp?: (payload: TemplatePayloadMapType[T]) => Promise<string> | string;
 }
 
+/**
+ * @deprecated Use OTPVerificationPayload from template-types.ts
+ */
 export interface OTPVerificationPayloadType {
   email: string;
   phoneNumber: string;
@@ -536,6 +455,9 @@ export interface OTPVerificationPayloadType {
   companyUrl: string;
 }
 
+/**
+ * @deprecated Use WelcomePayload from template-types.ts
+ */
 export interface WelcomePayloadType {
   email: string;
   phoneNumber: string;
@@ -546,6 +468,9 @@ export interface WelcomePayloadType {
   logoUrl: string;
 }
 
+/**
+ * @deprecated Use LoginAlertPayload from template-types.ts
+ */
 export interface LoginAlertPayloadType {
   email: string;
   phoneNumber: string;
@@ -558,6 +483,9 @@ export interface LoginAlertPayloadType {
   companyName: string;
 }
 
+/**
+ * @deprecated Use PasswordResetPayload from template-types.ts
+ */
 export interface PasswordResetPayloadType {
   email: string;
   phoneNumber: string;
@@ -713,6 +641,9 @@ export interface RequestSubmittedPayloadType {
   dashboardUrl: string; // link to view the request
 }
 
+/**
+ * @deprecated Use TemplatePayloadMap from template-types.ts
+ */
 export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.OTP_VERIFICATION]: OTPVerificationPayloadType;
   [TEMPLATE_NAMES.WELCOME]: WelcomePayloadType;

@@ -5,8 +5,6 @@
  * frontend and main-backend service.
  */
 
-import { REQUEST_STATUS } from './constants';
-
 // ============================================
 // SOCKET EVENT NAMES
 // ============================================

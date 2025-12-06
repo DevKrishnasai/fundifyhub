@@ -6,6 +6,7 @@
  */
 
 import { Server as SocketIOServer } from 'socket.io';
+import { canJoinRoom } from './authorization';
 import {
   AuthenticatedSocket,
   RoomType,
@@ -176,8 +177,15 @@ export function registerSocketHandlers(
     }
 
     const requestRoom = getRoomName(RoomType.REQUEST, requestId);
-    socket.join(requestRoom);
-    contextLogger.debug('Joined request room', { requestId, room: requestRoom });
+    if (canJoinRoom(socket, requestRoom)) {
+      socket.join(requestRoom);
+      contextLogger.debug('Joined request room', { requestId, room: requestRoom });
+    } else {
+      socket.emit(ServerEvent.ERROR, {
+        code: 'PERMISSION_DENIED',
+        message: 'You are not authorized to join this room',
+      });
+    }
   });
 
   /**
@@ -204,22 +212,16 @@ export function registerSocketHandlers(
       return;
     }
 
-    // Only allow admins to watch other users
-    const isAdmin = socket.userRoles.some((r) =>
-      ['SUPER_ADMIN', 'DISTRICT_ADMIN'].includes(r)
-    );
-
-    if (!isAdmin && targetUserId !== socket.userId) {
+    const userRoom = getRoomName(RoomType.USER, targetUserId);
+    if (canJoinRoom(socket, userRoom)) {
+      socket.join(userRoom);
+      contextLogger.debug('Joined user room', { targetUserId, room: userRoom });
+    } else {
       socket.emit(ServerEvent.ERROR, {
         code: 'PERMISSION_DENIED',
-        message: 'You can only subscribe to your own updates',
+        message: 'You are not authorized to join this room',
       });
-      return;
     }
-
-    const userRoom = getRoomName(RoomType.USER, targetUserId);
-    socket.join(userRoom);
-    contextLogger.debug('Joined user room', { targetUserId, room: userRoom });
   });
 
   /**
@@ -246,8 +248,15 @@ export function registerSocketHandlers(
     }
 
     const auctionRoom = getRoomName(RoomType.AUCTION, auctionId);
-    socket.join(auctionRoom);
-    contextLogger.debug('Joined auction room', { auctionId, room: auctionRoom });
+    if (canJoinRoom(socket, auctionRoom)) {
+      socket.join(auctionRoom);
+      contextLogger.debug('Joined auction room', { auctionId, room: auctionRoom });
+    } else {
+      socket.emit(ServerEvent.ERROR, {
+        code: 'PERMISSION_DENIED',
+        message: 'You are not authorized to join this room',
+      });
+    }
   });
 
   /**

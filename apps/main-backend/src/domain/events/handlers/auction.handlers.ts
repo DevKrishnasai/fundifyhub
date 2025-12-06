@@ -9,7 +9,10 @@
  * @module domain/events/handlers
  */
 
-import { eventBus, AuctionCreatedEvent, BidPlacedEvent, AuctionEndedEvent } from '../bus';
+import { eventBus } from '../bus';
+import type { AuctionCreatedEvent, BidPlacedEvent, AuctionEndedEvent } from '../../auctions/auctions.events';
+import { notificationAdapter } from '../../../infra-adapters';
+import logger from '../../../utils/logger';
 
 /**
  * Handle: Auction created
@@ -19,17 +22,26 @@ import { eventBus, AuctionCreatedEvent, BidPlacedEvent, AuctionEndedEvent } from
 export function setupAuctionCreatedHandler(): void {
   eventBus.onEvent<AuctionCreatedEvent>('auction.created', async (event) => {
     try {
-      console.log('[AuctionHandler] Auction created event received:', {
+      logger.info('[AuctionHandler] Auction created event received', {
         auctionId: event.aggregateId,
         loanId: event.data.loanId,
       });
 
-      // TODO: (agent) Call notification adapter to notify admins
-      // TODO: (agent) Publish to public auction listing
-      // TODO: (agent) Send alert to previous bidders in this category
-      // TODO: (agent) Log for audit trail
+      // Publish event for job-worker to process
+      await notificationAdapter.publishEvent({
+        eventType: 'auction.created',
+        userId: 'system', // System-generated auction
+        metadata: {
+          auctionId: event.aggregateId,
+          loanId: event.data.loanId,
+          startPrice: event.data.startPrice,
+          reservePrice: event.data.reservePrice,
+        },
+      });
+
+      logger.info('[AuctionHandler] Auction created notifications queued', { auctionId: event.aggregateId });
     } catch (err) {
-      console.error('[AuctionHandler] Error handling auction.created:', err);
+      logger.error('[AuctionHandler] Error handling auction.created', { error: err, auctionId: event.aggregateId });
     }
   });
 }
@@ -43,18 +55,26 @@ export function setupAuctionCreatedHandler(): void {
 export function setupBidPlacedHandler(): void {
   eventBus.onEvent<BidPlacedEvent>('bid.placed', async (event) => {
     try {
-      console.log('[AuctionHandler] Bid placed event received:', {
+      logger.info('[AuctionHandler] Bid placed event received', {
         auctionId: event.aggregateId,
         bidderId: event.data.bidderId,
         bidAmount: event.data.bidAmount,
       });
 
-      // TODO: (agent) Call notification adapter to notify previous highest bidder (outbid)
-      // TODO: (agent) Send confirmation to new bidder
-      // TODO: (agent) Alert admins if bid >= reserve price
-      // TODO: (agent) Log for audit trail
+      // Publish event for job-worker to notify bidders
+      await notificationAdapter.publishEvent({
+        eventType: 'bid.placed',
+        userId: event.data.bidderId,
+        metadata: {
+          auctionId: event.aggregateId,
+          bidderId: event.data.bidderId,
+          bidAmount: event.data.bidAmount,
+        },
+      });
+
+      logger.info('[AuctionHandler] Bid placed notifications queued', { auctionId: event.aggregateId });
     } catch (err) {
-      console.error('[AuctionHandler] Error handling bid.placed:', err);
+      logger.error('[AuctionHandler] Error handling bid.placed', { error: err, auctionId: event.aggregateId });
     }
   });
 }
@@ -69,26 +89,30 @@ export function setupBidPlacedHandler(): void {
 export function setupAuctionEndedHandler(): void {
   eventBus.onEvent<AuctionEndedEvent>('auction.ended', async (event) => {
     try {
-      console.log('[AuctionHandler] Auction ended event received:', {
+      logger.info('[AuctionHandler] Auction ended event received', {
         auctionId: event.aggregateId,
         winnerId: event.data.winnerId,
         success: event.data.success,
       });
 
-      if (event.data.success && event.data.winnerId) {
-        // TODO: (agent) Call notification adapter to notify winner with next steps
-        // TODO: (agent) Send winning bid confirmation
-        // TODO: (agent) Generate winning bid document
-        // TODO: (agent) Initiate transfer process
-      } else {
-        // TODO: (agent) Call notification adapter to notify admins of failed auction
-        // TODO: (agent) Trigger re-auction or escalation workflow
-      }
+      // Publish event for job-worker to handle winner/admin notifications
+      await notificationAdapter.publishEvent({
+        eventType: 'auction.ended',
+        userId: event.data.winnerId || 'system',
+        metadata: {
+          auctionId: event.aggregateId,
+          winnerId: event.data.winnerId,
+          finalBid: event.data.finalBid,
+          success: event.data.success,
+        },
+      });
 
-      // TODO: (agent) Update statistics/dashboards
-      // TODO: (agent) Log for audit trail
+      logger.info('[AuctionHandler] Auction ended notifications queued', { 
+        auctionId: event.aggregateId,
+        success: event.data.success,
+      });
     } catch (err) {
-      console.error('[AuctionHandler] Error handling auction.ended:', err);
+      logger.error('[AuctionHandler] Error handling auction.ended', { error: err, auctionId: event.aggregateId });
     }
   });
 }
@@ -100,5 +124,5 @@ export function initializeAuctionHandlers(): void {
   setupAuctionCreatedHandler();
   setupBidPlacedHandler();
   setupAuctionEndedHandler();
-  console.log('[EventHandlers] Auction event handlers initialized');
+  logger.info('[EventHandlers] Auction event handlers initialized');
 }

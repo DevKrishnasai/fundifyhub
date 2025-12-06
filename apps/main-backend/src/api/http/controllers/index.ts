@@ -15,5 +15,11 @@
  */
 
 export * from './auth.controller';
-export * from './payments/razorpay.controller';
+export * from './payments/payments.controller';
+export * from './notifications.controller';
+export * from './requests.controller';
+export * from './loans.controller';
+export * from './auctions.controller';
+export * from './admin.controller';
+export * from './geography.controller';
 // TODO: (agent) Export remaining controllers: requests, loans, payments, auctions, admin

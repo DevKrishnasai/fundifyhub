@@ -63,3 +63,45 @@ export interface LoginActivityType {
   failureReason?: string;
   createdAt: Date;
 }
+
+// ============================================
+// USER GEOGRAPHIC ASSIGNMENT TYPES
+// ============================================
+
+/**
+ * State-level assignment for State Admins
+ * Tracks which states a user is assigned to manage
+ */
+export interface UserStateAssignmentType {
+  id: string;
+  userId: string;
+  stateId: string;
+  isPrimary: boolean;
+  assignedAt: Date;
+  assignedBy: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  // Relations (imported types to avoid circular dependency)
+  user?: any; // UserType
+  state?: any; // StateType from geography
+}
+
+/**
+ * District-level assignment for District Admins and Agents
+ * Tracks which districts a user is assigned to manage
+ */
+export interface UserDistrictAssignmentType {
+  id: string;
+  userId: string;
+  districtId: string;
+  isPrimary: boolean;
+  assignedAt: Date;
+  assignedBy: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  // Relations (imported types to avoid circular dependency)
+  user?: any; // UserType
+  district?: any; // DistrictType from geography
+}

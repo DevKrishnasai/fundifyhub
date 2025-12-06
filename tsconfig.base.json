@@ -12,7 +12,6 @@
     "allowSyntheticDefaultImports": true,
     "declaration": true,
     "declarationMap": true,
-    "outDir": "dist",
     "baseUrl": ".",
     "paths": {
       "@fundifyhub/types": ["./packages/types/src"],

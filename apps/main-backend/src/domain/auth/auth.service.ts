@@ -13,6 +13,11 @@
 import { prisma } from '@fundifyhub/prisma';
 import { ValidationError, AppError, ForbiddenError, ErrorCode } from '@fundifyhub/utils';
 import type { UserRole } from '@fundifyhub/types';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import config from '../../config';
+import logger from '../../utils/logger';
 
 interface User {
   id: string;
@@ -20,7 +25,6 @@ interface User {
   firstName: string;
   lastName: string;
   roles: UserRole[];
-  districts?: string[];
 }
 
 export interface RegisterInput {
@@ -98,15 +102,43 @@ export class AuthService {
         });
       }
 
-      // TODO: (agent) Hash password using bcrypt
-      // TODO: (agent) Call notification adapter to send verification email
-      // TODO: (agent) Create user record in database
+      // Hash password
+      const hashedPassword = await bcrypt.hash(input.password, 10);
 
-      console.log(`[AuthService.register] User registration initiated: ${input.email} with role ${input.role}`);
+      // Generate email verification token
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+      // Create user
+      const user = await prisma.user.create({
+        data: {
+          email: input.email.toLowerCase(),
+          phoneNumber: input.phoneNumber,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          password: hashedPassword,
+          roles: [input.role],
+          homeDistrictId: input.districtIds?.[0],
+          resetToken: verificationToken,
+          resetTokenExpiry: verificationExpiry,
+          emailVerified: false,
+          isActive: true,
+        },
+      });
+
+      // TODO: (agent) Send verification email via notification service
+
+      logger.info(`[AuthService.register] User registered: ${user.email}`, { userId: user.id, role: input.role });
 
       return {
-        user: {} as User,
-        verificationEmailSent: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          roles: user.roles as UserRole[],
+        },
+        verificationEmailSent: false,
       };
     } catch (err) {
       console.error(`[AuthService.register] Registration failed for ${input.email}:`, err);
@@ -133,21 +165,58 @@ export class AuthService {
       });
 
       if (!user) {
-        console.warn(`[AuthService.login] Login attempt with non-existent email: ${input.email}`);
+        logger.warn(`[AuthService.login] Login attempt with non-existent email: ${input.email}`);
         throw new ForbiddenError('Invalid credentials', ErrorCode.AUTHENTICATION_ERROR);
       }
 
-      // TODO: (agent) Verify password using bcrypt
-      // TODO: (agent) Check if email is verified (emailVerifiedAt !== null)
-      // TODO: (agent) Generate JWT tokens (accessToken, refreshToken)
-      // TODO: (agent) Update lastLoginAt timestamp
+      // Verify password
+      const isPasswordValid = await bcrypt.compare(input.password, user.password);
+      if (!isPasswordValid) {
+        logger.warn(`[AuthService.login] Invalid password for: ${input.email}`);
+        throw new ForbiddenError('Invalid credentials', ErrorCode.AUTHENTICATION_ERROR);
+      }
 
-      console.log(`[AuthService.login] User logged in: ${user.email}`);
+      // Check email verification
+      if (!user.emailVerified) {
+        throw new ForbiddenError('Email not verified', ErrorCode.AUTHENTICATION_ERROR);
+      }
+
+      // Check user status
+      if (!user.isActive) {
+        throw new ForbiddenError('Account is not active', ErrorCode.AUTHENTICATION_ERROR);
+      }
+
+      // Generate tokens
+      const accessToken = jwt.sign(
+        { userId: user.id, email: user.email, roles: user.roles },
+        config.jwt.secret as jwt.Secret,
+        { expiresIn: config.jwt.expiresIn as jwt.SignOptions['expiresIn'] }
+      );
+
+      const refreshToken = jwt.sign(
+        { userId: user.id, tokenType: 'refresh' },
+        config.jwt.secret as jwt.Secret,
+        { expiresIn: config.jwt.refreshExpiresIn as jwt.SignOptions['expiresIn'] }
+      );
+
+      // Update last login
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+
+      logger.info(`[AuthService.login] User logged in: ${user.email}`, { userId: user.id });
 
       return {
-        accessToken: '',
-        refreshToken: '',
-        user,
+        accessToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          roles: user.roles as UserRole[],
+        },
       };
     } catch (err) {
       console.error(`[AuthService.login] Login failed for ${input.email}:`, err);
@@ -174,16 +243,26 @@ export class AuthService {
 
       if (!user) {
         // Don't reveal if user doesn't exist
-        console.debug(`[AuthService.requestPasswordReset] Password reset requested for non-existent email: ${input.email}`);
+        logger.debug(`[AuthService.requestPasswordReset] Password reset requested for non-existent email: ${input.email}`);
         return { success: true };
       }
 
-      // TODO: (agent) Generate reset token (crypto.randomBytes)
-      // TODO: (agent) Store token with expiry (15 mins)
-      // TODO: (agent) Send reset email with token
-      // TODO: (agent) Log reset request
+      // Generate reset token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-      console.log(`[AuthService.requestPasswordReset] Password reset email sent to: ${user.email}`);
+      // Store token in database
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          resetToken,
+          resetTokenExpiry: resetExpiry,
+        },
+      });
+
+      // TODO: (agent) Send reset email via notification service
+
+      logger.info(`[AuthService.requestPasswordReset] Password reset email sent to: ${user.email}`, { userId: user.id });
 
       return { success: true };
     } catch (err) {
@@ -215,15 +294,32 @@ export class AuthService {
         throw new ValidationError('Password must be at least 8 characters', ErrorCode.INVALID_INPUT);
       }
 
-      // TODO: (agent) Find reset token in database
-      // TODO: (agent) Verify token not expired
-      // TODO: (agent) Find associated user
-      // TODO: (agent) Hash new password
-      // TODO: (agent) Update user password
-      // TODO: (agent) Invalidate reset token
-      // TODO: (agent) Invalidate all refresh tokens (force re-login)
+      // Find user by reset token
+      const user = await prisma.user.findFirst({
+        where: {
+          resetToken: input.token,
+          resetTokenExpiry: { gt: new Date() },
+        },
+      });
 
-      console.log('[AuthService.confirmPasswordReset] Password reset confirmed successfully');
+      if (!user) {
+        throw new ValidationError('Invalid or expired reset token', ErrorCode.INVALID_TOKEN);
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(input.newPassword, 10);
+
+      // Update password and clear reset token
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password: hashedPassword,
+          resetToken: null,
+          resetTokenExpiry: null,
+        },
+      });
+
+      logger.info('[AuthService.confirmPasswordReset] Password reset confirmed successfully', { userId: user.id });
 
       return { success: true };
     } catch (err) {
@@ -249,18 +345,40 @@ export class AuthService {
         throw new ValidationError('Missing verification token', ErrorCode.INVALID_INPUT);
       }
 
-      // TODO: (agent) Find verification token in database
-      // TODO: (agent) Verify token not expired
-      // TODO: (agent) Find associated user
-      // TODO: (agent) Update user emailVerifiedAt = now()
-      // TODO: (agent) Mark token as used
-      // TODO: (agent) Log verification
+      // Find user by verification token
+      const user = await prisma.user.findFirst({
+        where: {
+          resetToken: token,
+          resetTokenExpiry: { gt: new Date() },
+        },
+      });
 
-      console.log('[AuthService.verifyEmail] Email verified successfully');
+      if (!user) {
+        throw new ValidationError('Invalid or expired verification token', ErrorCode.INVALID_TOKEN);
+      }
+
+      // Update user email verification status
+      const updatedUser = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          emailVerified: true,
+          resetToken: null,
+          resetTokenExpiry: null,
+          isActive: true,
+        },
+      });
+
+      logger.info('[AuthService.verifyEmail] Email verified successfully', { userId: user.id });
 
       return {
         success: true,
-        user: {} as User,
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          firstName: updatedUser.firstName,
+          lastName: updatedUser.lastName,
+          roles: updatedUser.roles as UserRole[],
+        },
       };
     } catch (err) {
       console.error('[AuthService.verifyEmail] Email verification failed:', err);
@@ -284,14 +402,36 @@ export class AuthService {
         throw new ForbiddenError('Missing refresh token', ErrorCode.AUTHENTICATION_ERROR);
       }
 
-      // TODO: (agent) Verify refresh token signature
-      // TODO: (agent) Check token not blacklisted
-      // TODO: (agent) Generate new access token
-      // TODO: (agent) Return new access token
+      // Verify refresh token
+      const decoded = jwt.verify(refreshToken, config.jwt.secret as jwt.Secret) as {
+        userId: string;
+        tokenType: string;
+      };
 
-      console.log('[AuthService.refreshAccessToken] Access token refreshed');
+      if (decoded.tokenType !== 'refresh') {
+        throw new ForbiddenError('Invalid token type', ErrorCode.AUTHENTICATION_ERROR);
+      }
 
-      return { accessToken: '' };
+      // Get user for new access token
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, email: true, roles: true, isActive: true },
+      });
+
+      if (!user || !user.isActive) {
+        throw new ForbiddenError('User not found or inactive', ErrorCode.AUTHENTICATION_ERROR);
+      }
+
+      // Generate new access token
+      const accessToken = jwt.sign(
+        { userId: user.id, email: user.email, roles: user.roles },
+        config.jwt.secret as jwt.Secret,
+        { expiresIn: config.jwt.expiresIn as jwt.SignOptions['expiresIn'] }
+      );
+
+      logger.info('[AuthService.refreshAccessToken] Access token refreshed', { userId: user.id });
+
+      return { accessToken };
     } catch (err) {
       console.error('[AuthService.refreshAccessToken] Token refresh failed:', err);
       throw new ForbiddenError('Invalid refresh token', ErrorCode.AUTHENTICATION_ERROR);

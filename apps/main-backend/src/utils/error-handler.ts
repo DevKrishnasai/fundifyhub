@@ -9,15 +9,13 @@ import { Request, Response, NextFunction } from 'express';
 import logger from './logger';
 import {
   AppError,
+  ErrorCode,
   ValidationError,
-  AuthenticationError,
-  AuthorizationError,
-  NotFoundError,
   RateLimitError,
-  isOperationalError,
   getErrorMessage,
-} from './errors';
-import { APIResponse, ValidationErrorItem } from './response';
+  isAppError,
+} from '@fundifyhub/utils';
+import type { APIResponse } from '@fundifyhub/types';
 
 /**
  * Handle Prisma errors and convert to appropriate AppError
@@ -28,19 +26,23 @@ function handlePrismaError(error: { code?: string; meta?: Record<string, unknown
       // Unique constraint violation
       const target = error.meta?.target as string[] | undefined;
       const field = target ? target.join(', ') : 'field';
-      return new AppError(`A record with this ${field} already exists`, 409);
+      return new AppError(ErrorCode.DUPLICATE_ENTRY, `A record with this ${field} already exists`, 409);
     }
     case 'P2025': {
       // Record not found
-      return new AppError('Record not found', 404);
+      return new AppError(ErrorCode.NOT_FOUND, 'Record not found', 404);
     }
     case 'P2003': {
       // Foreign key constraint violation
-      return new AppError('Referenced record does not exist', 400);
+      return new AppError(ErrorCode.CONFLICT, 'Referenced record does not exist', 400);
     }
     case 'P2014': {
       // Required relation violation
-      return new AppError('The change you requested would violate required relations', 400);
+      return new AppError(
+        ErrorCode.CONFLICT,
+        'The change you requested would violate required relations',
+        400
+      );
     }
     default:
       return null;
@@ -87,14 +89,15 @@ export function errorHandler(
   }
 
   // Handle operational errors (expected errors)
-  if (isOperationalError(error)) {
+  if (isAppError(error)) {
+    const appError = error;
     // Log at appropriate level based on status code
-    if (error.statusCode >= 500) {
-      logger.error('Operational error', { ...errorContext, error: error.message });
-    } else if (error.statusCode >= 400) {
-      logger.warn('Client error', { ...errorContext, error: error.message });
+    if (appError.statusCode >= 500) {
+      logger.error('Operational error', { ...errorContext, error: appError.message });
+    } else if (appError.statusCode >= 400) {
+      logger.warn('Client error', { ...errorContext, error: appError.message });
     }
-    sendErrorResponse(res, error);
+    sendErrorResponse(res, appError);
     return;
   }
 
@@ -127,7 +130,10 @@ function sendErrorResponse(res: Response, error: AppError): void {
 
   // Add validation errors if present
   if (error instanceof ValidationError) {
-    response.errors = error.errors;
+    const validationErrors = (error as { context?: { errors?: unknown } }).context?.errors;
+    if (Array.isArray(validationErrors)) {
+      response.errors = validationErrors;
+    }
   }
 
   // Add rate limit headers if applicable

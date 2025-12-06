@@ -142,6 +142,8 @@ export type {
   StateType,
   DistrictType,
   WarehouseType,
+  AuctionListingType,
+  AuctionBidType,
 } from './types';
 
 // Asset management (used by frontend and backend)
@@ -166,14 +168,8 @@ export {
 export type { NavMenuItem } from './constants';
 
 // ============================================
-// BACKWARDS COMPATIBILITY EXPORTS
-// These are temporary to support the migration from
-// currentStatus/REQUEST_STATUS to stage/REQUEST_STAGE
-// TODO: Remove after full migration to stage-based system
+// CORE CONSTANTS EXPORTS
 // ============================================
-
-// Legacy REQUEST_STATUS enum - for files not yet migrated
-export { REQUEST_STATUS, PENDING_REQUEST_STATUSES, AGENT_ACCESS_DENY_STATUSES } from './constants';
 
 // Role-related exports
 export { ROLE_HIERARCHY, ROLE_LABELS, ADMIN_ROLES, REQUEST_MANAGER_ROLES, ADMIN_AGENT_ROLES } from './constants';
@@ -188,6 +184,21 @@ export {
   OVERDUE_GRACE_PERIOD_DAYS,
   DEFAULT_PENALTY_PERCENTAGE,
   DEFAULT_LATE_FEE_PERCENTAGE,
+} from './constants';
+
+// Payment and loan constants
+export {
+  PAYMENT_METHOD, // enum already exported above
+  PAYMENT_TYPE, // enum already exported above
+  TRANSFER_METHOD,
+  CLOSURE_TYPE,
+  LATE_FEE_RATE,
+  DAYS_PER_MONTH,
+} from './constants';
+
+export type {
+  TransferMethodType,
+  ClosureTypeValue,
 } from './constants';
 
 // UserRole type alias (for backwards compatibility)

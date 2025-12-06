@@ -9,7 +9,6 @@
 // ============================================
 
 // Main orchestrator and container
-export { RequestDetailPage } from './RequestDetailPage';
 export { RequestDetailPageContainer } from './RequestDetailPageContainer';
 
 // ============================================
@@ -87,11 +86,6 @@ export {
   UploadDocumentModal,
   DocumentPreviewModal,
 } from './modals';
-export { default as CreateOfferModal } from './CreateOfferModal';
 export { default as AssignAgentModal } from './AssignAgentModal';
 
-// ============================================
-// SHARED UTILITIES (used by modals)
-// ============================================
-
-export { default as EmiScheduleTable } from './EmiScheduleTable';
+// Shared utilities placeholder (none exported currently)

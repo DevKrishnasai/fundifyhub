@@ -563,9 +563,11 @@ export interface NotificationLogEntry {
  */
 export interface NotificationPreference {
   userId: string;
-  channel: NotificationChannel;
-  category: NotificationCategory;
-  enabled: boolean;
+  emailNotifications: boolean;
+  whatsappNotifications: boolean;
+  smsNotifications: boolean;
+  pushNotifications: boolean;
+  inAppNotifications: boolean;
   /** Quiet hours start (HH:mm format) */
   quietHoursStart?: string | null;
   /** Quiet hours end (HH:mm format) */

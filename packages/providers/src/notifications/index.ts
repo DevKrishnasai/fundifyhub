@@ -42,10 +42,6 @@ export {
   type NotificationServiceConfig,
 } from './notification-service';
 
-export {
-  NotificationService as NotificationOrchestrator,
-} from './orchestrator';
-
 // Builder
 export {
   NotificationBuilder,

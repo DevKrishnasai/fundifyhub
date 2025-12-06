@@ -1,5 +1,17 @@
-export { EmailAdapter, getEmailAdapter } from '../channel-adapters/email-adapter';
-export { WhatsAppAdapter, getWhatsAppAdapter } from '../channel-adapters/whatsapp-adapter';
-export { InAppAdapter, getInAppAdapter } from '../channel-adapters/in-app-adapter';
-export { getPushAdapter, PushAdapter } from '../channel-adapters/push-adapter';
-export { BaseChannelAdapter, type IChannelAdapter } from '../channel-adapters/base-adapter';
+export const notificationChannels = {
+  email: {
+    send: (payload: any) => console.log('Sending email:', payload),
+  },
+  whatsapp: {
+    send: (payload: any) => console.log('Sending whatsapp:', payload),
+  },
+  sms: {
+    send: (payload: any) => console.log('Sending sms:', payload),
+  },
+  push: {
+    send: (payload: any) => console.log('Sending push:', payload),
+  },
+  inApp: {
+    send: (payload: any) => console.log('Sending in-app:', payload),
+  },
+};

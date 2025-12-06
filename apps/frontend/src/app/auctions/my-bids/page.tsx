@@ -13,6 +13,26 @@ import { useMyBids } from '@/hooks/queries/useAuctions'
 import { BID_STATUS, AUCTION_STATUS, AUCTION_STATUS_LABELS, AUCTION_STATUS_COLORS } from '@fundifyhub/types'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 
+// Type for auction bid (from @fundifyhub/types types.ts)
+type AuctionBidType = {
+  id: string;
+  auctionId: string;
+  bidderId: string;
+  amount: number;
+  status: string;
+  maxAutoBid: number | null;
+  isAutoBid: boolean;
+  placedAt: Date;
+  auction?: {
+    id: string;
+    title: string;
+    listingNumber: string;
+    currentHighBid: number | null;
+    startingBid: number;
+    status: string;
+  };
+}
+
 // UI Components
 import {
   Card,
@@ -92,11 +112,11 @@ export default function MyBidsPage() {
   // Stats calculation
   const stats = {
     totalBids: data?.pagination?.total || 0,
-    activeBids: data?.bids?.filter(b => b.status === BID_STATUS.ACTIVE).length || 0,
-    wonBids: data?.bids?.filter(b => b.status === BID_STATUS.WON).length || 0,
+    activeBids: data?.bids?.filter((b: { status: string }) => b.status === BID_STATUS.ACTIVE).length || 0,
+    wonBids: data?.bids?.filter((b: { status: string }) => b.status === BID_STATUS.WON).length || 0,
     totalSpent: data?.bids
-      ?.filter(b => b.status === BID_STATUS.WON)
-      .reduce((sum, b) => sum + b.amount, 0) || 0,
+      ?.filter((b: { status: string }) => b.status === BID_STATUS.WON)
+      .reduce((sum: number, b: { amount: number }) => sum + b.amount, 0) || 0,
   }
 
   return (
@@ -255,20 +275,20 @@ export default function MyBidsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.bids.map((bid) => {
-                    const statusConfig = BID_STATUS_CONFIG[bid.status]
+                  {data.bids.map((bid: AuctionBidType) => {
+                    const statusConfig = BID_STATUS_CONFIG[bid.status as BID_STATUS]
                     const StatusIcon = statusConfig.icon
-                    const isHighestBidder = bid.auction.currentHighBid === bid.amount
+                    const isHighestBidder = bid.auction?.currentHighBid === bid.amount
 
                     return (
                       <TableRow key={bid.id}>
                         <TableCell>
                           <div className="flex flex-col">
                             <span className="font-medium">
-                              {bid.auction.title}
+                              {bid.auction?.title || 'N/A'}
                             </span>
                             <span className="text-sm text-muted-foreground">
-                              {bid.auction.listingNumber}
+                              {bid.auction?.listingNumber || ''}
                             </span>
                           </div>
                         </TableCell>
@@ -283,7 +303,7 @@ export default function MyBidsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {formatCurrency(bid.auction.currentHighBid || bid.auction.startingBid)}
+                          {formatCurrency(bid.auction?.currentHighBid || bid.auction?.startingBid || 0)}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -295,14 +315,16 @@ export default function MyBidsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              AUCTION_STATUS_COLORS[bid.auction.status as AUCTION_STATUS]
-                            )}
-                          >
-                            {AUCTION_STATUS_LABELS[bid.auction.status as AUCTION_STATUS]}
-                          </Badge>
+                          {bid.auction && (
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                AUCTION_STATUS_COLORS[bid.auction.status as AUCTION_STATUS]
+                              )}
+                            >
+                              {AUCTION_STATUS_LABELS[bid.auction.status as AUCTION_STATUS]}
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -311,16 +333,18 @@ export default function MyBidsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                          >
-                            <Link href={`/auctions/${bid.auction.id}`}>
-                              View
-                              <ExternalLink className="h-3 w-3 ml-1" />
-                            </Link>
-                          </Button>
+                          {bid.auction && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              asChild
+                            >
+                              <Link href={`/auctions/${bid.auction.id}`}>
+                                View
+                                <ExternalLink className="h-3 w-3 ml-1" />
+                              </Link>
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     )

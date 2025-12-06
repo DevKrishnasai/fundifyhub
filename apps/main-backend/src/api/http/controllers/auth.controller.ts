@@ -15,6 +15,9 @@
 
 import type { Request, Response } from 'express';
 import { asyncHandler } from '../middlewares';
+import { authService } from '../../../domain/auth';
+import { z } from 'zod';
+import logger from '../../../utils/logger';
 
 /**
  * POST /auth/register
@@ -22,18 +25,25 @@ import { asyncHandler } from '../middlewares';
  * 
  * TODO: (agent) Implement handler
  */
+const registerSchema = z.object({
+  email: z.string().email(),
+  phoneNumber: z.string().min(10),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  password: z.string().min(8),
+  role: z.enum(['CUSTOMER', 'AGENT', 'DISTRICT_ADMIN', 'STATE_ADMIN', 'SUPER_ADMIN']),
+  districtIds: z.array(z.string()).optional(),
+});
+
 export const registerHandler = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: (agent) Validate input using registerSchema.parse()
-  // const data = registerSchema.parse(req.body)
+  const data = registerSchema.parse(req.body);
 
-  // TODO: (agent) Call authService.register(data)
-  // const user = await authService.register(data)
+  const result = await authService.register(data);
 
-  // TODO: (agent) Return user + tokens
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
+  res.status(201).json({
+    success: true,
+    message: 'Registration successful. Please check your email to verify your account.',
+    data: result,
   });
 });
 
@@ -43,18 +53,31 @@ export const registerHandler = asyncHandler(async (req: Request, res: Response) 
  * 
  * TODO: (agent) Implement handler
  */
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
 export const loginHandler = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: (agent) Validate input: email, password
-  // const { email, password } = req.body
+  const { email, password } = loginSchema.parse(req.body);
 
-  // TODO: (agent) Call authService.login(email, password)
-  // const result = await authService.login(email, password)
+  const result = await authService.login({ email, password });
 
-  // TODO: (agent) Return user + tokens
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
+  // Set refresh token in httpOnly cookie
+  res.cookie('refreshToken', result.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Login successful',
+    data: {
+      accessToken: result.accessToken,
+      user: result.user,
+    },
   });
 });
 
@@ -65,17 +88,22 @@ export const loginHandler = asyncHandler(async (req: Request, res: Response) => 
  * TODO: (agent) Implement handler
  */
 export const refreshTokenHandler = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: (agent) Get refresh token from cookie or body
-  // const refreshToken = req.cookies.refreshToken || req.body.refreshToken
+  const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
-  // TODO: (agent) Call authService.refreshAccessToken(refreshToken)
-  // const tokens = await authService.refreshAccessToken(refreshToken)
+  if (!refreshToken) {
+    res.status(401).json({
+      success: false,
+      message: 'Refresh token required',
+    });
+    return;
+  }
 
-  // TODO: (agent) Return new access token
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
+  const result = await authService.refreshAccessToken(refreshToken);
+
+  res.status(200).json({
+    success: true,
+    message: 'Token refreshed',
+    data: { accessToken: result.accessToken },
   });
 });
 
@@ -86,14 +114,18 @@ export const refreshTokenHandler = asyncHandler(async (req: Request, res: Respon
  * TODO: (agent) Implement handler
  */
 export const logoutHandler = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: (agent) Get token from Authorization header
-  // TODO: (agent) Call authService.logout(req.user.id, token)
-  // TODO: (agent) Return success
+  const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
+  if (refreshToken) {
+    await authService.logout(refreshToken);
+  }
+
+  // Clear refresh token cookie
+  res.clearCookie('refreshToken');
+
+  res.status(200).json({
+    success: true,
+    message: 'Logout successful',
   });
 });
 
@@ -103,17 +135,18 @@ export const logoutHandler = asyncHandler(async (req: Request, res: Response) =>
  * 
  * TODO: (agent) Implement handler
  */
+const passwordResetRequestSchema = z.object({
+  email: z.string().email(),
+});
+
 export const requestPasswordResetHandler = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: (agent) Validate input: email
-  // const { email } = req.body
+  const { email } = passwordResetRequestSchema.parse(req.body);
 
-  // TODO: (agent) Call authService.requestPasswordReset(email)
-  // TODO: (agent) Return success message (don't reveal if email exists)
+  await authService.requestPasswordReset({ email });
 
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
+  res.status(200).json({
+    success: true,
+    message: 'If the email exists, a password reset link has been sent.',
   });
 });
 
@@ -123,17 +156,19 @@ export const requestPasswordResetHandler = asyncHandler(async (req: Request, res
  * 
  * TODO: (agent) Implement handler
  */
+const passwordResetConfirmSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
 export const confirmPasswordResetHandler = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: (agent) Validate input: email, otp, newPassword
-  // const { email, otp, newPassword } = req.body
+  const data = passwordResetConfirmSchema.parse(req.body);
 
-  // TODO: (agent) Call authService.confirmPasswordReset(email, otp, newPassword)
-  // TODO: (agent) Return success message
+  await authService.confirmPasswordReset(data);
 
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
+  res.status(200).json({
+    success: true,
+    message: 'Password reset successful. You can now login with your new password.',
   });
 });
 
@@ -143,17 +178,19 @@ export const confirmPasswordResetHandler = asyncHandler(async (req: Request, res
  * 
  * TODO: (agent) Implement handler
  */
+const verifyEmailSchema = z.object({
+  token: z.string().min(1),
+});
+
 export const verifyEmailHandler = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: (agent) Validate input: email, token
-  // const { email, token } = req.body
+  const { token } = verifyEmailSchema.parse(req.body);
 
-  // TODO: (agent) Call authService.verifyEmail(email, token)
-  // TODO: (agent) Return success message
+  const result = await authService.verifyEmail(token);
 
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
+  res.status(200).json({
+    success: true,
+    message: 'Email verified successfully',
+    data: result,
   });
 });
 
@@ -164,10 +201,16 @@ export const verifyEmailHandler = asyncHandler(async (req: Request, res: Respons
  * TODO: (agent) Implement handler
  */
 export const getCurrentUserHandler = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: (agent) Return req.user (already set by authenticateUser middleware)
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: 'Not authenticated',
+    });
+    return;
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { user: req.user },
   });
 });

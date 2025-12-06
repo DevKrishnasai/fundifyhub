@@ -5,3 +5,4 @@ export type {
   RecordManualPaymentInput,
   GetPaymentHistoryInput,
 } from './payments.service';
+export * from './payments.events';

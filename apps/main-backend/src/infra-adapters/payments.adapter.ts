@@ -6,24 +6,35 @@
  * 
  * @module infra-adapters/payments
  */
+import { createRazorpayProvider } from '@fundifyhub/providers';
+import {
+  type CreatePaymentOrderInput,
+  type CreatePaymentOrderResult,
+  type FetchPaymentResult,
+  type RefundResult,
+} from '@fundifyhub/types';
+import logger from '../utils/logger';
+import crypto from 'crypto';
 
-/**
- * Razorpay API wrapper
- * 
- * In production: use @razorpay/razorpay package
- * For now: stub implementation with TODO markers
- */
 export class PaymentAdapter {
   private razorpayKeyId: string;
   private razorpayKeySecret: string;
+  private provider: ReturnType<typeof createRazorpayProvider>;
 
   constructor() {
     this.razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
     this.razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
 
     if (!this.razorpayKeyId || !this.razorpayKeySecret) {
-      console.warn('[PaymentAdapter] Razorpay keys not configured');
+      logger.warn('[PaymentAdapter] Razorpay keys not configured');
     }
+
+    this.provider = createRazorpayProvider({
+      keyId: this.razorpayKeyId,
+      keySecret: this.razorpayKeySecret,
+    });
+
+    logger.info('[PaymentAdapter] Initialized with Razorpay provider');
   }
 
   /**
@@ -31,21 +42,24 @@ export class PaymentAdapter {
    * 
    * @returns Order ID for frontend checkout
    */
-  async createOrder(amount: number, customerId: string, description: string): Promise<string> {
+  async createOrder(input: CreatePaymentOrderInput): Promise<CreatePaymentOrderResult> {
     try {
-      // TODO: (agent) Import and initialize Razorpay instance
-      // TODO: (agent) Call razorpay.orders.create({
-      //   amount: amount * 100 (convert to paise),
-      //   currency: 'INR',
-      //   receipt: `order_${customerId}_${Date.now()}`,
-      //   notes: { customerId, description }
-      // })
-      // TODO: (agent) Return order.id
+      const order = await this.provider.createOrder(input);
 
-      console.log('[PaymentAdapter] Order created (stub):', { amount, customerId });
-      return `order_${Date.now()}`;
+      if (!order.success) {
+        logger.error('[PaymentAdapter] Failed to create order', { error: order.error, input });
+        return order;
+      }
+
+      logger.info('[PaymentAdapter] Order created', {
+        orderId: order.providerOrderId,
+        amount: input.amount.totalAmount,
+        loanId: input.loanId,
+        emiNumber: input.emiNumber,
+      });
+      return order;
     } catch (err) {
-      console.error('[PaymentAdapter] Failed to create order:', err);
+      logger.error('[PaymentAdapter] Failed to create order', { error: err, input });
       throw err;
     }
   }
@@ -61,15 +75,23 @@ export class PaymentAdapter {
     signature: string
   ): boolean {
     try {
-      // TODO: (agent) Import crypto module
-      // TODO: (agent) Create HMAC hash of orderId|paymentId using razorpay secret
-      // TODO: (agent) Compare with provided signature
-      // TODO: (agent) Return comparison result
+      const payload = `${orderId}|${paymentId}`;
+      const expectedSignature = crypto
+        .createHmac('sha256', this.razorpayKeySecret)
+        .update(payload)
+        .digest('hex');
 
-      console.log('[PaymentAdapter] Signature verified (stub):', { orderId, paymentId });
-      return true; // Stub: always valid for now
+      const isValid = expectedSignature === signature;
+
+      if (isValid) {
+        logger.info('[PaymentAdapter] Signature verified', { orderId, paymentId });
+      } else {
+        logger.warn('[PaymentAdapter] Invalid signature', { orderId, paymentId });
+      }
+
+      return isValid;
     } catch (err) {
-      console.error('[PaymentAdapter] Failed to verify signature:', err);
+      logger.error('[PaymentAdapter] Failed to verify signature', { error: err, orderId, paymentId });
       return false;
     }
   }
@@ -77,15 +99,19 @@ export class PaymentAdapter {
   /**
    * Get payment details from Razorpay
    */
-  async getPaymentDetails(paymentId: string): Promise<any> {
+  async getPaymentDetails(paymentId: string): Promise<FetchPaymentResult> {
     try {
-      // TODO: (agent) Call razorpay.payments.fetch(paymentId)
-      // TODO: (agent) Return payment object with status, amount, notes, etc.
+      const payment = await this.provider.fetchPayment({ providerPaymentId: paymentId });
 
-      console.log('[PaymentAdapter] Payment fetched (stub):', { paymentId });
-      return { id: paymentId, status: 'captured', amount: 0 };
+      if (!payment.success) {
+        logger.warn('[PaymentAdapter] Payment fetch failed', { paymentId, error: payment.error });
+        return payment;
+      }
+
+      logger.info('[PaymentAdapter] Payment fetched', { paymentId, status: payment.status });
+      return payment;
     } catch (err) {
-      console.error('[PaymentAdapter] Failed to fetch payment:', err);
+      logger.error('[PaymentAdapter] Failed to fetch payment', { error: err, paymentId });
       throw err;
     }
   }
@@ -93,16 +119,27 @@ export class PaymentAdapter {
   /**
    * Refund payment
    */
-  async refund(paymentId: string, amount?: number): Promise<string> {
+  async refund(paymentId: string, amountInRupees?: number): Promise<RefundResult> {
     try {
-      // TODO: (agent) Call razorpay.payments.refund(paymentId, { amount })
-      // TODO: (agent) amount is optional (null = full refund)
-      // TODO: (agent) Return refund ID
+      const refund = await this.provider.refund({
+        providerPaymentId: paymentId,
+        amount: amountInRupees ? Math.round(amountInRupees * 100) : 0,
+        reason: 'manual-refund',
+      });
 
-      console.log('[PaymentAdapter] Refund initiated (stub):', { paymentId, amount });
-      return `refund_${Date.now()}`;
+      if (!refund.success) {
+        logger.warn('[PaymentAdapter] Refund failed', { paymentId, error: refund.error });
+        return refund;
+      }
+
+      logger.info('[PaymentAdapter] Refund initiated', {
+        paymentId,
+        refundId: refund.providerRefundId,
+        amount: amountInRupees,
+      });
+      return refund;
     } catch (err) {
-      console.error('[PaymentAdapter] Failed to refund:', err);
+      logger.error('[PaymentAdapter] Failed to refund', { error: err, paymentId, amount: amountInRupees });
       throw err;
     }
   }

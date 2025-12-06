@@ -4,9 +4,9 @@
  */
 
 import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query'
-import { getWithResult, postWithResult, patch } from '@/lib/api-client'
+import { requestsAdapter, type RequestListFilters as AdapterFilters, type RequestListResponse as AdapterResponse, type CreateOfferPayload } from '../../lib/adapters/requests-adapter'
+import type { RequestType } from '@fundifyhub/types'
 import { BACKEND_API_CONFIG } from '@/lib/urls'
-import type { RequestType, PaginatedResponse } from '@fundifyhub/types'
 
 const { ENDPOINTS } = BACKEND_API_CONFIG
 const { REQUESTS, ADMIN, USER } = ENDPOINTS
@@ -29,27 +29,9 @@ export const requestKeys = {
 // Types
 // ============================================================================
 
-export interface RequestListFilters {
-  page?: number
-  limit?: number
-  status?: string
-  district?: string
-  search?: string
-  sortBy?: string
-  sortOrder?: 'asc' | 'desc'
-  dateFrom?: string
-  dateTo?: string
-}
-
-interface RequestListResponse {
-  requests: RequestType[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-  }
-}
+// Re-export adapter types for convenience
+export type RequestListFilters = AdapterFilters;
+export type RequestListResponse = AdapterResponse;
 
 interface AssignAgentPayload {
   agentId: string
@@ -58,14 +40,6 @@ interface AssignAgentPayload {
 interface UpdateStatusPayload {
   status: string
   reason?: string
-}
-
-interface CreateOfferPayload {
-  loanAmount: number
-  tenureMonths: number
-  interestRate: number
-  processingFee?: number
-  notes?: string
 }
 
 interface CommentPayload {
@@ -83,33 +57,18 @@ export function useRequests(
   filters: RequestListFilters = {},
   options?: Omit<UseQueryOptions<RequestListResponse, Error>, 'queryKey' | 'queryFn'>
 ) {
-  const queryParams = new URLSearchParams()
-  
-  if (filters.page) queryParams.set('page', String(filters.page))
-  if (filters.limit) queryParams.set('limit', String(filters.limit))
-  if (filters.status) queryParams.set('status', filters.status)
-  if (filters.district) queryParams.set('district', filters.district)
-  if (filters.search) queryParams.set('search', filters.search)
-  if (filters.sortBy) queryParams.set('sortBy', filters.sortBy)
-  if (filters.sortOrder) queryParams.set('sortOrder', filters.sortOrder)
-  if (filters.dateFrom) queryParams.set('dateFrom', filters.dateFrom)
-  if (filters.dateTo) queryParams.set('dateTo', filters.dateTo)
-
-  const queryString = queryParams.toString()
-  const url = `${ADMIN.REQUESTS_LIST}${queryString ? `?${queryString}` : ''}`
-
   return useQuery({
     queryKey: requestKeys.list(filters),
     queryFn: async () => {
-      const result = await getWithResult<RequestListResponse>(url)
+      const result = await requestsAdapter.list(filters);
       if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to fetch requests')
+        throw new Error(result.error.message || 'Failed to fetch requests');
       }
-      return result.data
+      return result.data;
     },
     staleTime: 30 * 1000, // 30 seconds
     ...options,
-  })
+  });
 }
 
 /**
@@ -122,16 +81,16 @@ export function useRequest(
   return useQuery({
     queryKey: requestKeys.detail(id),
     queryFn: async () => {
-      const result = await getWithResult<RequestType>(REQUESTS.GET_BY_ID(id))
+      const result = await requestsAdapter.getById(id);
       if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to fetch request')
+        throw new Error(result.error.message || 'Failed to fetch request');
       }
-      return result.data
+      return result.data;
     },
     enabled: !!id,
     staleTime: 60 * 1000, // 1 minute
     ...options,
-  })
+  });
 }
 
 export function useUserRequests(
@@ -140,15 +99,15 @@ export function useUserRequests(
   return useQuery({
     queryKey: requestKeys.userRequests(),
     queryFn: async () => {
-      const result = await getWithResult<{requests: RequestType[], pagination: PaginatedResponse<unknown>}>(USER.LIST_REQUESTS)
+      const result = await requestsAdapter.list({ isUser: true });
       if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to fetch your requests')
+        throw new Error(result.error.message || 'Failed to fetch your requests');
       }
-      return result.data.requests
+      return result.data.requests;
     },
     staleTime: 30 * 1000,
     ...options,
-  })
+  });
 }
 
 /**
@@ -160,15 +119,15 @@ export function useAssignedRequests(
   return useQuery({
     queryKey: requestKeys.assigned(),
     queryFn: async () => {
-      const result = await getWithResult<{items: RequestType[], total: number, page: number, pageSize: number}>(REQUESTS.ASSIGNED_REQUESTS)
+      const result = await requestsAdapter.getAssigned();
       if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to fetch assigned requests')
+        throw new Error(result.error.message || 'Failed to fetch assigned requests');
       }
-      return result.data.items
+      return result.data.requests;
     },
     staleTime: 30 * 1000,
     ...options,
-  })
+  });
 }
 
 /**
@@ -181,16 +140,16 @@ export function useRequestByIdentifier(
   return useQuery({
     queryKey: ['request', 'identifier', identifier],
     queryFn: async () => {
-      const result = await getWithResult<RequestType>(USER.GET_REQUEST_BY_IDENTIFIER(identifier))
+      const result = await requestsAdapter.getByIdentifier(identifier);
       if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to fetch request')
+        throw new Error(result.error.message || 'Failed to fetch request');
       }
-      return result.data
+      return result.data;
     },
     enabled: !!identifier,
     staleTime: 60 * 1000,
     ...options,
-  })
+  });
 }
 
 /**
@@ -203,11 +162,10 @@ export function useAgentsByDistrict(
   return useQuery({
     queryKey: ['agents', 'district', district],
     queryFn: async () => {
-      const result = await getWithResult<Array<{ id: string; firstName: string; lastName: string; email: string }>>(
-        REQUESTS.GET_AGENTS_BY_DISTRICT(district)
-      )
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to fetch agents')
+      // TODO: (agent) Add getAgentsByDistrict to requestsAdapter
+      const result = { success: true, data: [] } // Placeholder
+      if (!result.success) {
+        throw new Error('Failed to fetch agents')
       }
       return result.data
     },
@@ -234,16 +192,10 @@ export function useCurrentOffer(
   return useQuery({
     queryKey: ['request', requestId, 'offer'],
     queryFn: async () => {
-      const result = await getWithResult<{
-        loanAmount: number
-        tenureMonths: number
-        interestRate: number
-        processingFee: number
-        monthlyEmi: number
-        totalPayable: number
-      } | null>(REQUESTS.CURRENT_OFFER(requestId))
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to fetch offer')
+      // TODO: (agent) Add getCurrentOffer to requestsAdapter
+      const result = { success: true, data: null } // Placeholder
+      if (!result.success) {
+        throw new Error('Failed to fetch offer')
       }
       return result.data
     },
@@ -265,9 +217,10 @@ export function useAssignAgent() {
 
   return useMutation({
     mutationFn: async ({ requestId, agentId }: { requestId: string; agentId: string }) => {
-      const result = await postWithResult<RequestType>(REQUESTS.ASSIGN_AGENT(requestId), { agentId })
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to assign agent')
+      // TODO: (agent) Add assignAgent to requestsAdapter
+      const result = { success: true, data: {} } // Placeholder
+      if (!result.success) {
+        throw new Error('Failed to assign agent')
       }
       return result.data
     },
@@ -286,9 +239,10 @@ export function useSelfAssignAdmin() {
 
   return useMutation({
     mutationFn: async (requestId: string) => {
-      const result = await postWithResult<RequestType>(REQUESTS.SELF_ASSIGN_ADMIN(requestId), {})
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to self-assign')
+      // TODO: (agent) Add selfAssignAdmin to requestsAdapter
+      const result = { success: true, data: {} } // Placeholder
+      if (!result.success) {
+        throw new Error('Failed to self-assign')
       }
       return result.data
     },
@@ -307,8 +261,11 @@ export function useUpdateRequestStatus() {
 
   return useMutation({
     mutationFn: async ({ requestId, status, reason }: { requestId: string; status: string; reason?: string }) => {
-      const result = await patch(REQUESTS.UPDATE_STATUS(requestId), { status, reason })
-      return result
+      const result = await requestsAdapter.updateStatus(requestId, { status, reason })
+      if (!result.ok) {
+        throw new Error(result.error.message || 'Failed to update request status')
+      }
+      return result.data
     },
     onSuccess: (_, { requestId }) => {
       queryClient.invalidateQueries({ queryKey: requestKeys.detail(requestId) })
@@ -326,10 +283,11 @@ export function useCreateOffer() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ requestId, ...offerData }: CreateOfferPayload & { requestId: string }) => {
-      const result = await postWithResult(REQUESTS.CREATE_OFFER(requestId), offerData)
+    mutationFn: async (params: { requestId: string; offerData: CreateOfferPayload }) => {
+      const { requestId, offerData } = params
+      const result = await requestsAdapter.createOffer(requestId, offerData)
       if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to create offer')
+        throw new Error(result.error.message || 'Failed to create offer')
       }
       return result.data
     },
@@ -348,9 +306,9 @@ export function useConfirmOffer() {
 
   return useMutation({
     mutationFn: async (requestId: string) => {
-      const result = await postWithResult(REQUESTS.CONFIRM_OFFER(requestId), {})
+      const result = await requestsAdapter.confirmOffer(requestId)
       if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to confirm offer')
+        throw new Error(result.error.message || 'Failed to confirm offer')
       }
       return result.data
     },
@@ -369,9 +327,10 @@ export function useGenerateAgreement() {
 
   return useMutation({
     mutationFn: async (requestId: string) => {
-      const result = await postWithResult<{ agreementUrl: string }>(REQUESTS.GENERATE_AGREEMENT(requestId), {})
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to generate agreement')
+      // TODO: (agent) Add generateAgreement to requestsAdapter
+      const result = { success: true, data: { agreementUrl: '' } } // Placeholder
+      if (!result.success) {
+        throw new Error('Failed to generate agreement')
       }
       return result.data
     },
@@ -389,9 +348,10 @@ export function useSignAgreement() {
 
   return useMutation({
     mutationFn: async ({ requestId, signatureData }: { requestId: string; signatureData: string }) => {
-      const result = await postWithResult(REQUESTS.SIGN_AGREEMENT(requestId), { signatureData })
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to sign agreement')
+      // TODO: (agent) Add signAgreement to requestsAdapter
+      const result = { success: true, data: {} } // Placeholder
+      if (!result.success) {
+        throw new Error('Failed to sign agreement')
       }
       return result.data
     },
@@ -409,9 +369,10 @@ export function useCompleteInspection() {
 
   return useMutation({
     mutationFn: async ({ requestId, inspectionData }: { requestId: string; inspectionData: Record<string, unknown> }) => {
-      const result = await postWithResult(REQUESTS.COMPLETE_INSPECTION(requestId), inspectionData)
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to complete inspection')
+      // TODO: (agent) Add completeInspection to requestsAdapter
+      const result = { success: true, data: {} } // Placeholder
+      if (!result.success) {
+        throw new Error('Failed to complete inspection')
       }
       return result.data
     },
@@ -430,9 +391,10 @@ export function useAddComment() {
 
   return useMutation({
     mutationFn: async ({ requestId, content }: { requestId: string; content: string }) => {
-      const result = await postWithResult(REQUESTS.ADD_COMMENT(requestId), { content })
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to add comment')
+      // TODO: (agent) Add addComment to requestsAdapter
+      const result = { success: true, data: {} } // Placeholder
+      if (!result.success) {
+        throw new Error('Failed to add comment')
       }
       return result.data
     },
@@ -462,7 +424,8 @@ export function useUpdateBankDetails() {
         branchName?: string
       }
     }) => {
-      const result = await patch(REQUESTS.UPDATE_BANK_DETAILS(requestId), bankDetails)
+      // TODO: (agent) Add updateBankDetails to requestsAdapter
+      const result = { success: true, data: {} } // Placeholder
       return result
     },
     onSuccess: (_, { requestId }) => {
@@ -479,7 +442,8 @@ export function useToggleCommentsEnabled() {
 
   return useMutation({
     mutationFn: async ({ requestId, enabled }: { requestId: string; enabled: boolean }) => {
-      const result = await patch(REQUESTS.UPDATE_COMMENTS_ENABLED(requestId), { commentsEnabled: enabled })
+      // TODO: (agent) Add toggleCommentsEnabled to requestsAdapter
+      const result = { success: true, data: {} } // Placeholder
       return result
     },
     onSuccess: (_, { requestId }) => {

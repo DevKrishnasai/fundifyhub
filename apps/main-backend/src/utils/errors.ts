@@ -5,7 +5,11 @@
  * These errors can be caught by the global error handler middleware.
  */
 
-import { ValidationErrorItem } from './response';
+export interface ValidationErrorItem {
+  field: string;
+  message: string;
+  code?: string;
+}
 
 /**
  * Base application error

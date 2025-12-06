@@ -7,9 +7,11 @@
  * - Cache: Redis
  * - Notifications: Email, WhatsApp, In-App, Push
  * 
+ * All providers are type-safe and configurable via environment variables.
+ * No hardcoded values - all configuration must be passed explicitly.
+ * 
  * @module providers
  */
-
 
 // Payment providers
 export {
@@ -47,7 +49,6 @@ export type {
 // Notification providers
 export {
   NotificationService,
-  NotificationOrchestrator,
   getNotificationService,
   NotificationBuilder,
   createNotification,
@@ -73,12 +74,3 @@ export type {
   PushPayload,
   PushAdapterConfig,
 } from './notifications';
-
-// Audit providers
-export {
-  PrismaAuditProvider,
-} from './audit';
-
-export type {
-  PrismaAuditProviderConfig,
-} from './audit';

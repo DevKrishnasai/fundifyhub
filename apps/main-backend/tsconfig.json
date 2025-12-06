@@ -19,16 +19,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "src/api/admin/**/*",
-    "src/api/auth/**/*",
-    "src/api/requests/**/*",
-    "src/api/notifications/**/*",
-    "src/api/geography/**/*",
-    "src/api/assets/**/*",
-    "src/api/auctions/**/*",
-    "src/api/payments/**/*",
-    "src/api/user/**/*",
-    "src/api/webhooks/**/*"
   ],
   "references": [
     { "path": "../../packages/logger" },

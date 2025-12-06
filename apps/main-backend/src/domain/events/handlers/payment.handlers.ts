@@ -9,7 +9,10 @@
  * @module domain/events/handlers
  */
 
-import { eventBus, PaymentRecordedEvent, PaymentFailedEvent } from '../bus';
+import { eventBus } from '../bus';
+import type { PaymentRecordedEvent, PaymentFailedEvent } from '../../payments/payments.events';
+import { notificationAdapter } from '../../../infra-adapters';
+import logger from '../../../utils/logger';
 
 /**
  * Handle: Payment recorded
@@ -21,19 +24,45 @@ import { eventBus, PaymentRecordedEvent, PaymentFailedEvent } from '../bus';
 export function setupPaymentRecordedHandler(): void {
   eventBus.onEvent<PaymentRecordedEvent>('payment.recorded', async (event) => {
     try {
-      console.log('[PaymentHandler] Payment recorded event received:', {
+      logger.info('[PaymentHandler] Payment recorded event received', {
         paymentId: event.aggregateId,
         loanId: event.data.loanId,
       });
 
-      // TODO: (agent) Call notification adapter to send payment confirmation
-      // TODO: (agent) Send receipt to customer
-      // TODO: (agent) Update EMI schedule display
-      // TODO: (agent) Check if all EMIs paid → trigger loan closure
-      // TODO: (agent) Update statistics/dashboards
-      // TODO: (agent) Log for audit trail
+      // Send payment confirmation email
+      await notificationAdapter.sendEmail(
+        event.data.customerEmail,
+        'payment-received',
+        {
+          customerName: event.data.customerName,
+          paymentId: event.aggregateId,
+          loanId: event.data.loanId,
+          amount: event.data.amount,
+          paymentDate: event.data.paymentDate,
+          remainingBalance: event.data.remainingBalance,
+          nextEMIDate: event.data.nextEMIDate,
+        }
+      );
+
+      // SMS confirmation will be sent by job-worker processing the payment.recorded event
+
+      // Publish event for job-worker to update dashboards and check loan closure
+      await notificationAdapter.publishEvent({
+        eventType: 'payment.recorded',
+        userId: event.data.customerId,
+        metadata: {
+          paymentId: event.aggregateId,
+          loanId: event.data.loanId,
+          amount: event.data.amount,
+          remainingBalance: event.data.remainingBalance,
+        },
+      });
+
+      // Audit logging will be added later via separate audit system
+
+      logger.info('[PaymentHandler] Payment confirmation sent', { paymentId: event.aggregateId });
     } catch (err) {
-      console.error('[PaymentHandler] Error handling payment.recorded:', err);
+      logger.error('[PaymentHandler] Error handling payment.recorded', { error: err, paymentId: event.aggregateId });
     }
   });
 }
@@ -47,18 +76,43 @@ export function setupPaymentRecordedHandler(): void {
 export function setupPaymentFailedHandler(): void {
   eventBus.onEvent<PaymentFailedEvent>('payment.failed', async (event) => {
     try {
-      console.log('[PaymentHandler] Payment failed event received:', {
+      logger.warn('[PaymentHandler] Payment failed event received', {
         paymentId: event.aggregateId,
         error: event.data.errorCode,
       });
 
-      // TODO: (agent) Call notification adapter to send failure notification
-      // TODO: (agent) Include retry link and troubleshooting tips
-      // TODO: (agent) Suggest alternative payment methods
-      // TODO: (agent) Log failure for analytics
-      // TODO: (agent) Alert admin if repeated failures
+      // Send failure notification with retry options
+      await notificationAdapter.sendEmail(
+        event.data.customerEmail,
+        'payment-failed',
+        {
+          customerName: event.data.customerName,
+          loanId: event.data.loanId,
+          amount: event.data.amount,
+          errorMessage: event.data.errorMessage,
+          retryLink: event.data.retryLink,
+        }
+      );
+
+      // SMS alert will be sent by job-worker processing the payment.failed event
+
+      // Publish event for job-worker to track failures and alert admin if needed
+      await notificationAdapter.publishEvent({
+        eventType: 'payment.failed',
+        userId: event.data.customerId,
+        metadata: {
+          paymentId: event.aggregateId,
+          loanId: event.data.loanId,
+          errorCode: event.data.errorCode,
+          attemptCount: event.data.attemptCount,
+        },
+      });
+
+      // Audit logging will be added later via separate audit system
+
+      logger.info('[PaymentHandler] Payment failure notification sent', { paymentId: event.aggregateId });
     } catch (err) {
-      console.error('[PaymentHandler] Error handling payment.failed:', err);
+      logger.error('[PaymentHandler] Error handling payment.failed', { error: err, paymentId: event.aggregateId });
     }
   });
 }
@@ -69,5 +123,5 @@ export function setupPaymentFailedHandler(): void {
 export function initializePaymentHandlers(): void {
   setupPaymentRecordedHandler();
   setupPaymentFailedHandler();
-  console.log('[EventHandlers] Payment event handlers initialized');
+  logger.info('[EventHandlers] Payment event handlers initialized');
 }

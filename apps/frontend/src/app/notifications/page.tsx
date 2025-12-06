@@ -208,13 +208,13 @@ function NotificationsContent() {
   const deleteMutation = useDeleteNotification()
 
   // Transform data to match component expectations
-  const notifications: NotificationItem[] = (data?.notifications || []).map(n => ({
+  const notifications: NotificationItem[] = (data?.notifications || []).map((n) => ({
     id: n.id,
     title: n.title,
     message: n.message,
     type: n.type,
     read: n.read,
-    createdAt: n.createdAt,
+    createdAt: n.createdAt instanceof Date ? n.createdAt.toISOString() : String(n.createdAt),
     data: n.data as NotificationItem['data']
   }))
   const pagination = data?.pagination

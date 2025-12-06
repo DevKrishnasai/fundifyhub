@@ -5,7 +5,7 @@ export { DateDisplay, formatDate, formatRelativeTime, isToday, isPast, isOverdue
 export { EmptyState } from "./EmptyState"
 export { ErrorState } from "./ErrorState"
 export { Filters } from "./Filters"
-export { NotificationCenter } from "./NotificationCenter"
+export { NotificationCenter } from "../features/notifications/NotificationCenter"
 export { Pagination } from "./Pagination"
 export { default as PreviewModal } from "./PreviewModal"
 export type { PreviewModalProps, PreviewSource } from "./PreviewModal"

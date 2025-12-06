@@ -4,7 +4,7 @@ import React from 'react';
 import { RequestProvider } from './context/RequestContext';
 import { RequestActionProvider } from './context/RequestActionContext';
 import { ActionModalManager } from './modals/ActionModalManager';
-import { RequestDetailPage } from './RequestDetailPage';
+import { RequestDetailPage } from '../features/requests/RequestDetail';
 
 interface RequestDetailPageContainerProps {
   id: string;

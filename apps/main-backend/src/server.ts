@@ -8,7 +8,7 @@ import xss from 'xss-clean';
 import hpp from 'hpp';
 import compression from 'compression';
 import config from './config';
-import { razorpayWebhookController } from './api/http/controllers/payments/razorpay.controller';
+import { handleRazorpayWebhook } from './api/http/controllers/payments/payments.controller';
 import logger from './utils/logger';
 import { applyRateLimiting } from './utils/rate-limit';
 import { initializeSocketServer, shutdownSocketServer } from './socket';
@@ -17,6 +17,8 @@ import { metricsHandler, trackHttpMetrics } from './utils/metrics';
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from './utils/swagger';
 import { registerRoutes } from './api/http/routes';
+import { initializeAllHandlers } from './domain/events/handlers';
+import { initializeNotificationOrchestrator } from './domain/notifications/orchestrator';
 
 /*
  * server.ts
@@ -128,7 +130,7 @@ app.post('/api/v1/payments/razorpay/webhook', express.raw({ type: 'application/j
   }
 
   // Call the controller directly
-  return razorpayWebhookController(req, res);
+  return handleRazorpayWebhook(req, res);
 });
 
 // Handle GET on webhook (return 405) - this prevents 404 in logs and provides clearer feedback.
@@ -171,6 +173,13 @@ const httpServer = createServer(app);
 // Start the server
 async function startServer(): Promise<void> {
   try {
+    // Initialize domain event handlers
+    initializeAllHandlers();
+    logger.info('✅ Domain event handlers initialized');
+
+    // Initialize notification orchestrator
+    initializeNotificationOrchestrator();
+
     // Initialize Socket.IO on the same HTTP server
     await initializeSocketServer(httpServer, {
       corsOrigins: allowedOrigins,

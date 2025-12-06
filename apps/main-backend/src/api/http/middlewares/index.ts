@@ -32,3 +32,5 @@ export {
   formatValidationError,
   asyncHandler,
 } from './error-handler.middleware';
+
+export { rateLimit } from './rate-limit.middleware';

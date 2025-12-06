@@ -24,6 +24,10 @@
  */
 
 import { EventEmitter } from 'events';
+import type { RequestEvent } from '../requests/requests.events';
+import type { LoanEvent } from '../loans/loans.events';
+import type { AuctionEvent } from '../auctions/auctions.events';
+import type { PaymentEvent } from '../payments/payments.events';
 
 /**
  * Domain event types
@@ -36,135 +40,13 @@ export interface DomainEvent {
 }
 
 /**
- * Request events
- */
-export interface RequestCreatedEvent extends DomainEvent {
-  type: 'request.created';
-  data: {
-    requestId: string;
-    customerId: string;
-    amount: number;
-    districtId: string;
-  };
-}
-
-export interface RequestSubmittedEvent extends DomainEvent {
-  type: 'request.submitted';
-  data: {
-    requestId: string;
-    customerId: string;
-  };
-}
-
-export interface RequestAssignedEvent extends DomainEvent {
-  type: 'request.assigned';
-  data: {
-    requestId: string;
-    agentId: string;
-    agentName: string;
-  };
-}
-
-export interface OfferCreatedEvent extends DomainEvent {
-  type: 'offer.created';
-  data: {
-    requestId: string;
-    offerId: string;
-    monthlyEmi: number;
-    tenure: number;
-  };
-}
-
-export interface OfferAcceptedEvent extends DomainEvent {
-  type: 'offer.accepted';
-  data: {
-    requestId: string;
-    offerId: string;
-    customerId: string;
-  };
-}
-
-export interface LoanDisbursedEvent extends DomainEvent {
-  type: 'loan.disbursed';
-  data: {
-    loanId: string;
-    requestId: string;
-    customerId: string;
-    amount: number;
-  };
-}
-
-/**
- * Payment events
- */
-export interface PaymentRecordedEvent extends DomainEvent {
-  type: 'payment.recorded';
-  data: {
-    paymentId: string;
-    loanId: string;
-    emiId: string;
-    amount: number;
-    method: string;
-  };
-}
-
-export interface PaymentFailedEvent extends DomainEvent {
-  type: 'payment.failed';
-  data: {
-    paymentId: string;
-    orderId: string;
-    errorCode: string;
-    errorMessage: string;
-  };
-}
-
-/**
- * Auction events
- */
-export interface AuctionCreatedEvent extends DomainEvent {
-  type: 'auction.created';
-  data: {
-    auctionId: string;
-    loanId: string;
-    startPrice: number;
-    reservePrice: number;
-  };
-}
-
-export interface BidPlacedEvent extends DomainEvent {
-  type: 'bid.placed';
-  data: {
-    auctionId: string;
-    bidderId: string;
-    bidAmount: number;
-  };
-}
-
-export interface AuctionEndedEvent extends DomainEvent {
-  type: 'auction.ended';
-  data: {
-    auctionId: string;
-    winnerId?: string;
-    finalBid?: number;
-    success: boolean;
-  };
-}
-
-/**
  * Union of all domain events
  */
 export type AnyDomainEvent =
-  | RequestCreatedEvent
-  | RequestSubmittedEvent
-  | RequestAssignedEvent
-  | OfferCreatedEvent
-  | OfferAcceptedEvent
-  | LoanDisbursedEvent
-  | PaymentRecordedEvent
-  | PaymentFailedEvent
-  | AuctionCreatedEvent
-  | BidPlacedEvent
-  | AuctionEndedEvent;
+  | RequestEvent
+  | LoanEvent
+  | AuctionEvent
+  | PaymentEvent;
 
 /**
  * EventBus - Simple in-process event bus using Node EventEmitter

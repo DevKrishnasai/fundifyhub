@@ -8,7 +8,7 @@ import { WORKFLOW_EVENTS, MODAL_COMPONENTS, AGENT_ISSUE_TYPES, LOCAL_STORAGE_KEY
 import { getDistrictName, type StagedPhoto } from '@/lib/type-guards';
 
 // Import all modals
-import CreateOfferModal from '../CreateOfferModal';
+import CreateOfferModal from '../../features/requests/OfferCard';
 import AssignAgentModal from '../AssignAgentModal';
 import {
   RejectModal,
