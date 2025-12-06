@@ -1,4 +1,4 @@
-import { TEMPLATE_NAMES, type TemplateDefinitionType } from '@fundifyhub/types';
+import { NotificationTemplateName, type NotificationTemplateDefinition } from '@fundifyhub/types';
 
 import adminUserCreated from './templates/adminUserCreated';
 import assetPledge from './templates/assetPledge';
@@ -11,19 +11,19 @@ import requestStatusNotifications from './templates/requestStatusNotifications';
 import requestSubmitted from './templates/requestSubmitted';
 import welcome from './templates/welcome';
 
-type TemplateRegistry = Partial<{ [K in TEMPLATE_NAMES]: TemplateDefinitionType<K> }>;
+type TemplateRegistry = Partial<{ [K in NotificationTemplateName]: NotificationTemplateDefinition<K> }>;
 
 const TEMPLATE_REGISTRY: TemplateRegistry = {
-	[TEMPLATE_NAMES.ADMIN_USER_CREATED]: adminUserCreated,
-	[TEMPLATE_NAMES.ASSET_PLEDGE]: assetPledge,
-	[TEMPLATE_NAMES.EMI_OVERDUE]: emiOverdue,
-	[TEMPLATE_NAMES.EMI_REMINDER]: emiReminder,
-	[TEMPLATE_NAMES.LOGIN_ALERT]: loginAlert,
-	[TEMPLATE_NAMES.OTP_VERIFICATION]: otpVerification,
-	[TEMPLATE_NAMES.PASSWORD_RESET]: passwordReset,
-	[TEMPLATE_NAMES.REQUEST_STATUS_NOTIFICATIONS]: requestStatusNotifications,
-	[TEMPLATE_NAMES.REQUEST_SUBMITTED]: requestSubmitted,
-	[TEMPLATE_NAMES.WELCOME]: welcome,
+	[NotificationTemplateName.ADMIN_USER_CREATED]: adminUserCreated,
+	[NotificationTemplateName.ASSET_PLEDGE]: assetPledge,
+	[NotificationTemplateName.EMI_OVERDUE]: emiOverdue,
+	[NotificationTemplateName.EMI_REMINDER]: emiReminder,
+	[NotificationTemplateName.LOGIN_ALERT]: loginAlert,
+	[NotificationTemplateName.OTP_VERIFICATION]: otpVerification,
+	[NotificationTemplateName.PASSWORD_RESET]: passwordReset,
+	[NotificationTemplateName.REQUEST_STATUS_UPDATE]: requestStatusNotifications,
+	[NotificationTemplateName.REQUEST_SUBMITTED]: requestSubmitted,
+	[NotificationTemplateName.WELCOME]: welcome,
 };
 
 export default TEMPLATE_REGISTRY;

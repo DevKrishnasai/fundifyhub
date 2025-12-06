@@ -13,7 +13,7 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { PasswordResetPayloadType } from '@fundifyhub/types';
+import { PasswordResetPayload } from '@fundifyhub/types';
 
 /* --------------------------------- EMAIL --------------------------------- */
 const PasswordResetEmail = ({
@@ -24,7 +24,7 @@ const PasswordResetEmail = ({
   supportUrl,
   logoUrl,
   companyUrl,
-}: PasswordResetPayloadType) => (
+}: PasswordResetPayload) => (
   <Html lang="en">
     <Head />
     <Preview>
@@ -111,8 +111,8 @@ const PasswordResetEmail = ({
 );
 
 /* --------------------------- RENDER FUNCTION ---------------------------- */
-export const renderEmail = (vars: PasswordResetPayloadType) => {
-  const props: PasswordResetPayloadType = {
+export const renderEmail = (vars: PasswordResetPayload) => {
+  const props: PasswordResetPayload = {
     email: vars.email,
     phoneNumber: vars.phoneNumber,
     customerName: vars.customerName,

@@ -726,3 +726,22 @@ export type TypedNotificationRequest<T extends NotificationTemplate> = Omit<
   templateName: T['name'];
   variables: ExtractTemplateVariables<T>;
 };
+
+export interface InAppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  actionUrl?: string | null;
+  icon?: string | null;
+  category: NotificationCategory;
+  priority: NotificationPriority;
+  isRead: boolean;
+  readAt?: Date | null;
+  isArchived: boolean;
+  archivedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  metadata?: Record<string, any> | null;
+}
+

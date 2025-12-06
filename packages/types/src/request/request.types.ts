@@ -6,7 +6,7 @@
 import type { UserType } from '../auth/auth.types';
 import type { LoanType, EMIScheduleType, PaymentType, PaymentOrderType } from '../loan/loan.types';
 import type { DocumentType } from '../document/document.types';
-import type { DistrictType } from '../types';
+import type { DistrictType } from '../geography/geography.types';
 
 // ============================================
 // ASSET TYPE
@@ -329,4 +329,25 @@ export interface DisbursementMetadata {
 export interface HistoryEventDescription {
   key: string;
   value: string;
+}
+
+// Aliases for backward compatibility
+export type Request = RequestType;
+export type Asset = AssetType;
+export type Inspection = InspectionType;
+
+
+export interface CommentWithAuthor extends CommentType {
+  author: UserType;
+}
+
+export interface RequestWithRelations extends RequestType {
+  customer?: UserType;
+  loan?: LoanType | null;
+}
+
+export interface RequestDetailWithLoan extends RequestType {
+  loan?: LoanType | null;
+  documents?: DocumentType[];
+  comments?: CommentWithAuthor[];
 }

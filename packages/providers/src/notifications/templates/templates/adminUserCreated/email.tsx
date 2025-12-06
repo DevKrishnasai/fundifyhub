@@ -13,22 +13,19 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { AdminUserCreatedPayloadType } from '@fundifyhub/types';
+import { AdminUserCreatedPayload } from '@fundifyhub/types';
 
 /* --------------------------------- EMAIL --------------------------------- */
 const AdminUserCreatedEmail = ({
-  customerName,
-  tempPassword,
+  name,
+  temporaryPassword,
   loginUrl,
-  resetPasswordUrl,
   companyName,
   supportUrl,
   logoUrl,
   companyUrl,
-  createdByAdmin,
-  assignedRoles,
-  assignedDistricts,
-}: AdminUserCreatedPayloadType) => (
+  role,
+}: AdminUserCreatedPayload) => (
   <Html lang="en">
     <Head />
     <Preview>
@@ -59,34 +56,31 @@ const AdminUserCreatedEmail = ({
 
           <Heading style={heading}>Welcome to {companyName}!</Heading>
 
-          <Text style={leadText}>Hi {customerName},</Text>
+          <Text style={leadText}>Hi {name},</Text>
 
           <Text style={text}>
-            An account has been created for you by {createdByAdmin}. You can now access the {companyName} platform.
+            An account has been created for you. You can now access the {companyName} platform.
           </Text>
 
           <Section style={credentialsCard}>
             <Text style={credentialsTitle}>Your Login Credentials</Text>
-            <Text style={credentialsLabel}>Temporary Password:</Text>
-            <Text style={credentialsValue}>{tempPassword}</Text>
+            {temporaryPassword && (
+              <>
+                <Text style={credentialsLabel}>Temporary Password:</Text>
+                <Text style={credentialsValue}>{temporaryPassword}</Text>
+              </>
+            )}
             <Text style={credentialsNote}>
               ⚠️ Please change your password after logging in for the first time.
             </Text>
           </Section>
 
-          {(assignedRoles.length > 0 || assignedDistricts.length > 0) && (
+          {role && (
             <Section style={assignmentCard}>
               <Text style={assignmentTitle}>Your Assignments</Text>
-              {assignedRoles.length > 0 && (
-                <Text style={assignmentText}>
-                  <strong>Roles:</strong> {assignedRoles.join(', ')}
-                </Text>
-              )}
-              {assignedDistricts.length > 0 && (
-                <Text style={assignmentText}>
-                  <strong>Districts:</strong> {assignedDistricts.join(', ')}
-                </Text>
-              )}
+              <Text style={assignmentText}>
+                <strong>Role:</strong> {role}
+              </Text>
             </Section>
           )}
 
@@ -103,11 +97,7 @@ const AdminUserCreatedEmail = ({
 
           <Section style={securityNote}>
             <Text style={mutedText}>
-              🔒 <strong>Security Tip:</strong> After logging in, we recommend you{' '}
-              <a href={resetPasswordUrl} style={link}>
-                reset your password
-              </a>{' '}
-              to something more memorable and secure.
+              🔒 <strong>Security Tip:</strong> After logging in, we recommend you reset your password to something more memorable and secure.
             </Text>
           </Section>
         </Section>
@@ -138,24 +128,8 @@ const AdminUserCreatedEmail = ({
 );
 
 /* --------------------------- RENDER FUNCTION ---------------------------- */
-export const renderEmail = (vars: AdminUserCreatedPayloadType) => {
-  const props: AdminUserCreatedPayloadType = {
-    email: vars.email,
-    phoneNumber: vars.phoneNumber,
-    customerName: vars.customerName,
-    tempPassword: vars.tempPassword,
-    loginUrl: vars.loginUrl,
-    resetPasswordUrl: vars.resetPasswordUrl,
-    companyName: vars.companyName,
-    supportUrl: vars.supportUrl,
-    logoUrl: vars.logoUrl,
-    companyUrl: vars.companyUrl,
-    createdByAdmin: vars.createdByAdmin,
-    assignedRoles: vars.assignedRoles,
-    assignedDistricts: vars.assignedDistricts,
-  };
-
-  return render(<AdminUserCreatedEmail {...props} />);
+export const renderEmail = (vars: AdminUserCreatedPayload) => {
+  return render(<AdminUserCreatedEmail {...vars} />);
 };
 
 export default renderEmail;

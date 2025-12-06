@@ -13,7 +13,7 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { AssetPledgePayloadType } from '@fundifyhub/types';
+import { AssetPledgePayload } from '@fundifyhub/types';
 
 const AssetPledgeEmail = ({
   email,
@@ -27,7 +27,7 @@ const AssetPledgeEmail = ({
   timestamp,
   adminDashboardUrl,
   supportUrl
-}: AssetPledgePayloadType) => (
+}: AssetPledgePayload) => (
   <Html lang="en">
     <Head />
     <Preview>New asset pledge by {customerName || 'Customer'} — {assetName}</Preview>
@@ -78,7 +78,7 @@ const AssetPledgeEmail = ({
   </Html>
 );
 
-export const renderEmail = (vars: AssetPledgePayloadType) => {
+export const renderEmail = (vars: AssetPledgePayload) => {
   return render(<AssetPledgeEmail {...vars} />);
 };
 

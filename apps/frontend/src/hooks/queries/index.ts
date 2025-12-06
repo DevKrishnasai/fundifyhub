@@ -19,6 +19,9 @@ export * from './useLoans'
 // User management hooks
 export * from './useUsers'
 
+// Settings hooks
+export * from './useSettings'
+
 // Dashboard hooks
 export * from './useDashboard'
 

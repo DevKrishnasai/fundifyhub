@@ -10,26 +10,33 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import logger from '../../../utils/logger';
 import { asyncHandler } from '../middlewares';
-
-const createRequestSchema = z.object({
-  assetDescription: z.string().min(10),
-  requestedAmount: z.number().positive(),
-  estimatedAssetValue: z.number().positive(),
-  assetType: z.string().min(1),
-  districtId: z.string().min(1),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
+import { 
+  createRequestSchema, 
+  assignAgentSchema,
+  assignAdminSchema,
+  createOfferSchema,
+  scheduleInspectionSchema,
+  uploadDocumentsSchema,
+  API_MESSAGES, 
+  type PaginationParams 
+} from '@fundifyhub/types';
 
 export const requestsController = {
   createRequest: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
     const data = createRequestSchema.parse(req.body);
 
-    const request = await requestsService.create(req.user.id, data);
+    // Map district to districtId if needed, or ensure service handles it
+    // The schema has 'district' (string), service might expect 'districtId'
+    // We'll pass data as is and let service handle mapping or update service
+    const request = await requestsService.create(req.user.id, {
+      ...data,
+      districtId: data.district, // Map district to districtId
+    });
 
     logger.info('[RequestsController] Request created', { requestId: request.id, userId: req.user.id });
 
@@ -42,7 +49,7 @@ export const requestsController = {
 
   getRequest: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
@@ -58,7 +65,7 @@ export const requestsController = {
 
   listRequests: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
@@ -86,7 +93,7 @@ export const requestsController = {
 
   submitForReview: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
@@ -105,12 +112,12 @@ export const requestsController = {
 
   assignAgent: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
     const { id } = req.params;
-    const { agentId } = z.object({ agentId: z.string() }).parse(req.body);
+    const { agentId } = assignAgentSchema.parse(req.body);
 
     const request = await requestsService.assignAgent({ requestId: id, agentId });
 
@@ -125,12 +132,12 @@ export const requestsController = {
 
   assignAdmin: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
     const { id } = req.params;
-    const { adminId } = z.object({ adminId: z.string() }).parse(req.body);
+    const { adminId } = assignAdminSchema.parse(req.body);
 
     const request = await requestsService.assignAdmin({ requestId: id, adminId });
 
@@ -145,17 +152,12 @@ export const requestsController = {
 
   createOffer: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
     const { id } = req.params;
-    const offerData = z.object({
-      interestRate: z.number().positive(),
-      tenureMonths: z.number().int().positive(),
-      processingFeeAmount: z.number().nonnegative().optional(),
-      ltvPercentage: z.number().nonnegative().optional(),
-    }).parse(req.body);
+    const offerData = createOfferSchema.parse(req.body);
 
     const offer = await requestsService.createOffer({
       requestId: id,
@@ -176,7 +178,7 @@ export const requestsController = {
 
   acceptOffer: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
@@ -195,15 +197,12 @@ export const requestsController = {
 
   scheduleInspection: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
     const { id } = req.params;
-    const { scheduledAt, notes } = z.object({
-      scheduledAt: z.string().transform(s => new Date(s)),
-      notes: z.string().optional(),
-    }).parse(req.body);
+    const { scheduledAt, notes } = scheduleInspectionSchema.parse(req.body);
 
     const request = await requestsService.scheduleInspection(id, scheduledAt);
 
@@ -218,21 +217,12 @@ export const requestsController = {
 
   uploadDocuments: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
     const { id } = req.params;
-    const { documents } = z.object({
-      documents: z.array(z.object({
-        documentType: z.string(),
-        fileUrl: z.string(), // UploadThing file key
-        fileName: z.string(),
-        fileSize: z.number().optional(),
-        mimeType: z.string().optional(),
-        category: z.string().optional(),
-      })),
-    }).parse(req.body);
+    const { documents } = uploadDocumentsSchema.parse(req.body);
 
     const request = await requestsService.uploadDocuments(id, documents);
 
@@ -247,7 +237,7 @@ export const requestsController = {
 
   disburse: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 

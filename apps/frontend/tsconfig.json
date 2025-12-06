@@ -6,6 +6,12 @@
         "name": "next"
       }
     ],
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
     "lib": [
       "dom",
       "dom.iterable",

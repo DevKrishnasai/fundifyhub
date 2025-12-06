@@ -4,4 +4,7 @@
  */
 
 export * from './notification.constants';
-// notification-types.ts is already well-structured and is exported from root
+export * from './notification.schemas';
+export * from './notification-types';
+export * from './service.types';
+export * from './template.types';

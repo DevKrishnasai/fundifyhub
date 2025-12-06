@@ -68,7 +68,7 @@ function StatCard({
   value: string | number
   icon: React.ReactNode
   iconColor?: string
-  trend?: { value: number; isPositive: boolean }
+  trend?: { value: number; isPositive: boolean } | undefined
   subtitle?: string
 }) {
   return (

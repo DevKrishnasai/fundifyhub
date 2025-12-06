@@ -8,14 +8,19 @@
 import { loansService } from '../../../domain/loans';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { PAYMENT_METHOD } from '@fundifyhub/types';
+import { 
+  PAYMENT_METHOD, 
+  recordPaymentSchema, 
+  API_MESSAGES, 
+  type PaginationParams 
+} from '@fundifyhub/types';
 import logger from '../../../utils/logger';
 import { asyncHandler } from '../middlewares';
 
 export const loansController = {
   getLoan: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
@@ -31,7 +36,7 @@ export const loansController = {
 
   listLoans: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
@@ -52,7 +57,7 @@ export const loansController = {
 
   getEMISchedule: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
@@ -68,23 +73,18 @@ export const loansController = {
 
   makePayment: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json({ success: false, message: API_MESSAGES.ERROR.UNAUTHORIZED });
       return;
     }
 
     const { id } = req.params;
-    const paymentData = z.object({
-      amount: z.number().positive(),
-      paymentMethod: z.nativeEnum(PAYMENT_METHOD),
-      transactionReference: z.string(),
-      remarks: z.string().optional(),
-    }).parse(req.body);
+    const paymentData = recordPaymentSchema.parse(req.body);
 
     const { payment } = await loansService.applyEMIPayment({
       loanId: id,
       amount: paymentData.amount,
       paymentMethod: paymentData.paymentMethod,
-      transactionReference: paymentData.transactionReference,
+      transactionReference: paymentData.paymentReference,
       processedBy: req.user.id,
       remarks: paymentData.remarks,
     });

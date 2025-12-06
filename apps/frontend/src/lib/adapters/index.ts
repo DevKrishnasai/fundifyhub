@@ -1,11 +1,2 @@
-export { auctionsAdapter } from './auctions-adapter';
-export type { MyBidsFilters, MyBidsResponse } from './auctions-adapter';
-export { authAdapter } from './auth-adapter';
-export type { LoginPayload, RegisterPayload, ChangePasswordPayload } from './auth-adapter';
-export { documentsAdapter } from './documents-adapter';
-export { geographyAdapter } from './geography-adapter';
-export { loansAdapter } from './loans-adapter';
-export { notificationsAdapter } from './notifications-adapter';
-export { paymentsAdapter } from './payments-adapter';
-export { realtimeAdapter } from './realtime-adapter';
-export { requestsAdapter } from './requests-adapter';
+export * from './auctions-adapter';
+export * from './notifications-adapter';

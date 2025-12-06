@@ -233,3 +233,42 @@ export interface LoanCompletedMetadata {
   totalEmisPaid: number;
   completedAt: string;
 }
+
+// Aliases for backward compatibility
+export type Loan = LoanType;
+export type EMISchedule = EMIScheduleType;
+export type Payment = PaymentType;
+export type PaymentOrder = PaymentOrderType;
+
+export interface AdminEmiScheduleSnapshot {
+  monthlyPayment: number;
+  totalInterest: number;
+  totalAmount: number;
+  emiSchedule: {
+    emiNumber: number;
+    dueDate: Date;
+    emiAmount: number;
+    principalAmount: number;
+    interestAmount: number;
+  }[];
+}
+
+export interface NormalizedEmiData {
+  monthlyPayment: number;
+  totalInterest: number;
+  totalPayment: number;
+  emiSchedule: {
+    installment: number;
+    paymentDate: Date;
+    paymentAmount: number;
+    principal: number;
+    interest: number;
+  }[];
+}
+
+export function isAdminEmiScheduleSnapshot(obj: any): obj is AdminEmiScheduleSnapshot {
+  return obj && typeof obj === 'object' && 'emiSchedule' in obj && Array.isArray(obj.emiSchedule);
+}
+
+
+

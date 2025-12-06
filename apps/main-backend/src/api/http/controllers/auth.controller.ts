@@ -18,6 +18,15 @@ import { asyncHandler } from '../middlewares';
 import { authService } from '../../../domain/auth';
 import { z } from 'zod';
 import logger from '../../../utils/logger';
+import { 
+  backendRegisterSchema, 
+  loginSchema, 
+  forgotPasswordSchema,
+  backendResetPasswordSchema,
+  verifyEmailSchema,
+  COOKIE_NAMES, 
+  API_MESSAGES 
+} from '@fundifyhub/types';
 
 /**
  * POST /auth/register
@@ -25,24 +34,14 @@ import logger from '../../../utils/logger';
  * 
  * TODO: (agent) Implement handler
  */
-const registerSchema = z.object({
-  email: z.string().email(),
-  phoneNumber: z.string().min(10),
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  password: z.string().min(8),
-  role: z.enum(['CUSTOMER', 'AGENT', 'DISTRICT_ADMIN', 'STATE_ADMIN', 'SUPER_ADMIN']),
-  districtIds: z.array(z.string()).optional(),
-});
-
 export const registerHandler = asyncHandler(async (req: Request, res: Response) => {
-  const data = registerSchema.parse(req.body);
+  const data = backendRegisterSchema.parse(req.body);
 
   const result = await authService.register(data);
 
   res.status(201).json({
     success: true,
-    message: 'Registration successful. Please check your email to verify your account.',
+    message: API_MESSAGES.SUCCESS.REGISTER,
     data: result,
   });
 });
@@ -53,18 +52,13 @@ export const registerHandler = asyncHandler(async (req: Request, res: Response) 
  * 
  * TODO: (agent) Implement handler
  */
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
-
 export const loginHandler = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = loginSchema.parse(req.body);
 
   const result = await authService.login({ email, password });
 
   // Set refresh token in httpOnly cookie
-  res.cookie('refreshToken', result.refreshToken, {
+  res.cookie(COOKIE_NAMES.REFRESH_TOKEN, result.refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
@@ -73,7 +67,7 @@ export const loginHandler = asyncHandler(async (req: Request, res: Response) => 
 
   res.status(200).json({
     success: true,
-    message: 'Login successful',
+    message: API_MESSAGES.SUCCESS.LOGIN,
     data: {
       accessToken: result.accessToken,
       user: result.user,
@@ -88,12 +82,12 @@ export const loginHandler = asyncHandler(async (req: Request, res: Response) => 
  * TODO: (agent) Implement handler
  */
 export const refreshTokenHandler = asyncHandler(async (req: Request, res: Response) => {
-  const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+  const refreshToken = req.cookies[COOKIE_NAMES.REFRESH_TOKEN] || req.body.refreshToken;
 
   if (!refreshToken) {
     res.status(401).json({
       success: false,
-      message: 'Refresh token required',
+      message: API_MESSAGES.ERROR.REFRESH_TOKEN_REQUIRED,
     });
     return;
   }
@@ -114,18 +108,18 @@ export const refreshTokenHandler = asyncHandler(async (req: Request, res: Respon
  * TODO: (agent) Implement handler
  */
 export const logoutHandler = asyncHandler(async (req: Request, res: Response) => {
-  const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+  const refreshToken = req.cookies[COOKIE_NAMES.REFRESH_TOKEN] || req.body.refreshToken;
 
   if (refreshToken) {
     await authService.logout(refreshToken);
   }
 
   // Clear refresh token cookie
-  res.clearCookie('refreshToken');
+  res.clearCookie(COOKIE_NAMES.REFRESH_TOKEN);
 
   res.status(200).json({
     success: true,
-    message: 'Logout successful',
+    message: API_MESSAGES.SUCCESS.LOGOUT,
   });
 });
 
@@ -135,18 +129,14 @@ export const logoutHandler = asyncHandler(async (req: Request, res: Response) =>
  * 
  * TODO: (agent) Implement handler
  */
-const passwordResetRequestSchema = z.object({
-  email: z.string().email(),
-});
-
 export const requestPasswordResetHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { email } = passwordResetRequestSchema.parse(req.body);
+  const { email } = forgotPasswordSchema.parse(req.body);
 
   await authService.requestPasswordReset({ email });
 
   res.status(200).json({
     success: true,
-    message: 'If the email exists, a password reset link has been sent.',
+    message: API_MESSAGES.SUCCESS.PASSWORD_RESET_EMAIL,
   });
 });
 
@@ -156,19 +146,14 @@ export const requestPasswordResetHandler = asyncHandler(async (req: Request, res
  * 
  * TODO: (agent) Implement handler
  */
-const passwordResetConfirmSchema = z.object({
-  token: z.string().min(1),
-  newPassword: z.string().min(8),
-});
-
 export const confirmPasswordResetHandler = asyncHandler(async (req: Request, res: Response) => {
-  const data = passwordResetConfirmSchema.parse(req.body);
+  const data = backendResetPasswordSchema.parse(req.body);
 
   await authService.confirmPasswordReset(data);
 
   res.status(200).json({
     success: true,
-    message: 'Password reset successful. You can now login with your new password.',
+    message: API_MESSAGES.SUCCESS.PASSWORD_RESET_SUCCESS,
   });
 });
 
@@ -178,10 +163,6 @@ export const confirmPasswordResetHandler = asyncHandler(async (req: Request, res
  * 
  * TODO: (agent) Implement handler
  */
-const verifyEmailSchema = z.object({
-  token: z.string().min(1),
-});
-
 export const verifyEmailHandler = asyncHandler(async (req: Request, res: Response) => {
   const { token } = verifyEmailSchema.parse(req.body);
 
@@ -189,7 +170,7 @@ export const verifyEmailHandler = asyncHandler(async (req: Request, res: Respons
 
   res.status(200).json({
     success: true,
-    message: 'Email verified successfully',
+    message: API_MESSAGES.SUCCESS.EMAIL_VERIFIED,
     data: result,
   });
 });
@@ -204,7 +185,7 @@ export const getCurrentUserHandler = asyncHandler(async (req: Request, res: Resp
   if (!req.user) {
     res.status(401).json({
       success: false,
-      message: 'Not authenticated',
+      message: API_MESSAGES.ERROR.UNAUTHORIZED,
     });
     return;
   }

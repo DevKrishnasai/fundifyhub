@@ -1,16 +1,11 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useCallback } from 'react';
 import { useSocket, useSocketEvent, useToast } from '@/hooks';
-import { getWithResult } from '@/lib/api-client';
-import { BACKEND_API_CONFIG } from '@/lib/urls';
 import { ServerEvent, type RequestUpdatedPayload, type RequestStatusChangedPayload, type CommentAddedPayload, type DocumentUploadedPayload } from '@fundifyhub/types';
 import type { RequestType } from '@fundifyhub/types';
-
-// API response type
-interface GetRequestResponse {
-  request: RequestType;
-}
+import { useRequest as useRequestQuery, requestKeys } from '@/hooks/queries/useRequests';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Define the shape of our context
 interface RequestContextType {
@@ -31,37 +26,22 @@ interface RequestProviderProps {
 export function RequestProvider({ requestId, children }: RequestProviderProps) {
   const { isConnected, joinRequest, leaveRequest } = useSocket();
   const { success: toastSuccess } = useToast();
+  const queryClient = useQueryClient();
   
-  const [request, setRequest] = useState<RequestType | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use React Query hook
+  const { 
+    data: request, 
+    isLoading, 
+    error: queryError, 
+    refetch 
+  } = useRequestQuery(requestId);
 
-  // 1. Data Fetching Logic
-  const loadRequest = useCallback(async () => {
-    try {
-      const result = await getWithResult<GetRequestResponse>(BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(requestId));
-      if (result.ok) {
-        setRequest(result.data.request);
-        setError(null);
-      } else {
-        setError(result.error?.message || 'Failed to load request');
-      }
-    } catch (err) {
-      setError('Network error while loading request');
-    }
-  }, [requestId]);
+  const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load request') : null;
 
-  // Initial load
-  useEffect(() => {
-    let mounted = true;
-    async function init() {
-      setIsLoading(true);
-      await loadRequest();
-      if (mounted) setIsLoading(false);
-    }
-    init();
-    return () => { mounted = false; };
-  }, [loadRequest]);
+  // Wrapper for refresh to match interface
+  const refresh = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   // 2. Socket Connection Logic
   useEffect(() => {
@@ -75,6 +55,11 @@ export function RequestProvider({ requestId, children }: RequestProviderProps) {
     };
   }, [isConnected, requestId, joinRequest, leaveRequest]);
 
+  // Helper to invalidate query
+  const invalidateRequest = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: requestKeys.detail(requestId) });
+  }, [queryClient, requestId]);
+
   // 3. Real-time Event Listeners
   // When status changes, we reload the data and show a toast
   useSocketEvent<RequestUpdatedPayload>(
@@ -83,20 +68,20 @@ export function RequestProvider({ requestId, children }: RequestProviderProps) {
       console.log('[RequestContext] Received REQUEST_UPDATED:', data);
       if (data.requestId === requestId) {
         console.log('[RequestContext] Request matches, reloading...');
-        loadRequest().then(() => {
-          // Compare stage/subStatus for change detection
-          const stageChanged = data.stage && data.stage !== request?.stage;
-          const subStatusChanged = data.subStatus && data.subStatus !== request?.subStatus;
-          // Fallback to legacy status comparison for backwards compat
-          const statusChanged = data.status && data.status !== request?.currentStatus;
-          
-          if (stageChanged || subStatusChanged || statusChanged) {
-            toastSuccess(data.message || `Status changed to ${data.stage || data.status}`);
-          }
-        });
+        invalidateRequest();
+        
+        // Compare stage/subStatus for change detection
+        const stageChanged = data.stage && request && data.stage !== request.stage;
+        const subStatusChanged = data.subStatus && request && data.subStatus !== request.subStatus;
+        // Fallback to legacy status comparison for backwards compat
+        const statusChanged = data.status && request && data.status !== request.currentStatus;
+        
+        if (stageChanged || subStatusChanged || statusChanged) {
+          toastSuccess(data.message || `Status changed to ${data.stage || data.status}`);
+        }
       }
     },
-    [requestId, request?.stage, request?.subStatus, request?.currentStatus, loadRequest, toastSuccess]
+    [requestId, request, invalidateRequest, toastSuccess]
   );
 
   // Listen for status changes
@@ -106,28 +91,27 @@ export function RequestProvider({ requestId, children }: RequestProviderProps) {
       console.log('[RequestContext] Received REQUEST_STATUS_CHANGED:', data);
       if (data.requestId === requestId) {
         console.log('[RequestContext] Request matches, reloading...');
-        loadRequest().then(() => {
-          toastSuccess(`Status changed to ${data.newStatus.replace(/_/g, ' ')}`);
-        });
+        invalidateRequest();
+        toastSuccess(`Status changed to ${data.newStatus.replace(/_/g, ' ')}`);
       }
     },
-    [requestId, loadRequest, toastSuccess]
+    [requestId, invalidateRequest, toastSuccess]
   );
 
   // Reload on comments or documents
   useSocketEvent<CommentAddedPayload>(ServerEvent.REQUEST_COMMENT_ADDED, (data) => {
-    if (data.requestId === requestId) loadRequest();
-  }, [requestId, loadRequest]);
+    if (data.requestId === requestId) invalidateRequest();
+  }, [requestId, invalidateRequest]);
 
   useSocketEvent<DocumentUploadedPayload>(ServerEvent.REQUEST_DOCUMENT_UPLOADED, (data) => {
-    if (data.requestId === requestId) loadRequest();
-  }, [requestId, loadRequest]);
+    if (data.requestId === requestId) invalidateRequest();
+  }, [requestId, invalidateRequest]);
 
   const value = {
-    request,
+    request: request || null,
     isLoading,
     error,
-    refresh: loadRequest,
+    refresh,
     isConnected
   };
 

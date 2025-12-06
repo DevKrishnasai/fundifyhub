@@ -33,7 +33,7 @@ export function normalizeEmiCalcResult(result: EMICalcResult): NormalizedEmiData
     totalPayment: result.totalPayment,
     emiSchedule: result.emiSchedule.map(emi => ({
       installment: emi.installment,
-      paymentDate: emi.paymentDate,
+      paymentDate: new Date(emi.paymentDate),
       paymentAmount: emi.paymentAmount,
       principal: emi.principal,
       interest: emi.interest,

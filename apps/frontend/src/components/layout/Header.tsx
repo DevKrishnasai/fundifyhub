@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,8 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/AuthContext"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { apiClient } from "@/lib/api-client"
-import { BACKEND_API_CONFIG } from "@/lib/urls"
+import { useNotifications, useUnreadNotificationCount } from "@/hooks/queries"
 import {
   Bell,
   Search,
@@ -34,14 +33,6 @@ import {
 } from "lucide-react"
 import logger from "@/lib/logger"
 
-interface Notification {
-  id: string
-  title: string
-  message: string
-  isRead: boolean
-  createdAt: string
-}
-
 interface HeaderProps {
   onMenuClick?: () => void
   isMobileMenuOpen?: boolean
@@ -52,32 +43,14 @@ export function Header({ onMenuClick, isMobileMenuOpen, className }: HeaderProps
   const { user, logout, getDisplayName, isSuperAdmin, isDistrictAdmin, isAgent, isCustomer } = useAuth()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const notificationsQuery = useNotifications(
+    { limit: 5, page: 1 },
+    { enabled: Boolean(user), staleTime: 30_000 }
+  )
+  const unreadCountQuery = useUnreadNotificationCount({ enabled: Boolean(user) })
 
-  // Fetch notifications on mount
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const response = await apiClient.get(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.LIST, {
-        params: { limit: 5 }
-      })
-      const data = response.data?.data || response.data
-      setNotifications(data?.notifications || data || [])
-      
-      // Fetch unread count
-      const countRes = await apiClient.get(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.UNREAD_COUNT)
-      const countData = countRes.data?.data || countRes.data
-      setUnreadCount(countData?.unreadCount || countData?.count || 0)
-    } catch {
-      // Silent fail - notifications are not critical
-    }
-  }, [])
-
-  useEffect(() => {
-    if (user) {
-      fetchNotifications()
-    }
-  }, [user, fetchNotifications])
+  const notifications = useMemo(() => notificationsQuery.data?.notifications ?? [], [notificationsQuery.data])
+  const unreadCount = unreadCountQuery.data?.count ?? 0
 
   if (!user) return null
 
@@ -114,8 +87,8 @@ export function Header({ onMenuClick, isMobileMenuOpen, className }: HeaderProps
     return <User className="w-4 h-4" />
   }
 
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString)
+  const formatTimeAgo = (dateInput: string | Date) => {
+    const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
     const diffMins = Math.floor(diffMs / 60000)
@@ -220,25 +193,28 @@ export function Header({ onMenuClick, isMobileMenuOpen, className }: HeaderProps
             <DropdownMenuSeparator />
             <div className="max-h-80 overflow-y-auto">
               {notifications.length > 0 ? (
-                notifications.map((notification) => (
-                  <DropdownMenuItem 
-                    key={notification.id} 
-                    className="flex flex-col items-start gap-1 p-3 cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2 w-full">
-                      <p className="text-sm font-medium flex-1">{notification.title}</p>
-                      {!notification.isRead && (
-                        <Circle className="h-2 w-2 fill-primary text-primary" />
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                      {notification.message}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatTimeAgo(notification.createdAt)}
-                    </p>
-                  </DropdownMenuItem>
-                ))
+                notifications.map((notification) => {
+                  const isRead = notification.isRead ?? (notification as { read?: boolean }).read ?? false
+                  return (
+                    <DropdownMenuItem 
+                      key={notification.id} 
+                      className="flex flex-col items-start gap-1 p-3 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 w-full">
+                        <p className="text-sm font-medium flex-1">{notification.title}</p>
+                        {!isRead && (
+                          <Circle className="h-2 w-2 fill-primary text-primary" />
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {notification.message}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatTimeAgo(notification.createdAt)}
+                      </p>
+                    </DropdownMenuItem>
+                  )
+                })
               ) : (
                 <div className="p-4 text-center text-sm text-muted-foreground">
                   No notifications

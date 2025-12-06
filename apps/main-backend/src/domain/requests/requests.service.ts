@@ -17,7 +17,7 @@
  * @module domain/requests
  */
 
-import { prisma } from '@fundifyhub/prisma';
+import { prisma, AssetCondition } from '@fundifyhub/prisma';
 import { ValidationError, NotFoundError, ForbiddenError, BusinessRuleError, ErrorCode } from '@fundifyhub/utils';
 import type { Request, UserType } from '@fundifyhub/types';
 import { ROLES, REQUEST_STAGE, SUB_STATUS, TRANSFER_METHOD } from '@fundifyhub/types';
@@ -51,6 +51,10 @@ export interface CreateRequestInput {
   estimatedAssetValue: number;
   assetType: string;
   districtId: string;
+  brand: string;
+  model: string;
+  condition: string; // Will be cast to AssetCondition
+  purchaseYear: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -160,10 +164,10 @@ export class RequestsService {
           asset: {
             create: {
               assetType: input.assetType,
-              brand: '',
-              model: '',
-              condition: 'GOOD',
-              purchaseYear: new Date().getFullYear(),
+              brand: input.brand,
+              model: input.model,
+              condition: input.condition as AssetCondition,
+              purchaseYear: input.purchaseYear,
               description: input.assetDescription,
               estimatedValue: input.estimatedAssetValue,
             },

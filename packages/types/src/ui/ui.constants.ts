@@ -6,6 +6,58 @@
 import { REQUEST_STATUS } from '../request/request.constants';
 import { REQUEST_HISTORY_ACTION, REQUEST_HISTORY_CATEGORY } from '../request/request.constants';
 import { DOCUMENT_TYPE, DOCUMENT_CATEGORY, DOCUMENT_UPLOADER_ROLE } from '../document/document.constants';
+import { ROLES } from '../auth/auth.constants';
+import { PERMISSION } from '../auth/auth.utils';
+
+// ============================================
+// NAVIGATION ITEMS
+// ============================================
+
+export const NAV_ITEMS = [
+  {
+    title: 'Dashboard',
+    href: '/dashboard',
+    icon: 'LayoutDashboard',
+  },
+  {
+    title: 'Requests',
+    href: '/dashboard/requests',
+    icon: 'FileText',
+  },
+  {
+    title: 'Auctions',
+    href: '/dashboard/auctions',
+    icon: 'Gavel',
+  },
+  {
+    title: 'Users',
+    href: '/dashboard/users',
+    icon: 'Users',
+    roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN],
+    permissions: [PERMISSION.VIEW_ALL_USERS],
+  },
+  {
+    title: 'Analytics',
+    href: '/dashboard/analytics',
+    icon: 'BarChart',
+    roles: [ROLES.SUPER_ADMIN, ROLES.STATE_ADMIN],
+    permissions: [PERMISSION.VIEW_ANALYTICS],
+  },
+  {
+    title: 'Audit Logs',
+    href: '/dashboard/audit-logs',
+    icon: 'FileClock',
+    roles: [ROLES.SUPER_ADMIN],
+    permissions: [PERMISSION.VIEW_AUDIT_LOGS],
+  },
+  {
+    title: 'Settings',
+    href: '/dashboard/settings',
+    icon: 'Settings',
+    roles: [ROLES.SUPER_ADMIN],
+    permissions: [PERMISSION.MANAGE_SETTINGS],
+  },
+];
 
 // ============================================
 // CLIENT CONSTANTS

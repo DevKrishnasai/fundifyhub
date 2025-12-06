@@ -135,9 +135,9 @@ export default function AuctionDetailPage() {
 
   const isUserHighestBidder = useMemo(() => {
     if (!auction?.bids?.length || !user) return false
-    const highestBid = auction.bids.reduce((max: typeof auction.bids[0], bid: typeof auction.bids[0]) => 
-      bid.amount > max.amount ? bid : max, auction.bids[0])
-    return highestBid?.bidder?.id === user.id
+    const highestBid = auction.bids.reduce((max, bid) => 
+      bid.amount > max.amount ? bid : max, auction.bids[0]!)
+    return highestBid?.bidderId === user.id
   }, [auction?.bids, user])
 
   // Socket.IO: Join/Leave auction room for real-time updates
@@ -175,7 +175,7 @@ export default function AuctionDetailPage() {
   // Socket.IO: Handle outbid notification
   const handleOutbid = useCallback((data: AuctionOutbidPayload) => {
     if (data.auctionId !== auctionId) return
-    toastError(`You've been outbid! New high bid: ${formatCurrency(data.newHighBid)}`)
+    toastError(`You've been outbid! New high bid: ${formatCurrency(data.newBidAmount)}`)
   }, [auctionId, toastError])
 
   // Socket.IO: Handle auction ended
@@ -184,7 +184,7 @@ export default function AuctionDetailPage() {
     refetch()
     
     if (data.winnerId === user?.id) {
-      toast(`🎉 Congratulations! You won the auction for ${formatCurrency(data.finalPrice || 0)}!`)
+      toast(`🎉 Congratulations! You won the auction for ${formatCurrency(data.winningBid || 0)}!`)
     } else if (data.status === 'SOLD') {
       toast(`Auction ended. Winner: ${data.winnerName}`)
     } else {
@@ -251,9 +251,9 @@ export default function AuctionDetailPage() {
         auctionId, 
         payload: { amount } 
       })
-      toast(`Bid placed successfully! Current high bid: ${formatCurrency(result.currentHighBid)}`)
+      toast(`Bid placed successfully! Current high bid: ${formatCurrency(result.auction.currentHighBid)}`)
       setBidAmount('')
-      if (result.wasExtended) {
+      if (result.auction.status === 'EXTENDED') {
         toast('Auction time extended!')
       }
     } catch (err) {
@@ -419,7 +419,7 @@ export default function AuctionDetailPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-4">
                   <div className="md:col-span-2 relative h-80">
                     <Image
-                      src={assetPhotos[0]}
+                      src={assetPhotos[0]!}
                       alt={auction.title}
                       fill
                       className="object-cover rounded-lg"

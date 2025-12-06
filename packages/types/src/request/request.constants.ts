@@ -50,6 +50,19 @@ export enum REQUEST_STATUS {
 }
 
 // ============================================
+// ASSET STATUS
+// ============================================
+
+export enum ASSET_STATUS {
+  PENDING_VERIFICATION = 'PENDING_VERIFICATION',
+  VERIFIED = 'VERIFIED',
+  REJECTED = 'REJECTED',
+  FORFEITED = 'FORFEITED',
+  SOLD = 'SOLD',
+  RETURNED = 'RETURNED',
+}
+
+// ============================================
 // ASSET TYPES
 // ============================================
 
@@ -327,3 +340,4 @@ export const OFFER_FORM_CONSTRAINTS = {
   MIN_TENURE: 1,
   MIN_INTEREST_RATE: 0,
 } as const;
+

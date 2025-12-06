@@ -13,14 +13,14 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { RequestSubmittedPayloadType } from '@fundifyhub/types';
+import { RequestSubmittedPayload } from '@fundifyhub/types';
 
 /* --------------------------------- EMAIL --------------------------------- */
 const RequestSubmittedEmail = ({
   customerName,
   requestId,
   assetName,
-  amount,
+  requestedAmount,
   district,
   submittedAt,
   companyName,
@@ -28,7 +28,7 @@ const RequestSubmittedEmail = ({
   supportUrl,
   logoUrl,
   companyUrl,
-}: RequestSubmittedPayloadType & { logoUrl?: string; companyUrl?: string }) => (
+}: RequestSubmittedPayload & { logoUrl?: string; companyUrl?: string }) => (
   <Html lang="en">
     <Head />
 
@@ -78,7 +78,7 @@ const RequestSubmittedEmail = ({
             <Text style={infoRow}><strong>Request ID:</strong> {requestId}</Text>
             <Text style={infoRow}><strong>Asset:</strong> {assetName ?? '—'}</Text>
             <Text style={infoRow}>
-              <strong>Amount:</strong> {typeof amount === 'number' ? `₹${amount}` : '—'}
+              <strong>Amount:</strong> {typeof requestedAmount === 'number' ? `₹${requestedAmount}` : '—'}
             </Text>
             <Text style={infoRow}><strong>District:</strong> {district ?? '—'}</Text>
             <Text style={infoRow}><strong>Submitted:</strong> {submittedAt ?? '—'}</Text>
@@ -123,7 +123,7 @@ const RequestSubmittedEmail = ({
 
 /* --------------------------- RENDER FUNCTION ---------------------------- */
 export const renderEmail = (
-  vars: RequestSubmittedPayloadType & { logoUrl?: string; companyUrl?: string }
+  vars: RequestSubmittedPayload & { logoUrl?: string; companyUrl?: string }
 ) => {
   return render(<RequestSubmittedEmail {...vars} />);
 };

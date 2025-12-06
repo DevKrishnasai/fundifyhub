@@ -1,3 +1,15 @@
+# TODO / Progress � Fundify Refactoring
+
+## [2025-12-06] Agent Session - Types Refactoring
+
+- [x] Refactor Auction Domain: Move types, constants, schemas to packages/types/src/auction.
+- [x] Refactor Common Domain: Create common.types.ts, common.constants.ts, common.schemas.ts and remove json.types.ts.
+- [x] Refactor Auth Domain: Update uth.types.ts to match legacy types, create uth.constants.ts, clean up schemas.
+- [x] Refactor Request & Loan Domains: Fix imports and move legacy "WithRelations" types to domain files.
+- [x] Clean up packages/types/src/index.ts: Remove legacy exports from 	ypes.ts.
+- [x] Update main-backend to handle type changes (Socket types).
+- [x] Verify builds for @fundifyhub/types and main-backend.
+
 # TODO / Progress – Fundify Refactoring
 
 > **Last Updated:** December 5, 2024  
@@ -99,6 +111,15 @@
 5. Job-worker sends email/SMS/WhatsApp via providers
 6. Frontend receives realtime update via Socket.IO
 
+## [2025-12-07] Agent Session - Type Safety & Refactoring
+
+- [x] Refactor `auth`, `requests`, `loans`, `auctions` controllers to use strict Zod schemas and `API_MESSAGES` constants.
+- [x] Create `packages/types/src/api` domain with `API_MESSAGES`, `COOKIE_NAMES`, and `ApiResponse` types.
+- [x] Fix `@fundifyhub/types` build by resolving missing exports, duplicates, and legacy type conflicts.
+- [x] Fix `apps/main-backend` build by updating types (`Auction`, `Bid`, `InAppNotification`, `ServerEvent`) and fixing controller/service type mismatches.
+- [x] Verify endpoint implementation against business rules (RBAC, stage transitions, input validation).
+
+
 ## [2025-12-06] Agent Session - Part 4 (Backend Completion - Auctions, Adapters, Controllers) ✅
 
 ### AuctionsService - Complete Implementation ✅
@@ -198,6 +219,11 @@
 - ✅ Job worker integration **[NEW]**
 
 ## [2025-12-07] Agent Session
+
+- [x] Enforce strict TS compiler flags in `apps/frontend/tsconfig.json` (noUncheckedIndexedAccess, exactOptionalPropertyTypes, etc.).
+- [x] Add shared notification Zod schemas in `packages/types/src/notification-schemas.ts` and export from types package.
+- [x] Refactor notification data flow to React Query hooks + shared types (`notifications-adapter`, `useNotifications`, header dropdown, notification center).
+- [ ] Migrate remaining frontend API calls to React Query/api-client (settings, geography, request actions) with Zod validation and shared types.
 
 - [x] Align error handler with shared utils (ErrorCode usage, AppError guard, validation errors typed)
 - [x] Update loans and requests controllers to match current domain service signatures
@@ -923,9 +949,20 @@ _Record any blockers, decisions, or notes here during implementation._
 
 ## Completed Sessions
 
+## [2025-12-06] Agent Session - Part 3 (Frontend Cleanup & Refactoring)
+
+- [x] Refactor `useLoans` hook to use `api-client` and Zod validation directly.
+- [x] Create `loan.schemas.ts` in `@fundifyhub/types`.
+- [x] Update `apps/frontend/src/lib/urls.ts` with Loan endpoints.
+- [x] Delete obsolete adapter files (`requests-adapter`, `loans-adapter`, `geography-adapter`, `request-actions`).
+- [x] Fix `RequestActionContext.tsx` to remove dependency on deleted `request-actions.ts`.
+- [x] Verify imports and exports to ensure no broken references.
+
 _Log completed work sessions here._
 
 | Date | Session Summary | Items Completed |
 |------|-----------------|-----------------|
 | 2025-12-06 | **Part 4: Comprehensive Codebase Cleanup & Restructuring** - Removed duplicate utils (rbac.ts, jwt.ts, errors.ts), audited all packages (types, utils, providers, prisma, logger), removed 5 unused dependencies from main-backend (axios, socket.io-client, nodemailer, pdf-lib, pdfkit), verified clean backend architecture, documented cleanup notes | Duplicate utils cleanup (3 files), Package audits (5 packages verified), Dependency cleanup (5 packages removed), Backend architecture verification, Created CLEANUP_NOTES.md |
 | 2025-12-05 | **Part 3: Job Worker & Realtime Integration** - Wired NotificationAdapter to BullMQ queue, wired RealtimeAdapter to Socket.IO server, expanded event types with notification data, added realtime emissions to event handlers, fixed payment/loan handler errors | BullMQ integration, Socket.IO realtime, Event type expansions, Event handler updates, Syntax fixes |
+| 2025-12-06 | **Part 5: Notification Templates Refactoring** - Renamed payload types, refactored templates to match new definitions, fixed build errors in providers package | Renamed *PayloadType to *Payload, Refactored templates (AdminUserCreated, RequestSubmitted, etc.), Fixed TemplateDefinitionType usage, Fixed notification-service.ts |
+

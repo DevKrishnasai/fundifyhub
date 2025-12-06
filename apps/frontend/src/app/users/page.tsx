@@ -76,7 +76,7 @@ interface UserData {
   firstName: string
   lastName: string
   roles: string[]
-  districts: string[]
+  districts?: string[]
   isActive: boolean
   phoneNumber?: string
   createdAt?: string | Date
@@ -574,7 +574,7 @@ function UsersContent() {
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <MapPin className="h-3 w-3 shrink-0" />
                             <span className="truncate max-w-[150px]">
-                              {userData.districts?.length > 0 
+                              {userData.districts && userData.districts.length > 0 
                                 ? userData.districts.slice(0, 2).join(", ") + (userData.districts.length > 2 ? ` +${userData.districts.length - 2}` : '')
                                 : "-"
                               }
@@ -749,7 +749,7 @@ function UsersContent() {
                   </div>
                 </div>
 
-                {selectedUser.districts?.length > 0 && (
+                {selectedUser.districts && selectedUser.districts.length > 0 && (
                   <div className="pt-4 border-t">
                     <Label className="text-sm text-muted-foreground">Districts</Label>
                     <div className="flex flex-wrap gap-1 mt-2">

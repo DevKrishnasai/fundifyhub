@@ -9,12 +9,12 @@
 /**
  * Standard API response wrapper (re-exported from common for convenience)
  */
-export type { ApiResponse as APIResponse, PaginatedResponse, PaginationParams } from './common/api.types';
+export type { ApiResponse as APIResponse, PaginatedResponse, PaginationParams } from '../api/api.types';
 
 /**
  * Document request payload (re-exported from document-types)
  */
-export type { CreateDocumentRequest } from './document-types';
+export type { CreateDocumentRequest } from '../document/document-types';
 
 /**
  * EMI Schedule data stored as JSON on Request

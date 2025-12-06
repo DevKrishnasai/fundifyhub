@@ -3,7 +3,7 @@
  * @module document/document.types
  */
 
-import type { JsonValue } from '../common/json.types';
+import type { JsonValue } from '../common/common.types';
 
 // ============================================
 // DOCUMENT TYPE
@@ -38,4 +38,8 @@ export interface DocumentType {
 
   // Relations
   request?: unknown | null;
+}
+
+export interface DocumentWithUrl extends DocumentType {
+  url: string;
 }

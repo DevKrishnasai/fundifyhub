@@ -10,6 +10,7 @@
 
 export * from './request.constants';
 export * from './request.types';
+export * from './request.schemas';
 
 // Legacy workflow types - DEPRECATED
 // These are kept for backward compatibility during migration

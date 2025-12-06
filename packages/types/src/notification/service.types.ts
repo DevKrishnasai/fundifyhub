@@ -3,20 +3,7 @@
  * @module common/service.types
  */
 
-import { SERVICE_NAMES } from '../constants';
-
-/**
- * Connection status for external services (WhatsApp, Email, etc.)
- */
-export enum CONNECTION_STATUS {
-  CONNECTED = 'CONNECTED',
-  DISCONNECTED = 'DISCONNECTED',
-  ERROR = 'ERROR',
-  CONNECTING = 'CONNECTING',
-  WAITING_FOR_QR_SCAN = 'WAITING_FOR_QR_SCAN',
-  AUTHENTICATED = 'AUTHENTICATED',
-  INITIALIZING = 'INITIALIZING',
-}
+import { SERVICE_NAMES, CONNECTION_STATUS } from './notification.constants';
 
 /**
  * Email service configuration

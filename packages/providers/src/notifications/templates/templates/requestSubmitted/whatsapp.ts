@@ -1,13 +1,13 @@
-import { RequestSubmittedPayloadType } from '@fundifyhub/types';
+import { RequestSubmittedPayload } from '@fundifyhub/types';
 
-export const renderRequestSubmittedWhatsApp = (vars: RequestSubmittedPayloadType) => {
+export const renderRequestSubmittedWhatsApp = (vars: RequestSubmittedPayload) => {
   const customer = vars.customerName ?? 'Customer';
   const company = vars.companyName ?? 'FundifyHub';
   const requestId = vars.requestId;
   const submittedAt = vars.submittedAt ?? 'just now';
 
   const asset = vars.assetName ?? '—';
-  const amount = typeof vars.amount === 'number' ? `₹${vars.amount}` : '—';
+  const amount = typeof vars.requestedAmount === 'number' ? `₹${vars.requestedAmount}` : '—';
   const district = vars.district ?? '—';
 
   const dashboardUrl = vars.dashboardUrl ?? vars.supportUrl ?? '';

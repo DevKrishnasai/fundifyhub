@@ -5,3 +5,5 @@
 
 export * from './document.constants';
 export * from './document.types';
+export * from './document-types';
+

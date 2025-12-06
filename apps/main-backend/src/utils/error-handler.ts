@@ -15,7 +15,7 @@ import {
   getErrorMessage,
   isAppError,
 } from '@fundifyhub/utils';
-import type { APIResponse } from '@fundifyhub/types';
+import type { ApiResponse } from '@fundifyhub/types';
 
 /**
  * Handle Prisma errors and convert to appropriate AppError
@@ -54,7 +54,7 @@ function handlePrismaError(error: { code?: string; meta?: Record<string, unknown
  * Place this BEFORE the error handler
  */
 export function notFoundHandler(req: Request, res: Response): void {
-  const response: APIResponse = {
+  const response: ApiResponse = {
     success: false,
     message: `Route ${req.method} ${req.path} not found`,
   };
@@ -109,7 +109,7 @@ export function errorHandler(
   });
 
   // Send generic error response (don't leak internal details)
-  const response: APIResponse = {
+  const response: ApiResponse = {
     success: false,
     message: process.env.NODE_ENV === 'production' 
       ? 'An internal server error occurred' 
@@ -123,7 +123,7 @@ export function errorHandler(
  * Send error response based on error type
  */
 function sendErrorResponse(res: Response, error: AppError): void {
-  const response: APIResponse = {
+  const response: ApiResponse = {
     success: false,
     message: error.message,
   };

@@ -17,7 +17,7 @@
 import { prisma } from '@fundifyhub/prisma';
 import { ValidationError, NotFoundError, ForbiddenError, BusinessRuleError, ErrorCode } from '@fundifyhub/utils';
 import { canManageAuction, canPlaceBid, canViewAuction, assertCanPerformAction, type RBACUser } from '../access-control';
-import type { Auction, Bid } from '@fundifyhub/types';
+import type { Auction, Bid, PlaceBidResponse } from '@fundifyhub/types';
 import { eventBus } from '../events/bus';
 import type { AuctionCreatedEvent, BidPlacedEvent, AuctionEndedEvent } from './auctions.events';
 import logger from '../../utils/logger';
@@ -366,7 +366,7 @@ export class AuctionsService {
    * @throws ForbiddenError if user not authorized to bid
    * @throws BusinessRuleError if bid amount invalid or auction closed
    */
-  async placeBid(input: PlaceBidInput, user: RBACUser): Promise<{ bid: Bid; auction: Auction }> {
+  async placeBid(input: PlaceBidInput, user: RBACUser): Promise<PlaceBidResponse> {
     try {
       if (!input.bidAmount || input.bidAmount <= 0) {
         throw new ValidationError('Invalid bid amount', ErrorCode.INVALID_INPUT);
@@ -431,6 +431,9 @@ export class AuctionsService {
           bidderId: input.bidderId,
           amount: input.bidAmount,
           status: 'WINNING',
+        },
+        include: {
+          bidder: true,
         },
       });
 

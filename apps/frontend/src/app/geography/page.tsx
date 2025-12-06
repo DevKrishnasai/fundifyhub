@@ -49,12 +49,26 @@ import {
   useStates, 
   useDistricts, 
   useWarehouses,
+  useCreateCountry,
+  useUpdateCountry,
+  useDeleteCountry,
+  useCreateState,
+  useUpdateState,
+  useDeleteState,
+  useCreateDistrict,
+  useUpdateDistrict,
+  useDeleteDistrict,
+  useCreateWarehouse,
+  useUpdateWarehouse,
+  useDeleteWarehouse,
   geographyKeys,
-  type Country as CountryType,
-  type State as StateType,
-  type District as DistrictType,
-  type Warehouse as WarehouseType
 } from "@/hooks/queries"
+import {
+  type CountryType,
+  type StateType,
+  type DistrictType,
+  type WarehouseType
+} from "@fundifyhub/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { 
   Globe, 
@@ -123,6 +137,23 @@ function GeographyContent() {
   const { data: states, isLoading: statesLoading, refetch: refetchStates } = useStates()
   const { data: districts, isLoading: districtsLoading, refetch: refetchDistricts } = useDistricts()
   const { data: warehouses, isLoading: warehousesLoading, refetch: refetchWarehouses } = useWarehouses()
+
+  // Mutations
+  const createCountry = useCreateCountry()
+  const updateCountry = useUpdateCountry()
+  const deleteCountry = useDeleteCountry()
+  
+  const createState = useCreateState()
+  const updateState = useUpdateState()
+  const deleteState = useDeleteState()
+  
+  const createDistrict = useCreateDistrict()
+  const updateDistrict = useUpdateDistrict()
+  const deleteDistrict = useDeleteDistrict()
+  
+  const createWarehouse = useCreateWarehouse()
+  const updateWarehouse = useUpdateWarehouse()
+  const deleteWarehouse = useDeleteWarehouse()
 
   const userRoles = user?.roles || []
   const isSuperAdmin = userRoles.map((r: string) => r.toUpperCase()).includes(ROLES.SUPER_ADMIN)
@@ -203,8 +234,7 @@ function GeographyContent() {
 
     setFormLoading(true)
     try {
-      let endpoint = ""
-      let payload: Record<string, unknown> = {
+      const basePayload = {
         name: formData.name.trim(),
         code: formData.code.trim().toUpperCase(),
         isActive: formData.isActive
@@ -212,52 +242,37 @@ function GeographyContent() {
 
       switch (activeTab) {
         case "countries":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.COUNTRIES
+          await createCountry.mutateAsync(basePayload)
           break
         case "states":
-          if (!formData.countryId) {
-            toast.error("Please select a country")
-            setFormLoading(false)
-            return
-          }
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.STATES
-          payload.countryId = formData.countryId
+          if (!formData.countryId) throw new Error("Please select a country")
+          await createState.mutateAsync({ ...basePayload, countryId: formData.countryId })
           break
         case "districts":
-          if (!formData.stateId) {
-            toast.error("Please select a state")
-            setFormLoading(false)
-            return
-          }
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.DISTRICTS
-          payload.stateId = formData.stateId
+          if (!formData.stateId) throw new Error("Please select a state")
+          await createDistrict.mutateAsync({ ...basePayload, stateId: formData.stateId })
           break
         case "warehouses":
-          if (!formData.districtId) {
-            toast.error("Please select a district")
-            setFormLoading(false)
-            return
-          }
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.WAREHOUSES
-          payload.districtId = formData.districtId
-          payload.address = formData.address.trim() || undefined
-          payload.capacity = formData.capacity ? parseInt(formData.capacity) : undefined
+          if (!formData.districtId) throw new Error("Please select a district")
+          await createWarehouse.mutateAsync({
+            ...basePayload,
+            districtId: formData.districtId,
+            address: formData.address.trim() || null,
+            capacity: formData.capacity ? parseInt(formData.capacity) : null,
+            contactPerson: null,
+            contactPhone: null,
+            latitude: null,
+            longitude: null,
+          })
           break
       }
 
-      const res = await apiClient.post(endpoint, payload)
-      
-      if (res.data?.success) {
-        toast.success(`${activeTab.slice(0, -1)} created successfully`)
-        setShowCreateModal(false)
-        resetForm()
-        invalidateAll()
-      } else {
-        throw new Error(res.data?.message || "Failed to create")
-      }
+      toast.success(`${activeTab.slice(0, -1)} created successfully`)
+      setShowCreateModal(false)
+      resetForm()
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      toast.error(error.response?.data?.message || error.message || "Failed to create")
+      const error = err as Error
+      toast.error(error.message || "Failed to create")
     } finally {
       setFormLoading(false)
     }
@@ -271,42 +286,39 @@ function GeographyContent() {
 
     setFormLoading(true)
     try {
-      let endpoint = ""
-      const payload: Record<string, unknown> = {
+      const basePayload = {
         name: formData.name.trim(),
         isActive: formData.isActive
       }
 
       switch (activeTab) {
         case "countries":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.COUNTRY_BY_ID(selectedItem.id)
+          await updateCountry.mutateAsync({ id: selectedItem.id, data: basePayload })
           break
         case "states":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.STATE_BY_ID(selectedItem.id)
+          await updateState.mutateAsync({ id: selectedItem.id, data: basePayload })
           break
         case "districts":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.DISTRICT_BY_ID(selectedItem.id)
+          await updateDistrict.mutateAsync({ id: selectedItem.id, data: basePayload })
           break
         case "warehouses":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.WAREHOUSE_BY_ID(selectedItem.id)
-          payload.address = formData.address.trim() || undefined
-          payload.capacity = formData.capacity ? parseInt(formData.capacity) : undefined
+          await updateWarehouse.mutateAsync({
+            id: selectedItem.id,
+            data: {
+              ...basePayload,
+              address: formData.address.trim() || null,
+              capacity: formData.capacity ? parseInt(formData.capacity) : null,
+            }
+          })
           break
       }
 
-      const res = await apiClient.patch(endpoint, payload)
-      
-      if (res.data?.success) {
-        toast.success(`${activeTab.slice(0, -1)} updated successfully`)
-        setShowEditModal(false)
-        resetForm()
-        invalidateAll()
-      } else {
-        throw new Error(res.data?.message || "Failed to update")
-      }
+      toast.success(`${activeTab.slice(0, -1)} updated successfully`)
+      setShowEditModal(false)
+      resetForm()
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      toast.error(error.response?.data?.message || error.message || "Failed to update")
+      const error = err as Error
+      toast.error(error.message || "Failed to update")
     } finally {
       setFormLoading(false)
     }
@@ -317,35 +329,27 @@ function GeographyContent() {
 
     setFormLoading(true)
     try {
-      let endpoint = ""
       switch (activeTab) {
         case "countries":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.COUNTRY_BY_ID(selectedItem.id)
+          await deleteCountry.mutateAsync(selectedItem.id)
           break
         case "states":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.STATE_BY_ID(selectedItem.id)
+          await deleteState.mutateAsync(selectedItem.id)
           break
         case "districts":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.DISTRICT_BY_ID(selectedItem.id)
+          await deleteDistrict.mutateAsync(selectedItem.id)
           break
         case "warehouses":
-          endpoint = BACKEND_API_CONFIG.ENDPOINTS.GEOGRAPHY.WAREHOUSE_BY_ID(selectedItem.id)
+          await deleteWarehouse.mutateAsync(selectedItem.id)
           break
       }
 
-      const res = await apiClient.delete(endpoint)
-      
-      if (res.data?.success) {
-        toast.success(`${activeTab.slice(0, -1)} deleted successfully`)
-        setShowDeleteConfirm(false)
-        resetForm()
-        invalidateAll()
-      } else {
-        throw new Error(res.data?.message || "Failed to delete")
-      }
+      toast.success(`${activeTab.slice(0, -1)} deleted successfully`)
+      setShowDeleteConfirm(false)
+      resetForm()
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      toast.error(error.response?.data?.message || error.message || "Failed to delete")
+      const error = err as Error
+      toast.error(error.message || "Failed to delete")
     } finally {
       setFormLoading(false)
     }

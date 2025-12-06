@@ -3,7 +3,6 @@
  * @module common
  */
 
-export * from './json.types';
-export * from './api.types';
-export * from './geography.types';
-export * from './service.types';
+export * from './common.types';
+export * from './common.constants';
+export * from './common.schemas';

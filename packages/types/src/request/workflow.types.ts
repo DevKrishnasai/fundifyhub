@@ -1149,7 +1149,7 @@ export function canViewRequestDetail(
   subStatus?: string | null
 ): boolean {
   // Import stage constants dynamically to avoid circular dependency
-  const { REQUEST_STAGE } = require('../stage-constants');
+  const { REQUEST_STAGE } = require('../workflow/stage-constants');
   
   if (user.roles.includes(ROLES.SUPER_ADMIN)) {
     return true;

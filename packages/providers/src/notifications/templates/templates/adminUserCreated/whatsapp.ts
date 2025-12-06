@@ -1,45 +1,29 @@
-import { AdminUserCreatedPayloadType } from '@fundifyhub/types';
+import { AdminUserCreatedPayload } from '@fundifyhub/types';
 
-interface AdminUserCreatedWhatsAppProps {
-  customerName: string;
-  tempPassword: string;
-  loginUrl: string;
-  companyName: string;
-  createdByAdmin: string;
-  assignedRoles: string[];
-  assignedDistricts: string[];
-}
+export const renderAdminUserCreatedWhatsApp = (vars: AdminUserCreatedPayload) => {
+  const {
+    name,
+    temporaryPassword,
+    loginUrl,
+    companyName,
+    role,
+  } = vars;
 
-export const renderAdminUserCreatedWhatsApp = (vars: AdminUserCreatedPayloadType) => {
-  const props: AdminUserCreatedWhatsAppProps = {
-    customerName: vars.customerName,
-    tempPassword: vars.tempPassword,
-    loginUrl: vars.loginUrl,
-    companyName: vars.companyName,
-    createdByAdmin: vars.createdByAdmin,
-    assignedRoles: vars.assignedRoles,
-    assignedDistricts: vars.assignedDistricts,
-  };
-
-  const roleText = props.assignedRoles.length > 0 
-    ? `\n• *Roles:* ${props.assignedRoles.join(', ')}`
-    : '';
-  
-  const districtText = props.assignedDistricts.length > 0 
-    ? `\n• *Districts:* ${props.assignedDistricts.join(', ')}`
+  const roleText = role
+    ? `\n• *Role:* ${role}`
     : '';
 
-  return `🎉 *Welcome to ${props.companyName}!*
+  return `🎉 *Welcome to ${companyName}!*
 
-Hi ${props.customerName},
+Hi ${name},
 
-An account has been created for you by ${props.createdByAdmin}.
+An account has been created for you.
 
 📋 *Your Login Details:*
-Temporary Password: *${props.tempPassword}*
-${roleText}${districtText}
+${temporaryPassword ? `Temporary Password: *${temporaryPassword}*` : ''}
+${roleText}
 
-🔗 Login here: ${props.loginUrl}
+🔗 Login here: ${loginUrl}
 
 ⚠️ *Important:* Please change your password after your first login for security.
 

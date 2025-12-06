@@ -1,10 +1,10 @@
-import { EMIReminderPayloadType } from '@fundifyhub/types';
+import { EMIReminderPayload } from '@fundifyhub/types';
 
 /**
  * Render WhatsApp message for EMI reminder notification
  * This is also used for IN_APP notifications as a fallback
  */
-export const renderEMIReminderWhatsApp = (vars: EMIReminderPayloadType): string => {
+export const renderEMIReminderWhatsApp = (vars: EMIReminderPayload): string => {
   const {
     customerName,
     loanNumber,

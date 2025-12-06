@@ -13,7 +13,7 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { EMIReminderPayloadType } from '@fundifyhub/types';
+import { EMIReminderPayload } from '@fundifyhub/types';
 
 const EMIReminderEmail = ({
   customerName,
@@ -27,7 +27,7 @@ const EMIReminderEmail = ({
   totalOutstanding,
   paymentUrl,
   companyName
-}: EMIReminderPayloadType) => {
+}: EMIReminderPayload) => {
   const isDueSoon = daysUntilDue !== undefined && daysUntilDue > 0 && daysUntilDue <= 3;
   const isDueToday = daysUntilDue === 0;
   
@@ -271,6 +271,6 @@ const footerText: CSSProperties = {
 };
 
 // Render function for worker
-export default async function renderEmail(data: EMIReminderPayloadType): Promise<string> {
+export default async function renderEmail(data: EMIReminderPayload): Promise<string> {
   return await render(<EMIReminderEmail {...data} />);
 }

@@ -3,6 +3,9 @@
  * @module auth/auth.types
  */
 
+import { UserRole } from './auth.constants';
+import { DistrictType, StateType } from '../geography/geography.types';
+
 /**
  * User entity type
  */
@@ -12,20 +15,50 @@ export interface UserType {
   firstName: string;
   lastName: string;
   phoneNumber?: string;
-  roles: string[];
+  roles: UserRole[];
+  
+  // Geographic assignments
+  homeDistrictId?: string | null;
+  homeDistrict?: DistrictType | null;
+  
+  // Assignments
+  stateAssignments?: UserStateAssignmentType[];
+  districtAssignments?: UserDistrictAssignmentType[];
+  
+  // Legacy/Helper fields (derived or simplified)
   /** Districts assigned to the user. Always an array. */
-  districts: string[];
+  districts?: string[]; 
+  
   isActive: boolean;
   emailVerified?: boolean;
   phoneVerified?: boolean;
+  
+  // Address
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  
+  deletedAt?: Date | null;
+  deletedBy?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 /**
- * JWT token payload extending UserType
+ * JWT token payload
  */
-export interface JWTPayloadType extends UserType {}
+export interface JWTPayloadType {
+  id: string;
+  email: string;
+  roles: UserRole[];
+  homeDistrictId?: string | null;
+  districts?: string[];
+  stateIds?: string[];
+  isActive?: boolean;
+  iat?: number;
+  exp?: number;
+}
 
 /**
  * Session type for tracking user sessions
@@ -82,9 +115,9 @@ export interface UserStateAssignmentType {
   deletedAt: Date | null;
   deletedBy: string | null;
   
-  // Relations (imported types to avoid circular dependency)
-  user?: any; // UserType
-  state?: any; // StateType from geography
+  // Relations
+  user?: UserType;
+  state?: StateType;
 }
 
 /**
@@ -101,7 +134,7 @@ export interface UserDistrictAssignmentType {
   deletedAt: Date | null;
   deletedBy: string | null;
   
-  // Relations (imported types to avoid circular dependency)
-  user?: any; // UserType
-  district?: any; // DistrictType from geography
+  // Relations
+  user?: UserType;
+  district?: DistrictType;
 }

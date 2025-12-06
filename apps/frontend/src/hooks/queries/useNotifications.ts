@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query'
 import { notificationsAdapter } from '../../lib/adapters'
+import type { NotificationList, NotificationUnreadCount } from '@fundifyhub/types'
 
 // ============================================================================
 // Query Keys Factory
@@ -21,7 +22,7 @@ export const notificationKeys = {
 // Types
 // ============================================================================
 
-import type { NotificationListResponse, NotificationFilters } from '@/lib/adapters/notifications-adapter'
+import type { NotificationFilters } from '@/lib/adapters/notifications-adapter'
 
 // ============================================================================
 // Queries
@@ -32,7 +33,7 @@ import type { NotificationListResponse, NotificationFilters } from '@/lib/adapte
  */
 export function useNotifications(
   filters: NotificationFilters = {},
-  options?: Omit<UseQueryOptions<NotificationListResponse, Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<NotificationList, Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: notificationKeys.list(filters),
@@ -52,7 +53,7 @@ export function useNotifications(
  * Fetch unread notification count
  */
 export function useUnreadNotificationCount(
-  options?: Omit<UseQueryOptions<{ count: number }, Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<NotificationUnreadCount, Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: notificationKeys.unreadCount(),

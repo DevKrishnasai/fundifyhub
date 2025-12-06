@@ -27,14 +27,14 @@ interface NotificationItem {
   id: string
   title: string
   message: string
-  type: string
-  read: boolean
+  type?: string | undefined
+  read?: boolean | undefined
   createdAt: string
   data?: {
-    requestId?: string
-    loanId?: string
-    actionUrl?: string
-  }
+    requestId?: string | undefined
+    loanId?: string | undefined
+    actionUrl?: string | undefined
+  } | undefined
 }
 
 function NotificationsSkeleton() {
@@ -53,7 +53,7 @@ function NotificationsSkeleton() {
   )
 }
 
-function getNotificationIcon(type: string) {
+function getNotificationIcon(type: string | undefined) {
   switch (type) {
     case "LOAN_STATUS":
     case "REQUEST_STATUS":

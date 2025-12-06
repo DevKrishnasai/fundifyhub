@@ -1,10 +1,10 @@
-import { EMIOverduePayloadType } from '@fundifyhub/types';
+import { EMIOverduePayload } from '@fundifyhub/types';
 
 /**
  * Render WhatsApp message for EMI overdue notification
  * This is also used for IN_APP notifications as a fallback
  */
-export const renderEMIOverdueWhatsApp = (vars: EMIOverduePayloadType): string => {
+export const renderEMIOverdueWhatsApp = (vars: EMIOverduePayload): string => {
   const {
     customerName,
     loanNumber,

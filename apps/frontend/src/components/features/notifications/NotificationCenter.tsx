@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -27,8 +27,14 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatDistanceToNow } from "date-fns"
-import { BACKEND_API_CONFIG } from "@/lib/urls"
-import apiClient from "@/lib/api-client"
+import {
+  useNotifications,
+  useUnreadNotificationCount,
+  useMarkNotificationRead,
+  useArchiveNotification,
+  useMarkAllNotificationsRead,
+} from "@/hooks/queries"
+import type { NotificationList } from "@fundifyhub/types"
 
 export type NotificationType =
   | "REQUEST_UPDATE"
@@ -41,16 +47,7 @@ export type NotificationType =
 
 export type NotificationPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT"
 
-export interface NotificationItem {
-  id: string
-  type: NotificationType
-  priority: NotificationPriority
-  title: string
-  message: string
-  actionUrl?: string
-  isRead: boolean
-  createdAt: Date | string
-}
+type NotificationItem = NotificationList["notifications"][number]
 
 interface NotificationCenterProps {
   className?: string
@@ -103,11 +100,14 @@ function NotificationItemComponent({
   onMarkRead: (id: string) => void
   onArchive: (id: string) => void
 }) {
-  const config = notificationTypeConfig[notification.type]
-  const priorityClass = priorityColors[notification.priority]
+  const notificationType = (notification.type as NotificationType) ?? "SYSTEM_ALERT"
+  const config = notificationTypeConfig[notificationType] ?? notificationTypeConfig.SYSTEM_ALERT
+  const priority = (notification.priority as NotificationPriority) ?? "NORMAL"
+  const priorityClass = priorityColors[priority]
   const createdAt = typeof notification.createdAt === "string" 
     ? new Date(notification.createdAt) 
-    : notification.createdAt
+    : notification.createdAt ?? new Date()
+  const isRead = notification.isRead ?? (notification as { read?: boolean }).read ?? false
 
   return (
     <div
@@ -116,14 +116,14 @@ function NotificationItemComponent({
         !notification.isRead && "bg-accent/30",
         priorityClass
       )}
-      onClick={() => !notification.isRead && onMarkRead(notification.id)}
+      onClick={() => !isRead && onMarkRead(notification.id)}
     >
       <div className={cn("rounded-full p-2 shrink-0", config.color)}>
         {config.icon}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <p className={cn("text-sm font-medium truncate", !notification.isRead && "font-semibold")}>
+          <p className={cn("text-sm font-medium truncate", !isRead && "font-semibold")}>
             {notification.title}
           </p>
           <div className="flex items-center gap-1 shrink-0">
@@ -158,7 +158,7 @@ function NotificationItemComponent({
           )}
         </div>
       </div>
-      {!notification.isRead && (
+      {!isRead && (
         <div className="h-2 w-2 rounded-full bg-primary shrink-0 mt-2" />
       )}
     </div>
@@ -166,81 +166,34 @@ function NotificationItemComponent({
 }
 
 export function NotificationCenter({ className }: NotificationCenterProps) {
-  const [notifications, setNotifications] = useState<NotificationItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [isOpen, setIsOpen] = useState(false)
+  const notificationsQuery = useNotifications(
+    { limit: 10, page: 1 },
+    { enabled: isOpen, staleTime: 30_000 }
+  )
+  const unreadCountQuery = useUnreadNotificationCount({ enabled: true })
+  const markReadMutation = useMarkNotificationRead()
+  const markAllReadMutation = useMarkAllNotificationsRead()
+  const archiveMutation = useArchiveNotification()
 
-  const fetchNotifications = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      const response = await apiClient.get(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.LIST, {
-        params: { limit: 10, isArchived: false }
-      })
-      if (response.data.success) {
-        setNotifications(response.data.data.notifications)
-      }
-    } catch (error) {
-      console.error("Failed to fetch notifications:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+  const notifications = notificationsQuery.data?.notifications ?? []
+  const unreadCount = useMemo(() => {
+    if (unreadCountQuery.data) return unreadCountQuery.data.count
+    return notifications.filter((n) => !(n.isRead ?? false)).length
+  }, [notifications, unreadCountQuery.data])
 
-  useEffect(() => {
-    fetchNotifications()
-  }, [fetchNotifications])
-
-  // Refetch when dropdown opens
-  useEffect(() => {
-    if (isOpen) {
-      fetchNotifications()
-    }
-  }, [isOpen, fetchNotifications])
-
-  const unreadCount = notifications.filter((n) => !n.isRead).length
+  const isLoading = notificationsQuery.isLoading || notificationsQuery.isFetching
 
   const handleMarkRead = async (id: string) => {
-    // Optimistic update
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    )
-    try {
-      await apiClient.put(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.MARK_READ(id))
-    } catch (error) {
-      // Revert on failure
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, isRead: false } : n))
-      )
-      console.error("Failed to mark notification as read:", error)
-    }
+    await markReadMutation.mutateAsync(id)
   }
 
   const handleArchive = async (id: string) => {
-    // Optimistic update
-    const archived = notifications.find((n) => n.id === id)
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-    try {
-      await apiClient.put(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.ARCHIVE(id))
-    } catch (error) {
-      // Revert on failure
-      if (archived) {
-        setNotifications((prev) => [...prev, archived])
-      }
-      console.error("Failed to archive notification:", error)
-    }
+    await archiveMutation.mutateAsync(id)
   }
 
   const handleMarkAllRead = async () => {
-    // Optimistic update
-    const previousState = notifications.map((n) => ({ ...n }))
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
-    try {
-      await apiClient.put(BACKEND_API_CONFIG.ENDPOINTS.NOTIFICATIONS.MARK_ALL_READ)
-    } catch (error) {
-      // Revert on failure
-      setNotifications(previousState)
-      console.error("Failed to mark all notifications as read:", error)
-    }
+    await markAllReadMutation.mutateAsync()
   }
 
   return (

@@ -49,6 +49,11 @@ export const get = async <T>(url: string, config?: AxiosRequestConfig): Promise<
   return res.data;
 };
 
+export const patchWithResult = async <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<BackendEnvelope<T>> => {
+  const res = await api.patch<BackendEnvelope<T>>(url, data, config);
+  return res.data;
+};
+
 export const post = async <T, D = unknown>(url: string, data?: D, config?: AxiosRequestConfig): Promise<T> => {
   const res = await api.post<T>(url, data, config);
   return res.data;

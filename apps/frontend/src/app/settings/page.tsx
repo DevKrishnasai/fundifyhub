@@ -26,6 +26,14 @@ import {
 } from "@/components/ui/dialog"
 import toast from "@/lib/toast"
 import { 
+  useUpdateProfile, 
+  useChangePassword, 
+  useServiceStatus, 
+  useUpdateServiceConfig, 
+  useToggleService, 
+  useTestService 
+} from "@/hooks/queries"
+import { 
   User, Bell, Shield, Settings2, Loader2, CheckCircle, 
   XCircle, Power, AlertTriangle, Mail, MessageSquare, Settings, RefreshCw, 
   Eye, EyeOff, Wifi, WifiOff, Clock, QrCode
@@ -60,6 +68,7 @@ function SettingsSkeleton() {
 
 function ProfileSettings() {
   const { user, refresh } = useAuth()
+  const updateProfile = useUpdateProfile()
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [firstName, setFirstName] = useState(user?.firstName || "")
@@ -122,24 +131,19 @@ function ProfileSettings() {
     
     setIsSaving(true)
     try {
-      const res = await apiClient.put(BACKEND_API_CONFIG.ENDPOINTS.USER.UPDATE_PROFILE, {
+      await updateProfile.mutateAsync({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phoneNumber: phoneNumber.replace(/\s/g, '') || undefined,
       })
       
-      if (res.data?.success) {
-        toast.success("Profile updated successfully")
-        await refresh()
-        setIsEditing(false)
-        setFormErrors({})
-      } else {
-        throw new Error(res.data?.message || "Failed to update profile")
-      }
+      toast.success("Profile updated successfully")
+      await refresh()
+      setIsEditing(false)
+      setFormErrors({})
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      const message = error.response?.data?.message || error.message || "Failed to update profile"
-      toast.error(message)
+      const error = err as Error
+      toast.error(error.message || "Failed to update profile")
     } finally {
       setIsSaving(false)
     }
@@ -374,6 +378,7 @@ function NotificationSettings() {
 }
 
 function SecuritySettings() {
+  const changePassword = useChangePassword()
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -414,24 +419,19 @@ function SecuritySettings() {
     
     setIsChangingPassword(true)
     try {
-      const res = await apiClient.post(BACKEND_API_CONFIG.ENDPOINTS.AUTH.CHANGE_PASSWORD, {
+      await changePassword.mutateAsync({
         currentPassword,
         newPassword,
       })
       
-      if (res.data?.success) {
-        toast.success("Password changed successfully")
-        setCurrentPassword("")
-        setNewPassword("")
-        setConfirmPassword("")
-        setPasswordErrors({})
-      } else {
-        throw new Error(res.data?.message || "Failed to change password")
-      }
+      toast.success("Password changed successfully")
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+      setPasswordErrors({})
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } }; message?: string }
-      const message = error.response?.data?.message || error.message || "Failed to change password"
-      toast.error(message)
+      const error = err as Error
+      toast.error(error.message || "Failed to change password")
     } finally {
       setIsChangingPassword(false)
     }
@@ -572,9 +572,13 @@ function SecuritySettings() {
 }
 
 function SystemSettings() {
-  const [services, setServices] = useState<ServiceConfigType[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const { user } = useAuth()
+  const { data: services = [], isLoading, refetch, isRefetching, error } = useServiceStatus()
+  const fetchError = error instanceof Error ? error.message : (error as any)?.message || (error ? String(error) : null)
+  const updateServiceConfig = useUpdateServiceConfig()
+  const toggleService = useToggleService()
+  const testService = useTestService()
+
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [configModalOpen, setConfigModalOpen] = useState(false)
   const [qrModalOpen, setQrModalOpen] = useState(false)
@@ -588,109 +592,24 @@ function SystemSettings() {
     from: "",
   })
   const [isSaving, setIsSaving] = useState(false)
-  const [fetchError, setFetchError] = useState<string | null>(null)
-  const [isPolling, setIsPolling] = useState(false)
   const [testLoading, setTestLoading] = useState<string | null>(null)
-  const [autoRefreshCountdown, setAutoRefreshCountdown] = useState(0)
   const [testPhoneModalOpen, setTestPhoneModalOpen] = useState(false)
   const [testPhoneNumber, setTestPhoneNumber] = useState("")
+  const [isPolling, setIsPolling] = useState(false)
+  const [autoRefreshCountdown, setAutoRefreshCountdown] = useState(0)
 
-  // Fetch services - with option to skip cache for fresh data
-  const fetchServices = useCallback(async (options?: { showRefreshing?: boolean; fresh?: boolean }) => {
-    const { showRefreshing = false, fresh = false } = options || {}
-    if (showRefreshing) setIsRefreshing(true)
-    setFetchError(null)
-    try {
-      // Add ?fresh=true to skip backend cache when polling
-      const url = fresh 
-        ? `${BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICES}?fresh=true`
-        : BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICES
-      const response = await apiClient.get(url)
-      setServices(response.data.data || [])
-    } catch (error: unknown) {
-      const message = getErrorMessage(error, "Failed to load services")
-      setFetchError(message)
-      if (!isPolling) {
-        toast.error(message)
-      }
-    } finally {
-      setIsLoading(false)
-      setIsRefreshing(false)
-    }
-  }, [isPolling])
-
-  // Initial fetch
-  useEffect(() => {
-    fetchServices()
-  }, [fetchServices])
-
-  // Check if we need to poll for service status changes
-  const whatsappService = services.find((s) => s.serviceName === SERVICE_NAMES.WHATSAPP)
-  const emailService = services.find((s) => s.serviceName === SERVICE_NAMES.EMAIL)
-  
-  // Poll when WhatsApp is initializing/connecting/waiting for QR
-  const whatsappNeedsPolling = whatsappService?.isEnabled && (
-    whatsappService.connectionStatus === CONNECTION_STATUS.INITIALIZING ||
-    whatsappService.connectionStatus === CONNECTION_STATUS.CONNECTING ||
-    whatsappService.connectionStatus === CONNECTION_STATUS.WAITING_FOR_QR_SCAN
-  )
-  
-  // Poll when Email is enabled but not yet connected (brief startup period)
-  const emailNeedsPolling = emailService?.isEnabled && (
-    emailService.connectionStatus === CONNECTION_STATUS.INITIALIZING ||
-    emailService.connectionStatus === CONNECTION_STATUS.CONNECTING
-  )
-  
-  const needsPolling = whatsappNeedsPolling || emailNeedsPolling
-
-  // Polling effect for WhatsApp status updates
-  useEffect(() => {
-    if (!needsPolling) {
-      setIsPolling(false)
-      setAutoRefreshCountdown(0)
-      return
-    }
-
-    setIsPolling(true)
-    const POLL_INTERVAL = 3 // seconds
-    setAutoRefreshCountdown(POLL_INTERVAL)
-
-    // Countdown timer
-    const countdownInterval = setInterval(() => {
-      setAutoRefreshCountdown((prev) => {
-        if (prev <= 1) return POLL_INTERVAL
-        return prev - 1
-      })
-    }, 1000)
-
-    // Poll interval
-    const pollInterval = setInterval(() => {
-      fetchServices({ fresh: true })
-      setAutoRefreshCountdown(POLL_INTERVAL)
-    }, POLL_INTERVAL * 1000)
-
-    return () => {
-      clearInterval(pollInterval)
-      clearInterval(countdownInterval)
-      setIsPolling(false)
-      setAutoRefreshCountdown(0)
-    }
-  }, [needsPolling, fetchServices])
+  const fetchServices = (options?: any) => {
+    refetch()
+  }
 
   const handleServiceToggle = async (serviceName: SERVICE_NAMES, currentlyEnabled: boolean) => {
     setActionLoading(serviceName)
     try {
-      const endpoint = currentlyEnabled 
-        ? BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_DISABLE(serviceName)
-        : BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_ENABLE(serviceName)
-      
-      await apiClient.post(endpoint)
+      await toggleService.mutateAsync({ serviceName, enabled: !currentlyEnabled })
       toast.success(`${SERVICE_DISPLAY_INFO[serviceName].displayName} ${currentlyEnabled ? "disabled" : "enabled"} successfully`)
-      // Fetch fresh data after toggle
-      await fetchServices({ fresh: true })
     } catch (error: unknown) {
-      const message = getErrorMessage(error, `Failed to toggle ${SERVICE_DISPLAY_INFO[serviceName].displayName}`)
-      toast.error(message)
+      const err = error as Error
+      toast.error(err.message || `Failed to toggle ${SERVICE_DISPLAY_INFO[serviceName].displayName}`)
     } finally {
       setActionLoading(null)
     }
@@ -734,16 +653,15 @@ function SystemSettings() {
     
     setIsSaving(true)
     try {
-      await apiClient.post(
-        BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_CONFIGURE(selectedService),
-        emailConfig
-      )
-      toast.success(`${SERVICE_DISPLAY_INFO[selectedService].displayName} configured successfully. A test email has been sent to verify.`)
+      await updateServiceConfig.mutateAsync({
+        serviceName: selectedService,
+        config: emailConfig
+      })
+      toast.success(`${SERVICE_DISPLAY_INFO[selectedService].displayName} configured successfully.`)
       setConfigModalOpen(false)
-      await fetchServices({ fresh: true })
     } catch (error: unknown) {
-      const message = getErrorMessage(error, "Failed to save configuration")
-      toast.error(message)
+      const err = error as Error
+      toast.error(err.message || "Failed to save configuration")
     } finally {
       setIsSaving(false)
     }
@@ -758,14 +676,21 @@ function SystemSettings() {
     
     setTestLoading(serviceName)
     try {
-      const payload = serviceName === SERVICE_NAMES.WHATSAPP ? { phoneNumber } : {}
-      await apiClient.post(BACKEND_API_CONFIG.ENDPOINTS.ADMIN.SERVICE_TEST(serviceName), payload)
-      toast.success(`${SERVICE_DISPLAY_INFO[serviceName].displayName} test initiated. Check your ${serviceName === SERVICE_NAMES.EMAIL ? "email inbox" : "WhatsApp"} for verification.`)
+      const payload = serviceName === SERVICE_NAMES.WHATSAPP 
+        ? { phoneNumber } 
+        : {}
+      
+      await testService.mutateAsync({
+        serviceName,
+        payload
+      })
+
+      toast.success(`${SERVICE_DISPLAY_INFO[serviceName].displayName} test initiated.`)
       setTestPhoneModalOpen(false)
       setTestPhoneNumber("")
     } catch (error: unknown) {
-      const message = getErrorMessage(error, `Failed to test ${SERVICE_DISPLAY_INFO[serviceName].displayName}`)
-      toast.error(message)
+      const err = error as Error
+      toast.error(err.message || `Failed to test ${SERVICE_DISPLAY_INFO[serviceName].displayName}`)
     } finally {
       setTestLoading(null)
     }
@@ -893,10 +818,10 @@ function SystemSettings() {
                   // Reset countdown on manual refresh
                   if (isPolling) setAutoRefreshCountdown(3)
                 }} 
-                disabled={isLoading || isRefreshing}
+                disabled={isLoading || isRefetching}
               >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-                {isRefreshing ? "Refreshing..." : "Refresh"}
+                <RefreshCw className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+                {isRefetching ? "Refreshing..." : "Refresh"}
               </Button>
             </div>
           </div>

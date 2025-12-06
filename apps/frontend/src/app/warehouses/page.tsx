@@ -47,9 +47,11 @@ import {
   useWarehouseCapacitySummary,
   useWarehouseInventory,
   useDistricts,
-  type WarehouseWithMetrics,
-  type WarehouseAsset,
 } from "@/hooks/queries"
+import {
+  type WarehouseWithMetrics,
+  type AssetType as WarehouseAsset,
+} from "@fundifyhub/types"
 import { 
   Warehouse,
   Package,

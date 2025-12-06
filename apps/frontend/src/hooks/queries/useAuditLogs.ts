@@ -29,14 +29,14 @@ export const auditLogKeys = {
 // ============================================================================
 
 export interface AuditLogFilters {
-  page?: number
-  limit?: number
-  action?: string
-  entityType?: string
-  actorId?: string
-  startDate?: string
-  endDate?: string
-  search?: string
+  page?: number | undefined
+  limit?: number | undefined
+  action?: string | undefined
+  entityType?: string | undefined
+  actorId?: string | undefined
+  startDate?: string | undefined
+  endDate?: string | undefined
+  search?: string | undefined
 }
 
 export interface AuditLog {

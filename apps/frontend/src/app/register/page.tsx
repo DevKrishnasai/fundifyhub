@@ -15,10 +15,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import toast from '@/lib/toast'
 import { Eye, EyeOff, User, Mail, Phone, Lock, ChevronRight, ChevronLeft, Check, X, CheckCircle } from "lucide-react"
-import { ROLES } from '@fundifyhub/types'
+import { ROLES, type DistrictType } from '@fundifyhub/types'
 import { post, postWithResult } from '@/lib/api-client'
 import { BACKEND_API_CONFIG } from '@/lib/urls'
-import { useDistricts, type District } from '@/hooks/queries'
+import { useDistricts } from '@/hooks/queries'
 
 import { sanitizePhone, isValidPhone } from '@/lib/phone'
 import { PublicHeader } from "@/components/layout/PublicHeader"
@@ -611,7 +611,7 @@ export default function RegisterPage() {
                       <SelectValue placeholder={isLoadingDistricts ? "Loading districts..." : "Select your district"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {districts?.map((d: District) => (
+                      {districts?.map((d: DistrictType) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.name} ({d.code})
                         </SelectItem>

@@ -275,7 +275,7 @@ export default function MyBidsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.bids.map((bid: AuctionBidType) => {
+                  {data.bids.map((bid) => {
                     const statusConfig = BID_STATUS_CONFIG[bid.status as BID_STATUS]
                     const StatusIcon = statusConfig.icon
                     const isHighestBidder = bid.auction?.currentHighBid === bid.amount

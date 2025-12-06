@@ -6,7 +6,7 @@
  */
 
 import { Socket } from 'socket.io';
-import { JWTPayloadType } from '@fundifyhub/types';
+import { JWTPayloadType, UserRole } from '@fundifyhub/types';
 
 /**
  * Authenticated socket with user data attached after JWT verification
@@ -14,7 +14,7 @@ import { JWTPayloadType } from '@fundifyhub/types';
 export interface AuthenticatedSocket extends Socket {
   userId: string;
   userEmail: string;
-  userRoles: string[];
+  userRoles: UserRole[];
   userDistricts?: string[];
   authenticated: boolean;
 }
@@ -46,7 +46,7 @@ export const getRoomName = (type: RoomType, id: string): string => `${type}:${id
 export interface ConnectionInfo {
   socketId: string;
   userId: string;
-  userRoles: string[];
+  userRoles: UserRole[];
   userDistricts?: string[];
   connectedAt: Date;
   lastActivity: Date;

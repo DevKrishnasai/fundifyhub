@@ -34,6 +34,7 @@ export enum NotificationTemplateName {
   LOGIN_ALERT = 'LOGIN_ALERT',
   PASSWORD_RESET = 'PASSWORD_RESET',
   PASSWORD_CHANGED = 'PASSWORD_CHANGED',
+  ADMIN_USER_CREATED = 'ADMIN_USER_CREATED',
   
   // Request Lifecycle
   REQUEST_SUBMITTED = 'REQUEST_SUBMITTED',
@@ -127,6 +128,17 @@ export interface PasswordResetPayload extends BaseTemplatePayload {
   customerName: string;
   resetUrl: string;
   expiresInMinutes: number;
+}
+
+/**
+ * Admin User Created payload
+ */
+export interface AdminUserCreatedPayload extends BaseTemplatePayload {
+  name: string;
+  email: string;
+  role: string;
+  loginUrl: string;
+  temporaryPassword?: string;
 }
 
 /**
@@ -287,9 +299,6 @@ export interface AssetPledgePayload extends BaseTemplatePayload {
   adminDashboardUrl?: string;
 }
 
-// ============================================
-// TEMPLATE PAYLOAD MAP
-// ============================================
 
 /**
  * Maps template names to their payload types
@@ -300,6 +309,7 @@ export interface TemplatePayloadMap {
   [NotificationTemplateName.LOGIN_ALERT]: LoginAlertPayload;
   [NotificationTemplateName.PASSWORD_RESET]: PasswordResetPayload;
   [NotificationTemplateName.PASSWORD_CHANGED]: BaseTemplatePayload & { customerName: string };
+  [NotificationTemplateName.ADMIN_USER_CREATED]: AdminUserCreatedPayload;
   [NotificationTemplateName.REQUEST_SUBMITTED]: RequestSubmittedPayload;
   [NotificationTemplateName.REQUEST_STATUS_UPDATE]: RequestStatusUpdatePayload;
   [NotificationTemplateName.MORE_INFO_REQUIRED]: MoreInfoRequiredPayload;
@@ -399,3 +409,9 @@ export interface TypedTemplateRequest<T extends NotificationTemplateName> {
   templateName: T;
   variables: TemplatePayloadMap[T];
 }
+
+/**
+ * Legacy alias for template definition
+ * @deprecated Use NotificationTemplateDefinition instead
+ */
+export type TemplateDefinitionType = NotificationTemplateDefinition<any>;

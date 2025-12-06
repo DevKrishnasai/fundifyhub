@@ -15,99 +15,45 @@ import {
   cancelAuctionSchema,
   listAuctionsSchema,
   auctionIdSchema,
-} from '../../../domain/auctions/auctions.validators';
+} from '@fundifyhub/types';
 import { ValidationError, ErrorCode } from '@fundifyhub/utils';
 import logger from '../../../utils/logger';
+import { asyncHandler } from '../middlewares';
+import { API_MESSAGES } from '@fundifyhub/types';
 
-/**
- * Create new auction for defaulted loan
- * POST /api/auctions
- */
-async function createAuction(req: Request, res: Response): Promise<void> {
-  try {
-    // Validate input
+export const auctionsController = {
+  /**
+   * Create new auction for defaulted loan
+   * POST /api/auctions
+   */
+  createAuction: asyncHandler(async (req: Request, res: Response) => {
     const validatedData = createAuctionSchema.parse(req.body);
-
-    // Convert date strings to Date objects
     const input = {
       ...validatedData,
       startDate: new Date(validatedData.startDate),
       endDate: new Date(validatedData.endDate),
     };
-
-    // Call service
     const auction = await auctionsService.create(input, req.user as RBACUser);
+    res.status(201).json({ success: true, data: auction });
+  }),
 
-    res.status(201).json({
-      success: true,
-      data: auction,
-    });
-  } catch (error: any) {
-    logger.error('[AuctionsController.createAuction] Error', { error });
-    
-    if (error.name === 'ZodError') {
-      res.status(400).json({
-        success: false,
-        code: ErrorCode.INVALID_INPUT,
-        message: 'Validation failed',
-        errors: error.errors,
-      });
-      return;
-    }
-
-    res.status(error.statusCode || 500).json({
-      success: false,
-      code: error.code || 'INTERNAL_ERROR',
-      message: error.message || 'Internal server error',
-    });
-  }
-}
-
-/**
- * Get auction by ID
- * GET /api/auctions/:auctionId
- */
-async function getAuction(req: Request, res: Response): Promise<void> {
-  try {
+  /**
+   * Get auction by ID
+   * GET /api/auctions/:auctionId
+   */
+  getAuction: asyncHandler(async (req: Request, res: Response) => {
     const { auctionId } = auctionIdSchema.parse(req.params);
-
     const auction = await auctionsService.getById(auctionId, req.user as RBACUser);
+    res.status(200).json({ success: true, data: auction });
+  }),
 
-    res.status(200).json({
-      success: true,
-      data: auction,
-    });
-  } catch (error: any) {
-    logger.error('[AuctionsController.getAuction] Error', { error });
-    
-    if (error.name === 'ZodError') {
-      res.status(400).json({
-        success: false,
-        code: ErrorCode.INVALID_INPUT,
-        message: 'Validation failed',
-        errors: error.errors,
-      });
-      return;
-    }
-
-    res.status(error.statusCode || 500).json({
-      success: false,
-      code: error.code || 'INTERNAL_ERROR',
-      message: error.message || 'Internal server error',
-    });
-  }
-}
-
-/**
- * List auctions with filtering and pagination
- * GET /api/auctions
- */
-async function listAuctions(req: Request, res: Response): Promise<void> {
-  try {
+  /**
+   * List auctions with filtering and pagination
+   * GET /api/auctions
+   */
+  listAuctions: asyncHandler(async (req: Request, res: Response) => {
     const validatedQuery = listAuctionsSchema.parse(req.query);
-
     const result = await auctionsService.list(req.user as RBACUser, validatedQuery);
-
     res.status(200).json({
       success: true,
       data: result.auctions,
@@ -118,208 +64,69 @@ async function listAuctions(req: Request, res: Response): Promise<void> {
         totalPages: Math.ceil(result.total / (validatedQuery.pageSize || 10)),
       },
     });
-  } catch (error: any) {
-    logger.error('[AuctionsController.listAuctions] Error', { error });
-    
-    if (error.name === 'ZodError') {
-      res.status(400).json({
-        success: false,
-        code: ErrorCode.INVALID_INPUT,
-        message: 'Validation failed',
-        errors: error.errors,
-      });
-      return;
-    }
+  }),
 
-    res.status(error.statusCode || 500).json({
-      success: false,
-      code: error.code || 'INTERNAL_ERROR',
-      message: error.message || 'Internal server error',
-    });
-  }
-}
-
-/**
- * Place bid on auction
- * POST /api/auctions/:auctionId/bids
- */
-async function placeBid(req: Request, res: Response): Promise<void> {
-  try {
+  /**
+   * Place bid on auction
+   * POST /api/auctions/:auctionId/bids
+   */
+  placeBid: asyncHandler(async (req: Request, res: Response) => {
     const { auctionId } = auctionIdSchema.parse(req.params);
     const { bidAmount } = placeBidSchema.parse({ ...req.body, auctionId });
-
     if (!req.user?.id) {
-      throw new ValidationError('User not authenticated', ErrorCode.AUTHENTICATION_ERROR);
+      throw new ValidationError(API_MESSAGES.ERROR.UNAUTHORIZED, ErrorCode.AUTHENTICATION_ERROR);
     }
-
     const result = await auctionsService.placeBid(
-      {
-        auctionId,
-        bidderId: req.user.id,
-        bidAmount,
-      },
+      { auctionId, bidderId: req.user.id, bidAmount },
       req.user as RBACUser
     );
+    res.status(201).json({ success: true, data: result });
+  }),
 
-    res.status(201).json({
-      success: true,
-      data: result,
-    });
-  } catch (error: any) {
-    logger.error('[AuctionsController.placeBid] Error', { error });
-    
-    if (error.name === 'ZodError') {
-      res.status(400).json({
-        success: false,
-        code: ErrorCode.INVALID_INPUT,
-        message: 'Validation failed',
-        errors: error.errors,
-      });
-      return;
-    }
-
-    res.status(error.statusCode || 500).json({
-      success: false,
-      code: error.code || 'INTERNAL_ERROR',
-      message: error.message || 'Internal server error',
-    });
-  }
-}
-
-/**
- * Publish auction (SCHEDULED -> ACTIVE)
- * POST /api/auctions/:auctionId/publish
- */
-async function publishAuction(req: Request, res: Response): Promise<void> {
-  try {
+  /**
+   * Publish auction (SCHEDULED -> ACTIVE)
+   * POST /api/auctions/:auctionId/publish
+   */
+  publishAuction: asyncHandler(async (req: Request, res: Response) => {
     const { auctionId } = auctionIdSchema.parse(req.params);
-
     const auction = await auctionsService.publish(auctionId, req.user as RBACUser);
+    res.status(200).json({ success: true, data: auction });
+  }),
 
-    res.status(200).json({
-      success: true,
-      data: auction,
-    });
-  } catch (error: any) {
-    logger.error('[AuctionsController.publishAuction] Error', { error });
-
-    res.status(error.statusCode || 500).json({
-      success: false,
-      code: error.code || 'INTERNAL_ERROR',
-      message: error.message || 'Internal server error',
-    });
-  }
-}
-
-/**
- * Extend auction end time
- * POST /api/auctions/:auctionId/extend
- */
-async function extendAuction(req: Request, res: Response): Promise<void> {
-  try {
+  /**
+   * Extend auction end time
+   * POST /api/auctions/:auctionId/extend
+   */
+  extendAuction: asyncHandler(async (req: Request, res: Response) => {
     const { auctionId } = auctionIdSchema.parse(req.params);
     const { newEndDate } = extendAuctionSchema.parse(req.body);
-
     const auction = await auctionsService.extend(
       auctionId,
       new Date(newEndDate),
       req.user as RBACUser
     );
+    res.status(200).json({ success: true, data: auction });
+  }),
 
-    res.status(200).json({
-      success: true,
-      data: auction,
-    });
-  } catch (error: any) {
-    logger.error('[AuctionsController.extendAuction] Error', { error });
-    
-    if (error.name === 'ZodError') {
-      res.status(400).json({
-        success: false,
-        code: ErrorCode.INVALID_INPUT,
-        message: 'Validation failed',
-        errors: error.errors,
-      });
-      return;
-    }
-
-    res.status(error.statusCode || 500).json({
-      success: false,
-      code: error.code || 'INTERNAL_ERROR',
-      message: error.message || 'Internal server error',
-    });
-  }
-}
-
-/**
- * End auction and determine winner
- * POST /api/auctions/:auctionId/end
- */
-async function endAuction(req: Request, res: Response): Promise<void> {
-  try {
+  /**
+   * End auction and determine winner
+   * POST /api/auctions/:auctionId/end
+   */
+  endAuction: asyncHandler(async (req: Request, res: Response) => {
     const { auctionId } = auctionIdSchema.parse(req.params);
-
     const auction = await auctionsService.endAuction(auctionId, req.user as RBACUser);
+    res.status(200).json({ success: true, data: auction });
+  }),
 
-    res.status(200).json({
-      success: true,
-      data: auction,
-    });
-  } catch (error: any) {
-    logger.error('[AuctionsController.endAuction] Error', { error });
-
-    res.status(error.statusCode || 500).json({
-      success: false,
-      code: error.code || 'INTERNAL_ERROR',
-      message: error.message || 'Internal server error',
-    });
-  }
-}
-
-/**
- * Cancel auction
- * POST /api/auctions/:auctionId/cancel
- */
-async function cancelAuction(req: Request, res: Response): Promise<void> {
-  try {
+  /**
+   * Cancel auction
+   * POST /api/auctions/:auctionId/cancel
+   */
+  cancelAuction: asyncHandler(async (req: Request, res: Response) => {
     const { auctionId } = auctionIdSchema.parse(req.params);
     const { reason } = cancelAuctionSchema.parse(req.body);
-
     const auction = await auctionsService.cancelAuction(auctionId, reason, req.user as RBACUser);
-
-    res.status(200).json({
-      success: true,
-      data: auction,
-    });
-  } catch (error: any) {
-    logger.error('[AuctionsController.cancelAuction] Error', { error });
-    
-    if (error.name === 'ZodError') {
-      res.status(400).json({
-        success: false,
-        code: ErrorCode.INVALID_INPUT,
-        message: 'Validation failed',
-        errors: error.errors,
-      });
-      return;
-    }
-
-    res.status(error.statusCode || 500).json({
-      success: false,
-      code: error.code || 'INTERNAL_ERROR',
-      message: error.message || 'Internal server error',
-    });
-  }
-}
-
-export const auctionsController = {
-  createAuction,
-  getAuction,
-  listAuctions,
-  placeBid,
-  publishAuction,
-  extendAuction,
-  endAuction,
-  cancelAuction,
+    res.status(200).json({ success: true, data: auction });
+  }),
 };
 

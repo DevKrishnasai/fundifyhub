@@ -120,14 +120,14 @@ export interface AssetStats {
 }
 
 export interface AssetListParams {
-  status?: string
-  condition?: string
-  assetType?: string
-  warehouseId?: string
-  districtId?: string
-  search?: string
-  page?: number
-  limit?: number
+  status?: string | undefined
+  condition?: string | undefined
+  assetType?: string | undefined
+  warehouseId?: string | undefined
+  districtId?: string | undefined
+  search?: string | undefined
+  page?: number | undefined
+  limit?: number | undefined
 }
 
 export interface AssetListResponse {
@@ -333,7 +333,7 @@ interface UpdateAssetStatusInput {
 interface CreateMovementInput {
   movementType: string
   toWarehouseId?: string
-  notes?: string
+  notes?: string | undefined
 }
 
 /**

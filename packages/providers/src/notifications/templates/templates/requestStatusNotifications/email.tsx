@@ -14,24 +14,24 @@ import {
 
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { RequestStatusNotificationsPayloadType } from '@fundifyhub/types';
+import { RequestStatusUpdatePayload } from '@fundifyhub/types';
 
 const StatusEmail = ({
-  header,
-  description,
-  currentStatus,
+  customerName,
+  requestId,
+  requestNumber,
   previousStatus,
-  updatedBy,
-  time,
-  link,
-  footer,
+  currentStatus,
+  statusDescription,
+  actionRequired,
+  dashboardUrl,
+  updatedAt,
   companyName,
   logoUrl,
   companyUrl,
-  transitions,
-}: RequestStatusNotificationsPayloadType) => {
-  const hdr = 'FundifyHub - Request Update';
-  const desc = 'There has been an update to your request. Please review the status below for more details.';
+}: RequestStatusUpdatePayload) => {
+  const hdr = `${companyName ?? 'FundifyHub'} - Request Update`;
+  const desc = statusDescription ?? 'There has been an update to your request. Please review the status below for more details.';
   const ftr = 'If you need help, contact your district admin or reply to this message.';
 
   return (
@@ -65,7 +65,7 @@ const StatusEmail = ({
             <Heading style={title}>{hdr}</Heading>
 
             <Text style={leadText}>
-              Your request has a new update. Below are the latest details:
+              Hi {customerName}, your request ({requestNumber}) has a new update.
             </Text>
 
             {/* Status card */}
@@ -82,33 +82,25 @@ const StatusEmail = ({
                 </div>
 
                 <div>
-                  <Text style={label}>Updated By</Text>
-                  <Text style={detailValue}>{updatedBy ?? 'System'}</Text>
-                </div>
-
-                <div>
                   <Text style={label}>Updated At</Text>
-                  <Text style={detailValue}>{time ?? 'Just now'}</Text>
+                  <Text style={detailValue}>{updatedAt ?? 'Just now'}</Text>
                 </div>
               </div>
-              {/* Transition timeline */}
-              {Array.isArray(transitions) && transitions.length > 0 && (
-                <Section style={{ marginTop: 12 }}>
-                  <Text style={{ fontSize: 13, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase' }}>Transition history</Text>
-                  {transitions.map((t: any, i: number) => (
-                    <Text key={i} style={{ fontSize: 14, color: '#111827', marginBottom: 6 }}>• {t.from} → {t.to}{t.by ? ` by ${t.by}` : ''}{t.time ? ` at ${t.time}` : ''}</Text>
-                  ))}
-                </Section>
-              )}
             </Section>
 
             {/* Description */}
             <Text style={descriptionText}>
               {desc}
             </Text>
+            
+            {actionRequired && (
+               <Text style={{...descriptionText, fontWeight: 'bold', color: '#d97706'}}>
+                  Action Required: {actionRequired}
+               </Text>
+            )}
 
             {/* Button */}
-            <Button href={link} style={primaryButton}>
+            <Button href={dashboardUrl} style={primaryButton}>
               View Dashboard Status
             </Button>
 
@@ -121,7 +113,7 @@ const StatusEmail = ({
   );
 };
 
-export const renderEmail = (vars: RequestStatusNotificationsPayloadType) => {
+export const renderEmail = (vars: RequestStatusUpdatePayload) => {
   return render(<StatusEmail {...vars} />);
 };
 

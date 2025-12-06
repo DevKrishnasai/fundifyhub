@@ -6,7 +6,7 @@
  */
 
 export type {
-  APIResponse as APIResponseType,
+  ApiResponse as APIResponseType,
   AdminEmiScheduleSnapshot,
   NormalizedEmiData,
   isAdminEmiScheduleSnapshot,
@@ -18,7 +18,7 @@ export type {
 export type {
   RequestWithRelations,
   RequestDetailWithLoan,
-  EMIScheduleItem,
+  EMISchedule as EMIScheduleItem,
 } from '@fundifyhub/types';
 
 // Express request extension

@@ -29,15 +29,15 @@ export const userKeys = {
 // ============================================================================
 
 export interface UserListFilters {
-  page?: number
-  limit?: number
-  role?: string
-  status?: string
-  search?: string
-  district?: string
-  state?: string
-  sortBy?: string
-  sortOrder?: 'asc' | 'desc'
+  page?: number | undefined
+  limit?: number | undefined
+  role?: string | undefined
+  status?: string | undefined
+  search?: string | undefined
+  district?: string | undefined
+  state?: string | undefined
+  sortBy?: string | undefined
+  sortOrder?: 'asc' | 'desc' | undefined
 }
 
 interface UserListResponse {
@@ -61,20 +61,20 @@ interface CreateUserPayload {
 }
 
 interface UpdateUserPayload {
-  firstName?: string
-  lastName?: string
-  phoneNumber?: string
-  roles?: string[]
-  accountStatus?: string
-  homeDistrictId?: string
+  firstName?: string | undefined
+  lastName?: string | undefined
+  phoneNumber?: string | undefined
+  roles?: string[] | undefined
+  accountStatus?: string | undefined
+  homeDistrictId?: string | undefined
 }
 
 interface UpdateProfilePayload {
-  firstName?: string
-  lastName?: string
-  phoneNumber?: string
-  address?: string
-  dateOfBirth?: string
+  firstName?: string | undefined
+  lastName?: string | undefined
+  phoneNumber?: string | undefined
+  address?: string | undefined
+  dateOfBirth?: string | undefined
 }
 
 // ============================================================================

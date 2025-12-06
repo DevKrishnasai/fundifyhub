@@ -1,13 +1,18 @@
-import { SERVICE_NAMES, TEMPLATE_NAMES, TemplateDefinitionType } from '@fundifyhub/types';
+import { NotificationTemplateName, NotificationChannel, NotificationCategory, NotificationPriority, NotificationTemplateDefinition } from '@fundifyhub/types';
 import renderEmail from './email';
 import renderWhatsApp from './whatsapp';
 
-const tpl: TemplateDefinitionType<TEMPLATE_NAMES.ADMIN_USER_CREATED> = {
-  supportedServices: [SERVICE_NAMES.EMAIL, SERVICE_NAMES.WHATSAPP],
-  defaults: { priority: 1, attempts: 2, delay: 0 },
+const tpl: NotificationTemplateDefinition<NotificationTemplateName.ADMIN_USER_CREATED> = {
+  name: NotificationTemplateName.ADMIN_USER_CREATED,
+  description: 'Notification sent when a new admin user is created',
+  supportedChannels: [NotificationChannel.EMAIL, NotificationChannel.WHATSAPP],
+  defaultCategory: NotificationCategory.SECURITY,
+  defaultPriority: NotificationPriority.HIGH,
+  renderers: {
+    [NotificationChannel.EMAIL]: async (vars) => ({ content: await renderEmail(vars) }),
+    [NotificationChannel.WHATSAPP]: (vars) => ({ content: renderWhatsApp(vars) }),
+  },
   getSubject: (payload) => `Your ${payload.companyName} Account Has Been Created`,
-  renderEmail,
-  renderWhatsApp,
 };
 
 export default tpl;

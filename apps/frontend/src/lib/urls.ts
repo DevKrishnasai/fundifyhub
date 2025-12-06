@@ -97,6 +97,12 @@ export const BACKEND_API_CONFIG = {
       EMI_BREAKDOWN: (emiId: string) => `/api/v1/payments/emi/${emiId}/breakdown`,
       EMI_HISTORY: (emiId: string) => `/api/v1/payments/emi/${emiId}/history`,
     },
+    LOANS: {
+      LIST: '/api/v1/loans',
+      GET_BY_ID: (id: string) => `/api/v1/loans/${id}`,
+      EMI_SCHEDULE: (id: string) => `/api/v1/loans/${id}/emi-schedule`,
+      PAYMENTS: (id: string) => `/api/v1/loans/${id}/payments`,
+    },
     NOTIFICATIONS: {
       LIST: '/api/v1/notifications',
       UNREAD_COUNT: '/api/v1/notifications/unread-count',

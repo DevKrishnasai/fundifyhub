@@ -1,4 +1,4 @@
-import { OTPVerificationPayloadType } from "@fundifyhub/types";
+import { OTPVerificationPayload } from "@fundifyhub/types";
 
 interface OtpWhatsAppProps {
   otpCode: string;
@@ -7,7 +7,7 @@ interface OtpWhatsAppProps {
   supportUrl?: string;
 }
 
-export const renderOtpWhatsApp = (vars: OTPVerificationPayloadType) => {
+export const renderOtpWhatsApp = (vars: OTPVerificationPayload) => {
   const props: OtpWhatsAppProps = {
     otpCode: vars.otpCode,
     expiresInMinutes: vars.expiresInMinutes,

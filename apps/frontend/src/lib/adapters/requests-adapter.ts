@@ -6,7 +6,7 @@
  * @module lib/adapters/requests
  */
 
-import { getWithResult, postWithResult, putWithResult } from '../api-client';
+import { getWithResult, postWithResult, putWithResult, type ApiResult } from '../api-client';
 import { BACKEND_API_CONFIG } from '../urls';
 import type { RequestType, AdminOfferType, CommentType, UserType } from '@fundifyhub/types';
 
@@ -156,28 +156,34 @@ export const requestsAdapter = {
    * Get request by ID
    */
   async getById(id: string) {
-    return getWithResult<RequestType>(
+    const result = await getWithResult<{ request: RequestType }>(
       BACKEND_API_CONFIG.ENDPOINTS.REQUESTS.GET_BY_ID(id)
     );
+    if (result.ok) return { ...result, data: result.data.request };
+    return result as unknown as ApiResult<RequestType>;
   },
 
   /**
    * Get request by identifier (for user endpoint)
    */
   async getByIdentifier(identifier: string) {
-    return getWithResult<RequestType>(
+    const result = await getWithResult<{ request: RequestType }>(
       BACKEND_API_CONFIG.ENDPOINTS.USER.GET_REQUEST_BY_IDENTIFIER(identifier)
     );
+    if (result.ok) return { ...result, data: result.data.request };
+    return result as unknown as ApiResult<RequestType>;
   },
 
   /**
    * Create a new request
    */
   async create(payload: CreateRequestPayload) {
-    return postWithResult<RequestType, CreateRequestPayload>(
+    const result = await postWithResult<{ request: RequestType }, CreateRequestPayload>(
       BACKEND_API_CONFIG.ENDPOINTS.USER.LIST_REQUESTS,
       payload
     );
+    if (result.ok) return { ...result, data: result.data.request };
+    return result as unknown as ApiResult<RequestType>;
   },
 
   /**

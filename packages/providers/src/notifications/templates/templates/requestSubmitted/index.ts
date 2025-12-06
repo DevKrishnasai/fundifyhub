@@ -1,13 +1,18 @@
-import { SERVICE_NAMES, TEMPLATE_NAMES, TemplateDefinitionType, RequestSubmittedPayloadType } from '@fundifyhub/types';
+import { NotificationTemplateName, NotificationChannel, NotificationCategory, NotificationPriority, NotificationTemplateDefinition, RequestSubmittedPayload } from '@fundifyhub/types';
 import renderEmail from './email';
 import renderWhatsApp from './whatsapp';
 
-const tpl: TemplateDefinitionType<TEMPLATE_NAMES.REQUEST_SUBMITTED> = {
-  supportedServices: [SERVICE_NAMES.EMAIL, SERVICE_NAMES.WHATSAPP],
-  defaults: { priority: 2, attempts: 2, delay: 0 },
+const tpl: NotificationTemplateDefinition<NotificationTemplateName.REQUEST_SUBMITTED> = {
+  name: NotificationTemplateName.REQUEST_SUBMITTED,
+  description: 'Notification sent when a request is submitted',
+  supportedChannels: [NotificationChannel.EMAIL, NotificationChannel.WHATSAPP],
+  defaultCategory: NotificationCategory.TRANSACTIONAL,
+  defaultPriority: NotificationPriority.NORMAL,
+  renderers: {
+    [NotificationChannel.EMAIL]: async (vars) => ({ content: await renderEmail(vars) }),
+    [NotificationChannel.WHATSAPP]: (vars) => ({ content: renderWhatsApp(vars) }),
+  },
   getSubject: (payload) => `Request ${payload.requestId} submitted — ${payload.companyName ?? 'FundifyHub'}`,
-  renderEmail,
-  renderWhatsApp,
 };
 
 export default tpl;

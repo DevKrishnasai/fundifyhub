@@ -16,6 +16,7 @@ export const ROLES = {
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
+export type UserRole = Role;
 
 /**
  * Role hierarchy levels (higher = more access)
@@ -26,6 +27,17 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
   [ROLES.DISTRICT_ADMIN]: 3,
   [ROLES.STATE_ADMIN]: 4,
   [ROLES.SUPER_ADMIN]: 5,
+};
+
+/**
+ * Role display labels
+ */
+export const ROLE_LABELS: Record<UserRole, string> = {
+  [ROLES.CUSTOMER]: 'Customer',
+  [ROLES.AGENT]: 'Agent',
+  [ROLES.DISTRICT_ADMIN]: 'District Admin',
+  [ROLES.STATE_ADMIN]: 'State Admin',
+  [ROLES.SUPER_ADMIN]: 'Super Admin',
 };
 
 /**
@@ -57,45 +69,6 @@ export const REQUEST_MANAGER_ROLES = [
   ROLES.SUPER_ADMIN,
 ] as const;
 
-/**
- * Available districts for operations
- */
-export const DISTRICTS = [
-  'Hyderabad',
-  'Warangal',
-  'Nizamabad',
-  'Karimnagar',
-  'Khammam',
-  'Mahbubnagar',
-  'Nalgonda',
-  'Adilabad',
-  'Medak',
-  'Rangareddy',
-  'Sangareddy',
-  'Siddipet',
-  'Jagtial',
-  'Peddapalli',
-  'Mancherial',
-  'Kamareddy',
-  'Nirmal',
-  'Kumuram Bheem',
-  'Rajanna Sircilla',
-  'Medchal-Malkajgiri',
-  'Wanaparthy',
-  'Nagarkurnool',
-  'Jogulamba Gadwal',
-  'Suryapet',
-  'Yadadri Bhuvanagiri',
-  'Mahabubabad',
-  'Bhadradri Kothagudem',
-  'Jangaon',
-  'Jayashankar Bhupalpally',
-  'Mulugu',
-  'Narayanpet',
-  'Vikarabad',
-] as const;
-
-export type District = typeof DISTRICTS[number];
 
 /**
  * Validation patterns for user input

@@ -95,14 +95,14 @@ export interface AuctionListFilters {
 export interface CreateAuctionPayload {
   assetId: string
   title: string
-  description?: string
+  description?: string | undefined
   reservePrice: number
   startingBid: number
   bidIncrement: number
-  buyNowPrice?: number
+  buyNowPrice?: number | undefined
   startTime: string
   endTime: string
-  extensionMinutes?: number
+  extensionMinutes?: number | undefined
 }
 
 import type { 

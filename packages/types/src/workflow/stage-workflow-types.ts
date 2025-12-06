@@ -229,7 +229,7 @@ export interface WorkflowActionConfig {
 
 // Import and re-export to maintain compatibility
 // Source of truth is in ui/ui.constants.ts
-export { MODAL_COMPONENTS } from './ui/ui.constants';
+export { MODAL_COMPONENTS } from '../ui/ui.constants';
 
 // ============================================
 // ISSUE TYPES (for REPORT_ISSUE action)

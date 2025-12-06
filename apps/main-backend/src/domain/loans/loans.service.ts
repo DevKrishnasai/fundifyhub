@@ -508,7 +508,7 @@ export class LoansService {
           data: {
             status: 'COMPLETED',
             closedDate: today,
-            closureType: CLOSURE_TYPE.NORMAL,
+            closureType: CLOSURE_TYPE.REGULAR,
           },
         });
 

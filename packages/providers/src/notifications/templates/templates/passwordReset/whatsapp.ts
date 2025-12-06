@@ -1,4 +1,4 @@
-import { PasswordResetPayloadType } from '@fundifyhub/types';
+import { PasswordResetPayload } from '@fundifyhub/types';
 
 interface PasswordResetWhatsAppProps {
   customerName: string;
@@ -8,13 +8,13 @@ interface PasswordResetWhatsAppProps {
   supportUrl: string;
 }
 
-export const renderPasswordResetWhatsApp = (vars: PasswordResetPayloadType) => {
+export const renderPasswordResetWhatsApp = (vars: PasswordResetPayload) => {
   const props: PasswordResetWhatsAppProps = {
     customerName: vars.customerName,
     resetUrl: vars.resetUrl,
     expiresInMinutes: vars.expiresInMinutes,
     companyName: vars.companyName,
-    supportUrl: vars.supportUrl,
+    supportUrl: vars.supportUrl ?? 'support',
   };
 
   return `🔑 *${props.companyName} Password Reset*

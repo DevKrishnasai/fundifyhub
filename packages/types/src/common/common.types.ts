@@ -1,6 +1,6 @@
 /**
- * Common JSON value types for type-safe JSON handling
- * @module common/json.types
+ * Common types shared across the application
+ * @module common/common.types
  */
 
 /** Primitive JSON values */
@@ -14,3 +14,8 @@ export type JsonObject = { [key: string]: JsonValue };
 
 /** Union of all valid JSON values */
 export type JsonValue = JsonPrimitive | JsonArray | JsonObject;
+
+/**
+ * Sort direction for queries
+ */
+export type SortOrder = 'asc' | 'desc';

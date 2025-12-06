@@ -216,7 +216,7 @@ export default function AuctionsPage() {
               </CardDescription>
             </Card>
           ) : (
-            <AuctionList auctions={activeAuctionsData?.auctions} />
+            <AuctionList auctions={activeAuctionsData?.auctions || []} />
           )}
         </TabsContent>
 

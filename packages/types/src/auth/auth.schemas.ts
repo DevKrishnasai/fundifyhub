@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { ROLES } from './auth.constants';
 
 // ============================================================================
 // Authentication Schemas
@@ -23,6 +24,22 @@ export const registerSchema = z.object({
   phoneNumber: z.string().regex(/^\d{10}$/, 'Phone must be exactly 10 digits'),
 });
 
+export const backendRegisterSchema = z.object({
+  email: z.string().email(),
+  phoneNumber: z.string().min(10),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  password: z.string().min(8),
+  role: z.enum([
+    ROLES.CUSTOMER,
+    ROLES.AGENT,
+    ROLES.DISTRICT_ADMIN,
+    ROLES.STATE_ADMIN,
+    ROLES.SUPER_ADMIN,
+  ]),
+  districtIds: z.array(z.string()).optional(),
+});
+
 export const phoneSchema = z.string().regex(/^\d{10}$/, 'Phone must be exactly 10 digits');
 
 export const changePasswordSchema = z.object({
@@ -38,6 +55,15 @@ export const resetPasswordSchema = z.object({
   token: z.string().min(1, 'Reset token is required'),
   email: z.string().email('Please enter a valid email address'),
   newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+export const backendResetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1, 'Verification token is required'),
 });
 
 /** @deprecated Use resetPasswordSchema instead */

@@ -13,7 +13,7 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { EMIOverduePayloadType } from '@fundifyhub/types';
+import { EMIOverduePayload } from '@fundifyhub/types';
 
 const EMIOverdueEmail = ({
   customerName,
@@ -29,7 +29,7 @@ const EMIOverdueEmail = ({
   overdueCount,
   paymentUrl,
   companyName
-}: EMIOverduePayloadType) => {
+}: EMIOverduePayload) => {
   const isSeriousDefault = daysOverdue > 60;
   
   return (
@@ -338,6 +338,6 @@ const footerText: CSSProperties = {
 };
 
 // Render function for worker
-export default async function renderEmail(data: EMIOverduePayloadType): Promise<string> {
+export default async function renderEmail(data: EMIOverduePayload): Promise<string> {
   return await render(<EMIOverdueEmail {...data} />);
 }

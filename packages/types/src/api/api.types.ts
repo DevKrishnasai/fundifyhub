@@ -1,6 +1,6 @@
 /**
  * Common API response types
- * @module common/api.types
+ * @module api/api.types
  */
 
 /**
@@ -47,4 +47,22 @@ export interface PaginationParams {
   pageSize?: number;
   sortBy?: string;
   sortDirection?: SortDirection;
+}
+
+/**
+ * Pagination metadata
+ */
+export interface PaginationMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore?: boolean;
+}
+
+/**
+ * Paginated API response envelope
+ */
+export interface PaginatedApiResponse<T> extends ApiResponse<T[]> {
+  pagination: PaginationMeta;
 }

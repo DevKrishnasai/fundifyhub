@@ -13,7 +13,7 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { LoginAlertPayloadType } from '@fundifyhub/types';
+import { LoginAlertPayload } from '@fundifyhub/types';
 
 /* --------------------------------- EMAIL --------------------------------- */
 const LoginAlertEmail = ({
@@ -22,11 +22,11 @@ const LoginAlertEmail = ({
   customerName,
   device,
   location,
-  time,
+  loginTime,
   supportUrl,
   resetPasswordUrl,
   companyName
-}: LoginAlertPayloadType) => (
+}: LoginAlertPayload) => (
   <Html lang="en">
     <Head />
     <Preview>
@@ -53,7 +53,7 @@ const LoginAlertEmail = ({
             <Text style={alertLabel}>Login Details</Text>
             <Text style={alertDetail}><strong>Device:</strong> {device}</Text>
             <Text style={alertDetail}><strong>Location:</strong> {location}</Text>
-            <Text style={alertDetail}><strong>Time:</strong> {time}</Text>
+            <Text style={alertDetail}><strong>Time:</strong> {loginTime}</Text>
           </Section>
 
           <Button href={resetPasswordUrl} style={primaryButton}>
@@ -86,14 +86,14 @@ const LoginAlertEmail = ({
 );
 
 /* --------------------------- RENDER FUNCTION ---------------------------- */
-export const renderEmail = (vars: LoginAlertPayloadType) => {
-  const props: LoginAlertPayloadType = {
+export const renderEmail = (vars: LoginAlertPayload) => {
+  const props: LoginAlertPayload = {
     email: vars.email,
     phoneNumber: vars.phoneNumber,
     customerName: vars.customerName,
     device: vars.device,
     location: vars.location,
-    time: vars.time,
+    loginTime: vars.loginTime,
     supportUrl: vars.supportUrl,
     resetPasswordUrl: vars.resetPasswordUrl,
     companyName: vars.companyName,

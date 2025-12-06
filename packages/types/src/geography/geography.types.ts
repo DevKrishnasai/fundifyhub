@@ -19,6 +19,10 @@ export interface CountryType {
   
   // Relations
   states?: StateType[];
+  _count?: {
+    states?: number;
+    [key: string]: number | undefined;
+  };
 }
 
 /**
@@ -38,6 +42,10 @@ export interface StateType {
   // Relations
   country?: CountryType;
   districts?: DistrictType[];
+  _count?: {
+    districts?: number;
+    [key: string]: number | undefined;
+  };
 }
 
 /**
@@ -57,6 +65,10 @@ export interface DistrictType {
   // Relations
   state?: StateType;
   warehouses?: WarehouseType[];
+  _count?: {
+    warehouses?: number;
+    [key: string]: number | undefined;
+  };
 }
 
 /**
@@ -90,4 +102,8 @@ export interface WarehouseType {
   // Relations
   district?: DistrictType;
   assets?: any[]; // AssetType imported from types.ts would cause circular dependency
+  _count?: {
+    assets?: number;
+    [key: string]: number | undefined;
+  };
 }

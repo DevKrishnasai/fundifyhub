@@ -89,3 +89,14 @@ export enum EMI_PAYMENT_AVAILABILITY {
   /** EMI has penalties accumulated (can still be paid) */
   AVAILABLE_WITH_PENALTY = 'AVAILABLE_WITH_PENALTY',
 }
+
+// ============================================
+// TRANSFER METHOD
+// ============================================
+
+export enum TRANSFER_METHOD {
+  BANK_TRANSFER = 'BANK_TRANSFER',
+  UPI = 'UPI',
+  CASH = 'CASH',
+  CHEQUE = 'CHEQUE',
+}

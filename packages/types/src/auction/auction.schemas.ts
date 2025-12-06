@@ -1,12 +1,10 @@
 /**
- * Auction Validators
- * 
- * Zod schemas for validating auction-related requests.
- * 
- * @module domain/auctions/validators
+ * Auction Schemas
+ * @module auction/auction.schemas
  */
 
 import { z } from 'zod';
+import { AUCTION_STATUS } from './auction.constants';
 
 /**
  * Create auction input validation
@@ -36,6 +34,8 @@ export const createAuctionSchema = z.object({
   }
 );
 
+export type CreateAuctionInput = z.infer<typeof createAuctionSchema>;
+
 /**
  * Place bid input validation
  */
@@ -44,12 +44,16 @@ export const placeBidSchema = z.object({
   bidAmount: z.number().positive('Bid amount must be positive'),
 });
 
+export type PlaceBidInput = z.infer<typeof placeBidSchema>;
+
 /**
  * Extend auction input validation
  */
 export const extendAuctionSchema = z.object({
   newEndDate: z.string().datetime().or(z.date()),
 });
+
+export type ExtendAuctionInput = z.infer<typeof extendAuctionSchema>;
 
 /**
  * Cancel auction input validation
@@ -58,16 +62,20 @@ export const cancelAuctionSchema = z.object({
   reason: z.string().min(10, 'Cancellation reason must be at least 10 characters'),
 });
 
+export type CancelAuctionInput = z.infer<typeof cancelAuctionSchema>;
+
 /**
  * List auctions query validation
  */
 export const listAuctionsSchema = z.object({
   page: z.string().optional().transform(val => val ? parseInt(val, 10) : 1),
   pageSize: z.string().optional().transform(val => val ? parseInt(val, 10) : 10),
-  status: z.enum(['DRAFT', 'SCHEDULED', 'ACTIVE', 'EXTENDED', 'ENDED', 'SOLD', 'UNSOLD', 'CANCELLED']).optional(),
+  status: z.nativeEnum(AUCTION_STATUS).optional(),
   sortBy: z.enum(['createdAt', 'endDate', 'highestBid']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });
+
+export type ListAuctionsInput = z.infer<typeof listAuctionsSchema>;
 
 /**
  * Auction ID param validation
@@ -75,3 +83,5 @@ export const listAuctionsSchema = z.object({
 export const auctionIdSchema = z.object({
   auctionId: z.string().min(1, 'Auction ID is required'),
 });
+
+export type AuctionIdParam = z.infer<typeof auctionIdSchema>;

@@ -4,152 +4,38 @@
  */
 
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query'
+import { z } from 'zod'
 import { getWithResult, postWithResult, putWithResult, deleteWithResult, type ApiResult } from '@/lib/api-client'
 import { BACKEND_API_CONFIG } from '@/lib/urls'
+import {
+  countriesSchema,
+  countrySchema,
+  statesSchema,
+  stateSchema,
+  districtsSchema,
+  districtSchema,
+  warehousesSchema,
+  warehouseSchema,
+  warehouseInventorySchema,
+  warehouseCapacitySummarySchema,
+  type CountryType,
+  type StateType,
+  type DistrictType,
+  type WarehouseType,
+  type CreateWarehousePayload,
+  type UpdateWarehousePayload,
+  type WarehouseWithMetrics,
+  type WarehouseInventory,
+  type WarehouseCapacitySummary,
+  type CreateCountryPayload,
+  type UpdateCountryPayload,
+  type CreateStatePayload,
+  type UpdateStatePayload,
+  type CreateDistrictPayload,
+  type UpdateDistrictPayload,
+} from '@fundifyhub/types'
 
 const { GEOGRAPHY } = BACKEND_API_CONFIG.ENDPOINTS
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface Country {
-  id: string
-  name: string
-  code: string
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  _count?: {
-    states: number
-  }
-}
-
-export interface State {
-  id: string
-  name: string
-  code: string
-  countryId: string
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  country?: Country
-  _count?: {
-    districts: number
-  }
-}
-
-export interface District {
-  id: string
-  name: string
-  code: string
-  stateId: string
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  state?: State
-  _count?: {
-    warehouses: number
-  }
-}
-
-export interface Warehouse {
-  id: string
-  name: string
-  code: string
-  districtId: string
-  address?: string
-  latitude?: number
-  longitude?: number
-  capacity?: number
-  currentCount?: number
-  contactPerson?: string
-  contactPhone?: string
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  district?: District
-  _count?: {
-    assets: number
-  }
-}
-
-export interface WarehouseWithMetrics extends Warehouse {
-  capacityUsed?: number
-  capacityAvailable?: number | null
-  capacityPercentage?: number | null
-  isOverCapacity?: boolean
-  isNearCapacity?: boolean
-}
-
-export interface WarehouseAsset {
-  id: string
-  brand?: string
-  model?: string
-  description?: string
-  status: string
-  condition: string
-  assetType: string
-  estimatedValue?: number
-  request?: {
-    id: string
-    requestNumber: string
-    currentStatus: string
-    customer?: {
-      id: string
-      firstName: string
-      lastName: string
-    }
-  }
-}
-
-export interface WarehouseInventory {
-  warehouse: WarehouseWithMetrics
-  assets: WarehouseAsset[]
-  statusBreakdown: Record<string, number>
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-  }
-}
-
-export interface WarehouseCapacitySummary {
-  summary: {
-    totalWarehouses: number
-    totalCapacity: number
-    totalAssets: number
-    overallUtilization: number | null
-    overCapacityCount: number
-    nearCapacityCount: number
-    healthyCount: number
-  }
-  warehouses: WarehouseWithMetrics[]
-}
-
-export interface CreateWarehousePayload {
-  name: string
-  code: string
-  districtId: string
-  address?: string
-  latitude?: number
-  longitude?: number
-  capacity?: number
-  contactPerson?: string
-  contactPhone?: string
-}
-
-export interface UpdateWarehousePayload {
-  name?: string
-  address?: string
-  latitude?: number
-  longitude?: number
-  capacity?: number
-  contactPerson?: string
-  contactPhone?: string
-  isActive?: boolean
-}
 
 // ============================================================================
 // Query Keys - Centralized for easy invalidation
@@ -180,16 +66,16 @@ export const geographyKeys = {
  * Fetch all countries
  */
 export function useCountries(
-  options?: Omit<UseQueryOptions<Country[], Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<CountryType[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.countries(),
     queryFn: async () => {
-      const result = await getWithResult<Country[]>(GEOGRAPHY.COUNTRIES)
+      const result = await getWithResult<CountryType[]>(GEOGRAPHY.COUNTRIES)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch countries')
       }
-      return result.data
+      return countriesSchema.parse(result.data) as unknown as CountryType[]
     },
     staleTime: 60 * 60 * 1000, // Countries rarely change, cache for 1 hour
     ...options,
@@ -201,16 +87,16 @@ export function useCountries(
  */
 export function useCountry(
   id: string,
-  options?: Omit<UseQueryOptions<Country, Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<CountryType, Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.country(id),
     queryFn: async () => {
-      const result = await getWithResult<Country>(GEOGRAPHY.COUNTRY_BY_ID(id))
+      const result = await getWithResult<CountryType>(GEOGRAPHY.COUNTRY_BY_ID(id))
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch country')
       }
-      return result.data
+      return countrySchema.parse(result.data) as unknown as CountryType
     },
     enabled: !!id,
     ...options,
@@ -225,16 +111,16 @@ export function useCountry(
  * Fetch all states
  */
 export function useStates(
-  options?: Omit<UseQueryOptions<State[], Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<StateType[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.states(),
     queryFn: async () => {
-      const result = await getWithResult<State[]>(GEOGRAPHY.STATES)
+      const result = await getWithResult<StateType[]>(GEOGRAPHY.STATES)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch states')
       }
-      return result.data
+      return statesSchema.parse(result.data) as unknown as StateType[]
     },
     staleTime: 60 * 60 * 1000, // Cache for 1 hour
     ...options,
@@ -246,16 +132,16 @@ export function useStates(
  */
 export function useStatesByCountry(
   countryId: string,
-  options?: Omit<UseQueryOptions<State[], Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<StateType[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.statesByCountry(countryId),
     queryFn: async () => {
-      const result = await getWithResult<State[]>(GEOGRAPHY.STATES_BY_COUNTRY(countryId))
+      const result = await getWithResult<StateType[]>(GEOGRAPHY.STATES_BY_COUNTRY(countryId))
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch states')
       }
-      return result.data
+      return statesSchema.parse(result.data) as unknown as StateType[]
     },
     enabled: !!countryId,
     staleTime: 60 * 60 * 1000,
@@ -268,16 +154,16 @@ export function useStatesByCountry(
  */
 export function useState(
   id: string,
-  options?: Omit<UseQueryOptions<State, Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<StateType, Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.state(id),
     queryFn: async () => {
-      const result = await getWithResult<State>(GEOGRAPHY.STATE_BY_ID(id))
+      const result = await getWithResult<StateType>(GEOGRAPHY.STATE_BY_ID(id))
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch state')
       }
-      return result.data
+      return stateSchema.parse(result.data) as unknown as StateType
     },
     enabled: !!id,
     ...options,
@@ -292,16 +178,16 @@ export function useState(
  * Fetch all districts
  */
 export function useDistricts(
-  options?: Omit<UseQueryOptions<District[], Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<DistrictType[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.districts(),
     queryFn: async () => {
-      const result = await getWithResult<District[]>(GEOGRAPHY.DISTRICTS)
+      const result = await getWithResult<DistrictType[]>(GEOGRAPHY.DISTRICTS)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch districts')
       }
-      return result.data
+      return districtsSchema.parse(result.data) as unknown as DistrictType[]
     },
     staleTime: 30 * 60 * 1000, // Cache for 30 minutes
     ...options,
@@ -313,16 +199,16 @@ export function useDistricts(
  */
 export function useDistrictsByState(
   stateId: string,
-  options?: Omit<UseQueryOptions<District[], Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<DistrictType[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.districtsByState(stateId),
     queryFn: async () => {
-      const result = await getWithResult<District[]>(GEOGRAPHY.DISTRICTS_BY_STATE(stateId))
+      const result = await getWithResult<DistrictType[]>(GEOGRAPHY.DISTRICTS_BY_STATE(stateId))
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch districts')
       }
-      return result.data
+      return districtsSchema.parse(result.data) as unknown as DistrictType[]
     },
     enabled: !!stateId,
     staleTime: 30 * 60 * 1000,
@@ -335,16 +221,16 @@ export function useDistrictsByState(
  */
 export function useDistrict(
   id: string,
-  options?: Omit<UseQueryOptions<District, Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<DistrictType, Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.district(id),
     queryFn: async () => {
-      const result = await getWithResult<District>(GEOGRAPHY.DISTRICT_BY_ID(id))
+      const result = await getWithResult<DistrictType>(GEOGRAPHY.DISTRICT_BY_ID(id))
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch district')
       }
-      return result.data
+      return districtSchema.parse(result.data) as unknown as DistrictType
     },
     enabled: !!id,
     ...options,
@@ -359,16 +245,16 @@ export function useDistrict(
  * Fetch all warehouses
  */
 export function useWarehouses(
-  options?: Omit<UseQueryOptions<Warehouse[], Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<WarehouseType[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.warehouses(),
     queryFn: async () => {
-      const result = await getWithResult<Warehouse[]>(GEOGRAPHY.WAREHOUSES)
+      const result = await getWithResult<WarehouseType[]>(GEOGRAPHY.WAREHOUSES)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch warehouses')
       }
-      return result.data
+      return warehousesSchema.parse(result.data) as unknown as WarehouseType[]
     },
     staleTime: 15 * 60 * 1000, // Cache for 15 minutes (warehouses may change more often)
     ...options,
@@ -380,16 +266,16 @@ export function useWarehouses(
  */
 export function useWarehousesByDistrict(
   districtId: string,
-  options?: Omit<UseQueryOptions<Warehouse[], Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<WarehouseType[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.warehousesByDistrict(districtId),
     queryFn: async () => {
-      const result = await getWithResult<Warehouse[]>(GEOGRAPHY.WAREHOUSES_BY_DISTRICT(districtId))
+      const result = await getWithResult<WarehouseType[]>(GEOGRAPHY.WAREHOUSES_BY_DISTRICT(districtId))
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch warehouses')
       }
-      return result.data
+      return warehousesSchema.parse(result.data) as unknown as WarehouseType[]
     },
     enabled: !!districtId,
     staleTime: 15 * 60 * 1000,
@@ -402,16 +288,16 @@ export function useWarehousesByDistrict(
  */
 export function useWarehouse(
   id: string,
-  options?: Omit<UseQueryOptions<Warehouse, Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<UseQueryOptions<WarehouseType, Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
     queryKey: geographyKeys.warehouse(id),
     queryFn: async () => {
-      const result = await getWithResult<Warehouse>(GEOGRAPHY.WAREHOUSE_BY_ID(id))
+      const result = await getWithResult<WarehouseType>(GEOGRAPHY.WAREHOUSE_BY_ID(id))
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch warehouse')
       }
-      return result.data
+      return warehouseSchema.parse(result.data) as unknown as WarehouseType
     },
     enabled: !!id,
     ...options,
@@ -424,12 +310,12 @@ export function useWarehouse(
 export function useWarehouseInventory(
   id: string,
   filters?: {
-    status?: string
-    assetType?: string
-    condition?: string
-    search?: string
-    page?: number
-    limit?: number
+    status?: string | undefined
+    assetType?: string | undefined
+    condition?: string | undefined
+    search?: string | undefined
+    page?: number | undefined
+    limit?: number | undefined
   },
   options?: Omit<UseQueryOptions<WarehouseInventory, Error>, 'queryKey' | 'queryFn'>
 ) {
@@ -451,7 +337,7 @@ export function useWarehouseInventory(
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch warehouse inventory')
       }
-      return result.data
+      return warehouseInventorySchema.parse(result.data)
     },
     enabled: !!id,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -483,10 +369,142 @@ export function useWarehouseCapacitySummary(
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to fetch warehouse capacity summary')
       }
-      return result.data
+      return warehouseCapacitySummarySchema.parse(result.data)
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     ...options,
+  })
+}
+
+// ============================================================================
+// Country Mutations
+// ============================================================================
+
+export function useCreateCountry() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: CreateCountryPayload) => {
+      const result = await postWithResult<CountryType>(GEOGRAPHY.COUNTRIES, data)
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to create country')
+      return countrySchema.parse(result.data) as unknown as CountryType
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: geographyKeys.countries() }),
+  })
+}
+
+export function useUpdateCountry() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: UpdateCountryPayload }) => {
+      const result = await putWithResult<CountryType>(GEOGRAPHY.COUNTRY_BY_ID(id), data)
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to update country')
+      return countrySchema.parse(result.data) as unknown as CountryType
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: geographyKeys.country(variables.id) })
+      queryClient.invalidateQueries({ queryKey: geographyKeys.countries() })
+    },
+  })
+}
+
+export function useDeleteCountry() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const result = await deleteWithResult<void>(GEOGRAPHY.COUNTRY_BY_ID(id))
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to delete country')
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: geographyKeys.countries() }),
+  })
+}
+
+// ============================================================================
+// State Mutations
+// ============================================================================
+
+export function useCreateState() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: CreateStatePayload) => {
+      const result = await postWithResult<StateType>(GEOGRAPHY.STATES, data)
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to create state')
+      return stateSchema.parse(result.data) as unknown as StateType
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: geographyKeys.states() })
+      if (data.countryId) queryClient.invalidateQueries({ queryKey: geographyKeys.statesByCountry(data.countryId) })
+    },
+  })
+}
+
+export function useUpdateState() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: UpdateStatePayload }) => {
+      const result = await putWithResult<StateType>(GEOGRAPHY.STATE_BY_ID(id), data)
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to update state')
+      return stateSchema.parse(result.data) as unknown as StateType
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: geographyKeys.state(variables.id) })
+      queryClient.invalidateQueries({ queryKey: geographyKeys.states() })
+    },
+  })
+}
+
+export function useDeleteState() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const result = await deleteWithResult<void>(GEOGRAPHY.STATE_BY_ID(id))
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to delete state')
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: geographyKeys.states() }),
+  })
+}
+
+// ============================================================================
+// District Mutations
+// ============================================================================
+
+export function useCreateDistrict() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: CreateDistrictPayload) => {
+      const result = await postWithResult<DistrictType>(GEOGRAPHY.DISTRICTS, data)
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to create district')
+      return districtSchema.parse(result.data) as unknown as DistrictType
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: geographyKeys.districts() })
+      if (data.stateId) queryClient.invalidateQueries({ queryKey: geographyKeys.districtsByState(data.stateId) })
+    },
+  })
+}
+
+export function useUpdateDistrict() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: UpdateDistrictPayload }) => {
+      const result = await putWithResult<DistrictType>(GEOGRAPHY.DISTRICT_BY_ID(id), data)
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to update district')
+      return districtSchema.parse(result.data) as unknown as DistrictType
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: geographyKeys.district(variables.id) })
+      queryClient.invalidateQueries({ queryKey: geographyKeys.districts() })
+    },
+  })
+}
+
+export function useDeleteDistrict() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const result = await deleteWithResult<void>(GEOGRAPHY.DISTRICT_BY_ID(id))
+      if (!result.ok) throw new Error(result.error.message ?? 'Failed to delete district')
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: geographyKeys.districts() }),
   })
 }
 
@@ -502,11 +520,11 @@ export function useCreateWarehouse() {
 
   return useMutation({
     mutationFn: async (data: CreateWarehousePayload) => {
-      const result = await postWithResult<Warehouse>(GEOGRAPHY.WAREHOUSES, data)
+      const result = await postWithResult<WarehouseType>(GEOGRAPHY.WAREHOUSES, data)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to create warehouse')
       }
-      return result.data
+      return warehouseSchema.parse(result.data) as unknown as WarehouseType
     },
     onSuccess: (data) => {
       // Invalidate warehouse lists
@@ -526,11 +544,11 @@ export function useUpdateWarehouse() {
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: UpdateWarehousePayload }) => {
-      const result = await putWithResult<Warehouse>(`${GEOGRAPHY.WAREHOUSE_BY_ID(id)}`, data)
+      const result = await putWithResult<WarehouseType>(`${GEOGRAPHY.WAREHOUSE_BY_ID(id)}`, data)
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to update warehouse')
       }
-      return result.data
+      return warehouseSchema.parse(result.data) as unknown as WarehouseType
     },
     onSuccess: (data, variables) => {
       // Invalidate and refetch
@@ -552,7 +570,7 @@ export function useUpdateWarehouseCapacity() {
       if (!result.ok) {
         throw new Error(result.error.message ?? 'Failed to update warehouse capacity')
       }
-      return result.data
+      return result.data // TODO: Add schema for WarehouseWithMetrics if needed, or just return data
     },
     onSuccess: (data, variables) => {
       // Invalidate warehouse and capacity summary

@@ -1,13 +1,13 @@
-import { LoginAlertPayloadType } from "@fundifyhub/types";
+import { LoginAlertPayload } from "@fundifyhub/types";
 
-export const renderLoginWhatsApp = (vars: LoginAlertPayloadType) => {
-  const props: LoginAlertPayloadType = {
+export const renderLoginWhatsApp = (vars: LoginAlertPayload) => {
+  const props: LoginAlertPayload = {
     email: vars.email,
     phoneNumber: vars.phoneNumber,
     customerName: vars.customerName,
     device: vars.device,
     location: vars.location,
-    time: vars.time,
+    loginTime: vars.loginTime,
     supportUrl: vars.supportUrl,
     resetPasswordUrl: vars.resetPasswordUrl,
     companyName: vars.companyName
@@ -21,7 +21,7 @@ A new login to your ${props.companyName} account was detected:
 
 • *Device:* ${props.device}
 • *Location:* ${props.location}
-• *Time:* ${props.time}
+• *Time:* ${props.loginTime}
 
 If this was you, no action is required. Otherwise, secure your account immediately:
 ${props.resetPasswordUrl}

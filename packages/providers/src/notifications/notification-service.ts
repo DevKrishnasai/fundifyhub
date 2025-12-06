@@ -398,33 +398,33 @@ export class NotificationService {
     const vars = variables as any;
 
     try {
-      switch (channel) {
-        case NotificationChannel.EMAIL:
-          if (template.renderEmail) {
-            const html = await template.renderEmail(vars);
-            const subject = template.getSubject?.(vars) || '';
-            return { content: html, subject };
-          }
-          break;
+      const renderer = template.renderers[channel];
+      
+      if (renderer) {
+        const rendered = await renderer(vars);
+        const subject = template.getSubject?.(vars);
+        
+        // If the renderer didn't provide a subject but we have a getSubject function, use it
+        if (channel === NotificationChannel.EMAIL && !rendered.subject && subject) {
+          rendered.subject = subject;
+        }
+        
+        return rendered;
+      }
 
-        case NotificationChannel.WHATSAPP:
-        case NotificationChannel.SMS:
-          if (template.renderWhatsApp) {
-            const text = await template.renderWhatsApp(vars);
-            return { content: text, plainText: text };
-          }
-          break;
-
-        case NotificationChannel.IN_APP:
-          // For in-app, use WhatsApp text or email subject as content
-          if (template.renderWhatsApp) {
-            const text = await template.renderWhatsApp(vars);
-            return { content: text };
-          }
-          if (template.getSubject) {
-            return { content: template.getSubject(vars) };
-          }
-          break;
+      // Fallback for IN_APP if no specific renderer
+      if (channel === NotificationChannel.IN_APP) {
+        // Try WhatsApp renderer first for text content
+        const whatsappRenderer = template.renderers[NotificationChannel.WHATSAPP];
+        if (whatsappRenderer) {
+           const rendered = await whatsappRenderer(vars);
+           return { content: rendered.content };
+        }
+        
+        // Fallback to subject
+        if (template.getSubject) {
+           return { content: template.getSubject(vars) };
+        }
       }
     } catch (error) {
       logger.error(`Error rendering template ${templateName} for ${channel}: ${error}`);

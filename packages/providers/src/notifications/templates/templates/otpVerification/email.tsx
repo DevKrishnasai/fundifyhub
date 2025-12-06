@@ -13,7 +13,7 @@ import {
 } from '@react-email/components';
 import type { CSSProperties } from 'react';
 import { render } from '@react-email/render';
-import { OTPVerificationPayloadType } from '@fundifyhub/types';
+import { OTPVerificationPayload } from '@fundifyhub/types';
 
 /* --------------------------------- EMAIL --------------------------------- */
 const OtpEmail = ({
@@ -27,7 +27,7 @@ const OtpEmail = ({
   logoUrl,
   companyUrl,
 
-}: OTPVerificationPayloadType) => (
+}: OTPVerificationPayload) => (
   <Html lang="en">
     <Head />
     <Preview>
@@ -97,8 +97,8 @@ const OtpEmail = ({
 );
 
 /* --------------------------- RENDER FUNCTION ---------------------------- */
-export const renderEmail = (vars: OTPVerificationPayloadType) => {
-  const props: OTPVerificationPayloadType = {
+export const renderEmail = (vars: OTPVerificationPayload) => {
+  const props: OTPVerificationPayload = {
     email: vars.email,
     phoneNumber: vars.phoneNumber,
     otpCode: vars.otpCode,

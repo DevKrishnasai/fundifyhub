@@ -1,10 +1,10 @@
-import { AssetPledgePayloadType } from '@fundifyhub/types';
+import { AssetPledgePayload } from '@fundifyhub/types';
 
 /**
  * Render WhatsApp message for asset pledge notification
  * This is also used for IN_APP notifications as a fallback
  */
-export const renderAssetPledgeWhatsApp = (vars: AssetPledgePayloadType): string => {
+export const renderAssetPledgeWhatsApp = (vars: AssetPledgePayload): string => {
   const {
     customerName,
     assetName,

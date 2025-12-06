@@ -1,7 +1,7 @@
-import { WelcomePayloadType } from "@fundifyhub/types";
+import { WelcomePayload } from "@fundifyhub/types";
 
-export const renderWelcomeWhatsApp = (vars: WelcomePayloadType) => {
-  const props: WelcomePayloadType = {
+export const renderWelcomeWhatsApp = (vars: WelcomePayload) => {
+  const props: WelcomePayload = {
     email: vars.email,
     phoneNumber: vars.phoneNumber,
     customerName: vars.customerName,
