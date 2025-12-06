@@ -12,12 +12,12 @@
     "allowSyntheticDefaultImports": true,
     "declaration": true,
     "declarationMap": true,
-    "outDir": "dist",
     "baseUrl": ".",
     "paths": {
       "@fundifyhub/types": ["./packages/types/src"],
-      "@fundifyhub/utils": ["./packages/utils/src"], 
-      "@fundifyhub/templates": ["./packages/templates/src"],
+      "@fundifyhub/utils": ["./packages/utils/src"],
+      "@fundifyhub/utils/server": ["./packages/utils/src/server"],
+      "@fundifyhub/providers": ["./packages/providers/src"],
       "@fundifyhub/prisma": ["./packages/prisma/src"],
       "@fundifyhub/logger": ["./packages/logger/src"]
     }

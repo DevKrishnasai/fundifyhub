@@ -121,4 +121,12 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Ensure long words / file names wrap across the app to avoid overflow */
+  html, body, #__next, main {
+    /* allow breaks anywhere for very long tokens (URLs, long filenames) */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    /* keep text legible when wrapping */
+    -webkit-font-smoothing: antialiased;
+  }
 }

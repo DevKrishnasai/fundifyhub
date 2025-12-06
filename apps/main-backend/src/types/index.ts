@@ -1,30 +1,36 @@
-import { UserType } from "@fundifyhub/types";
+/**
+ * Backend-specific type extensions and re-exports
+ *
+ * This file re-exports types from @fundifyhub/types for convenience
+ * and adds backend-specific types (e.g. Express extensions).
+ */
 
-export interface APIResponseType<T = any> {
-  success: boolean;
-  message: string;
-  data?: T;
-  errors?: string[];
-}
+export type {
+  ApiResponse as APIResponseType,
+  AdminEmiScheduleSnapshot,
+  NormalizedEmiData,
+  isAdminEmiScheduleSnapshot,
+  CreateDocumentRequest,
+  CommentWithAuthor,
+  DocumentWithUrl,
+} from '@fundifyhub/types';
 
-export interface CreateDocumentRequest {
-  fileKey: string;
-  fileName: string;
-  fileSize?: number;
-  fileType: string;
-  documentType: string;
-  documentCategory?: string;
-  requestId?: string;
-  uploadedBy: string;
-  description?: string;
-  displayOrder?: number;
-  metadata?: Record<string, unknown>;
-}
+export type {
+  RequestWithRelations,
+  RequestDetailWithLoan,
+  EMISchedule as EMIScheduleItem,
+} from '@fundifyhub/types';
 
+// Express request extension
 declare global {
   namespace Express {
     interface Request {
-      user?: UserType;
+      user?: import('@fundifyhub/types').UserType;
+      /** Raw body string for webhook signature verification */
+      rawBody?: string;
     }
   }
 }
+
+// Keep helper functions for backwards compatibility
+export { normalizeAdminSnapshot, normalizeEmiCalcResult } from './helpers';

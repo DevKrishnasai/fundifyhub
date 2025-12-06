@@ -1,12 +1,17 @@
 {
   "extends": "../../tsconfig.react.json",
   "compilerOptions": {
-    "composite": true,
     "plugins": [
       {
         "name": "next"
       }
     ],
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "noFallthroughCasesInSwitch": true,
     "lib": [
       "dom",
       "dom.iterable",

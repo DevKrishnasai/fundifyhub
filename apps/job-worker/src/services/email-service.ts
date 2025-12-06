@@ -57,6 +57,7 @@ export const startEmailService = async () => {
         connectionStatus: CONNECTION_STATUS.CONNECTED,
         config: {},
         lastConnectedAt: new Date(),
+        configuredBy: 'system',
       }
     });
 
@@ -80,6 +81,7 @@ export const startEmailService = async () => {
         connectionStatus: CONNECTION_STATUS.ERROR,
         config: {},
         lastError: (error as Error).message,
+        configuredBy: 'system',
       }
     }).catch((err: unknown) => {
       const errorLogger = logger.child('[email-service]');
@@ -106,6 +108,7 @@ export const stopEmailService = async () => {
         isActive: false,
         connectionStatus: CONNECTION_STATUS.DISCONNECTED,
         config: {},
+        configuredBy: 'system',
       }
     });
 

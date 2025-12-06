@@ -66,10 +66,11 @@ export const sendWhatsApp = async (opts: { to: string; text: string }) => {
     
     const result = await client.sendMessage(formattedNumber, opts.text);
     return result;
-  } catch (err: any) {
+  } catch (err) {
     const contextLogger = logger.child('[whatsapp-send]');
-    contextLogger.error(`Failed to send to ${opts.to}:`, err);
-    throw new Error(`WhatsApp send failed: ${err.message || 'Unknown error'}`);
+    const error = err instanceof Error ? err : new Error(String(err));
+    contextLogger.error(`Failed to send to ${opts.to}:`, error);
+    throw new Error(`WhatsApp send failed: ${error.message}`);
   }
 };
 
@@ -82,11 +83,45 @@ let whatsappClient: Client | null = null;
  * so the admin UI can display scanner state and connection health.
  */
 export const startWhatsAppService = async () => {
+  const startLogger = logger.child('[whatsapp-service]');
+  
   try {
+    // If client already exists, check its actual state and sync database
     if (whatsappClient) {
-      const contextLogger = logger.child('[whatsapp-service]');
-      contextLogger.warn('Service already running');
-      return;
+      startLogger.warn('Service already running, syncing status...');
+      
+      try {
+        // Check if client is actually connected
+        const state = await whatsappClient.getState();
+        startLogger.info(`Current WhatsApp state: ${state}`);
+        
+        if (state === 'CONNECTED') {
+          // Client is connected, ensure database reflects this
+          await prisma.serviceConfig.update({
+            where: { serviceName: 'WHATSAPP' },
+            data: {
+              isActive: true,
+              connectionStatus: CONNECTION_STATUS.CONNECTED,
+              lastError: null,
+            }
+          });
+          serviceManager.setWhatsAppClient(whatsappClient);
+        }
+      } catch (stateError) {
+        // If we can't get state, the client might be broken - destroy and restart
+        startLogger.warn('Could not get client state, restarting service...');
+        try {
+          await whatsappClient.destroy();
+        } catch (_) { /* ignore destroy errors */ }
+        whatsappClient = null;
+        serviceManager.setWhatsAppClient(null);
+        // Continue to reinitialize below
+      }
+      
+      // If client is still valid after state check, return
+      if (whatsappClient) {
+        return;
+      }
     }
 
     const serviceConfig = await prisma.serviceConfig.findUnique({
@@ -94,8 +129,7 @@ export const startWhatsAppService = async () => {
     });
 
     if (!serviceConfig || !serviceConfig.isEnabled) {
-      const contextLogger = logger.child('[whatsapp-service]');
-      contextLogger.warn('Service not enabled in database');
+      startLogger.warn('Service not enabled in database');
       return;
     }
 
@@ -111,6 +145,7 @@ export const startWhatsAppService = async () => {
         isActive: false,
         connectionStatus: CONNECTION_STATUS.INITIALIZING,
         config: {},
+        configuredBy: 'system',
       }
     });
 
@@ -159,6 +194,7 @@ export const startWhatsAppService = async () => {
             connectionStatus: CONNECTION_STATUS.WAITING_FOR_QR_SCAN,
             config: {},
             qrCode: qrCodeDataUrl,
+            configuredBy: 'system',
           }
         });
       } catch (err) {
@@ -189,6 +225,7 @@ export const startWhatsAppService = async () => {
           connectionStatus: CONNECTION_STATUS.CONNECTED,
           config: {},
           lastConnectedAt: new Date(),
+          configuredBy: 'system',
         }
       });
     });
@@ -206,6 +243,7 @@ export const startWhatsAppService = async () => {
           isActive: false,
           connectionStatus: CONNECTION_STATUS.AUTHENTICATED,
           config: {},
+          configuredBy: 'system',
         }
       });
     });
@@ -228,6 +266,7 @@ export const startWhatsAppService = async () => {
           connectionStatus: CONNECTION_STATUS.ERROR,
           config: {},
           lastError: 'Authentication failed',
+          configuredBy: 'system',
         }
       });
     });
@@ -251,6 +290,7 @@ export const startWhatsAppService = async () => {
           isActive: false,
           connectionStatus: CONNECTION_STATUS.DISCONNECTED,
           config: {},
+          configuredBy: 'system',
         }
       });
     });
@@ -280,6 +320,7 @@ export const startWhatsAppService = async () => {
         connectionStatus: CONNECTION_STATUS.ERROR,
         config: {},
         lastError: (error as Error).message,
+        configuredBy: 'system',
       }
     }).catch((err: unknown) => {
       const errorLogger = logger.child('[whatsapp-service]');
@@ -313,6 +354,7 @@ export const stopWhatsAppService = async () => {
         connectionStatus: CONNECTION_STATUS.DISCONNECTED,
         config: {},
         qrCode: null,
+        configuredBy: 'system',
       }
     });
     

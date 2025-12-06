@@ -1,168 +1,255 @@
-type LogLevel = 'info' | 'warn' | 'error' | 'debug';
+/**
+ * Enhanced Logger for FundifyHub Applications
+ *
+ * Features:
+ * - Winston-based logging with multiple transports
+ * - Console output with colors (development)
+ * - File rotation with daily rotate (production)
+ * - Child loggers for contextual logging
+ * - Structured JSON logs for production
+ *
+ * Usage:
+ * ```ts
+ * import { createLogger } from '@fundifyhub/logger';
+ *
+ * const logger = createLogger({ serviceName: 'main-backend' });
+ * logger.info('Server started');
+ *
+ * // Child logger with context
+ * const authLogger = logger.child({ context: 'auth' });
+ * authLogger.info('User logged in', { userId: '123' });
+ * ```
+ */
 
-export interface SimpleLoggerConfig {
+import winston from 'winston';
+import DailyRotateFile from 'winston-daily-rotate-file';
+import path from 'path';
+import fs from 'fs';
+
+/** Log levels following standard severity */
+export type LogLevel = 'error' | 'warn' | 'info' | 'http' | 'debug';
+
+/** Configuration for creating a logger instance */
+export interface LoggerConfig {
+  /** Service name (e.g., 'main-backend', 'job-worker') */
   serviceName: string;
-  context?: string; // Optional context like [Job 1] [email-worker]
+  /** Optional initial context */
+  context?: string;
+  /** Log level (defaults to 'info' in production, 'debug' in development) */
+  level?: LogLevel;
+  /** Directory for log files (defaults to 'logs' in project root) */
+  logDir?: string;
+  /** Enable file logging (defaults to true in production) */
+  enableFileLogging?: boolean;
+  /** Enable console logging (defaults to true) */
+  enableConsoleLogging?: boolean;
 }
 
-// ANSI color codes with bright variants for better visibility
+/** Metadata that can be passed to log methods */
+export interface LogMeta {
+  [key: string]: unknown;
+}
+
+/** Logger interface exposed to applications */
+export interface Logger {
+  error(message: string, meta?: LogMeta | Error): void;
+  warn(message: string, meta?: LogMeta): void;
+  info(message: string, meta?: LogMeta): void;
+  http(message: string, meta?: LogMeta): void;
+  debug(message: string, meta?: LogMeta): void;
+  child(options: { context: string } | string): Logger;
+  setContext(context: string): void;
+  clearContext(): void;
+}
+
+// ANSI color codes for console output
 const colors = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
   dim: '\x1b[2m',
-  
-  // Regular colors
   gray: '\x1b[90m',
-  cyan: '\x1b[36m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  white: '\x1b[37m',
-  
-  // Bright colors for better visibility
   brightCyan: '\x1b[96m',
   brightYellow: '\x1b[93m',
   brightRed: '\x1b[91m',
   brightGreen: '\x1b[92m',
   brightBlue: '\x1b[94m',
-  brightMagenta: '\x1b[95m'
+  brightMagenta: '\x1b[95m',
+  white: '\x1b[37m',
 } as const;
 
-export class SimpleLogger {
-  private serviceName: string;
-  private context?: string;
-
-  constructor(config: SimpleLoggerConfig) {
-    this.serviceName = config.serviceName;
-    this.context = config.context;
-  }
-
-  /**
-   * Create a child logger with additional context
-   * Example: logger.child('[Job 1] [email-worker]')
-   */
-  child(context: string): SimpleLogger {
-    return new SimpleLogger({
-      serviceName: this.serviceName,
-      context: this.context ? `${this.context} ${context}` : context
-    });
-  }
-
-  /**
-   * Update context dynamically
-   * Example: logger.setContext('[Job 2] [whatsapp-worker]')
-   */
-  setContext(context: string): void {
-    this.context = context;
-  }
-
-  /**
-   * Clear context
-   */
-  clearContext(): void {
-    this.context = undefined;
-  }
-
-  private formatDateTime(): string {
-    const now = new Date();
-    return now.toLocaleString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-  }
-
-  private getColorForLevel(level: LogLevel): string {
-    switch (level) {
-      case 'info': return colors.brightCyan;
-      case 'warn': return colors.brightYellow;
-      case 'error': return colors.brightRed;
-      case 'debug': return colors.gray;
-      default: return colors.reset;
-    }
-  }
-
-  private log(level: LogLevel, message: string): void {
-    const timestamp = this.formatDateTime();
-    const levelColor = this.getColorForLevel(level);
-    
-    // More aggressive color detection - default to true in development
-    const forceColors = process.env.FORCE_COLOR === '1' || 
-                       process.env.FORCE_COLOR === 'true' ||
-                       process.env.NODE_ENV === 'development' ||
-                       process.env.COLORTERM === 'truecolor' ||
-                       process.env.TERM_PROGRAM === 'vscode' ||
-                       process.env.TERM_PROGRAM === 'Windows Terminal' ||
-                       process.platform === 'win32'; // Enable colors on Windows by default
-    
-    const useColors = forceColors || process.stdout.isTTY || true; // Default to true
-    
-    // Build the log line with optional context
-    const contextStr = this.context ? ` ${colors.brightMagenta}${this.context}${colors.reset}` : '';
-    
-    if (useColors) {
-      const logLine = `${colors.dim}${timestamp}${colors.reset} ${colors.brightBlue}[${this.serviceName}]${colors.reset}${contextStr} ${levelColor}${colors.bold}${level.toUpperCase()}${colors.reset}: ${message}`;
-      console.log(logLine);
-    } else {
-      // Fallback to no colors for non-TTY environments
-      const plainContext = this.context ? ` ${this.context}` : '';
-      const logLine = `${timestamp} [${this.serviceName}]${plainContext} ${level.toUpperCase()}: ${message}`;
-      console.log(logLine);
-    }
-  }
-
-  info(message: string): void {
-    this.log('info', message);
-  }
-
-  warn(message: string): void {
-    this.log('warn', message);
-  }
-
-  error(message: string, error?: Error): void {
-    let errorMessage = message;
-    if (error) {
-      errorMessage += ` - ${error.message}`;
-    }
-    this.log('error', errorMessage);
-  }
-
-  debug(message: string): void {
-    if (process.env.NODE_ENV === 'development') {
-      this.log('debug', message);
-    }
-  }
-
-  // Method to test color output
-  testColors(): void {
-    this.info('This is an INFO message with colors 🔵');
-    this.warn('This is a WARN message with colors 🟡');
-    this.error('This is an ERROR message with colors 🔴');
-    this.debug('This is a DEBUG message with colors ⚫');
-    
-    // Show environment info
-    const envInfo = {
-      FORCE_COLOR: process.env.FORCE_COLOR,
-      NODE_ENV: process.env.NODE_ENV,
-      COLORTERM: process.env.COLORTERM,
-      TERM_PROGRAM: process.env.TERM_PROGRAM,
-      platform: process.platform,
-      isTTY: process.stdout.isTTY
-    };
-    console.log('🔍 Color Environment:', envInfo);
-    
-    // Test raw colors
-    console.log(`${colors.brightCyan}Cyan${colors.reset} ${colors.brightYellow}Yellow${colors.reset} ${colors.brightRed}Red${colors.reset} ${colors.brightGreen}Green${colors.reset} ${colors.brightBlue}Blue${colors.reset} ${colors.brightMagenta}Magenta${colors.reset}`);
+/** Get color for log level */
+function getLevelColor(level: string): string {
+  switch (level) {
+    case 'error':
+      return colors.brightRed;
+    case 'warn':
+      return colors.brightYellow;
+    case 'info':
+      return colors.brightCyan;
+    case 'http':
+      return colors.brightMagenta;
+    case 'debug':
+      return colors.gray;
+    default:
+      return colors.reset;
   }
 }
 
-// Factory function to create logger instances
-export function createLogger(config: SimpleLoggerConfig): SimpleLogger {
-  return new SimpleLogger(config);
+/** Format timestamp for console output */
+function formatTimestamp(): string {
+  const now = new Date();
+  return now.toLocaleString('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+/** Custom console format with colors */
+const consoleFormat = winston.format.printf(({ level, message, timestamp, service, context, ...meta }) => {
+  const levelColor = getLevelColor(level);
+  const contextStr = context ? ` ${colors.brightMagenta}[${context}]${colors.reset}` : '';
+  const metaStr = Object.keys(meta).length > 0 ? ` ${colors.dim}${JSON.stringify(meta)}${colors.reset}` : '';
+
+  return `${colors.dim}${timestamp}${colors.reset} ${colors.brightBlue}[${service}]${colors.reset}${contextStr} ${levelColor}${colors.bold}${level.toUpperCase()}${colors.reset}: ${message}${metaStr}`;
+});
+
+/** Create log directory if it doesn't exist */
+function ensureLogDir(logDir: string): void {
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+}
+
+/** Determine if we should enable colors */
+function shouldEnableColors(): boolean {
+  return (
+    process.env.FORCE_COLOR === '1' ||
+    process.env.FORCE_COLOR === 'true' ||
+    process.env.NODE_ENV === 'development' ||
+    process.env.COLORTERM === 'truecolor' ||
+    process.env.TERM_PROGRAM === 'vscode' ||
+    process.env.TERM_PROGRAM === 'Windows Terminal' ||
+    process.platform === 'win32' ||
+    process.stdout.isTTY === true
+  );
+}
+
+/**
+ * Create a logger instance for a service
+ */
+export function createLogger(config: LoggerConfig): Logger {
+  const {
+    serviceName,
+    context: initialContext,
+    level = process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+    logDir = path.join(process.cwd(), 'logs'),
+    enableFileLogging = process.env.NODE_ENV === 'production',
+    enableConsoleLogging = true,
+  } = config;
+
+  const transports: winston.transport[] = [];
+
+  // Console transport with colors
+  if (enableConsoleLogging) {
+    const useColors = shouldEnableColors();
+
+    transports.push(
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.timestamp({ format: formatTimestamp }),
+          useColors ? consoleFormat : winston.format.simple()
+        ),
+      })
+    );
+  }
+
+  // File transports with daily rotation
+  if (enableFileLogging) {
+    ensureLogDir(logDir);
+
+    // Combined log file (all levels)
+    transports.push(
+      new DailyRotateFile({
+        dirname: logDir,
+        filename: `${serviceName}-%DATE%.log`,
+        datePattern: 'YYYY-MM-DD',
+        maxSize: '20m',
+        maxFiles: '14d',
+        format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+      })
+    );
+
+    // Error log file (errors only)
+    transports.push(
+      new DailyRotateFile({
+        dirname: logDir,
+        filename: `${serviceName}-error-%DATE%.log`,
+        datePattern: 'YYYY-MM-DD',
+        maxSize: '20m',
+        maxFiles: '30d',
+        level: 'error',
+        format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+      })
+    );
+  }
+
+  // Create Winston logger
+  const winstonLogger = winston.createLogger({
+    level,
+    defaultMeta: { service: serviceName },
+    transports,
+  });
+
+  // Track current context
+  let currentContext = initialContext;
+
+  /** Create the logger interface */
+  function createLoggerInterface(ctx?: string): Logger {
+    const effectiveContext = ctx || currentContext;
+
+    const logWithContext = (logLevel: LogLevel, message: string, meta?: LogMeta | Error) => {
+      const logMeta: LogMeta = effectiveContext ? { context: effectiveContext } : {};
+
+      if (meta instanceof Error) {
+        logMeta.error = {
+          message: meta.message,
+          stack: meta.stack,
+          name: meta.name,
+        };
+      } else if (meta) {
+        Object.assign(logMeta, meta);
+      }
+
+      winstonLogger.log(logLevel, message, logMeta);
+    };
+
+    return {
+      error: (message: string, meta?: LogMeta | Error) => logWithContext('error', message, meta),
+      warn: (message: string, meta?: LogMeta) => logWithContext('warn', message, meta),
+      info: (message: string, meta?: LogMeta) => logWithContext('info', message, meta),
+      http: (message: string, meta?: LogMeta) => logWithContext('http', message, meta),
+      debug: (message: string, meta?: LogMeta) => logWithContext('debug', message, meta),
+
+      child: (options: { context: string } | string): Logger => {
+        const childContext = typeof options === 'string' ? options : options.context;
+        const fullContext = effectiveContext ? `${effectiveContext}:${childContext}` : childContext;
+        return createLoggerInterface(fullContext);
+      },
+
+      setContext: (context: string) => {
+        currentContext = context;
+      },
+
+      clearContext: () => {
+        currentContext = undefined;
+      },
+    };
+  }
+
+  return createLoggerInterface();
 }

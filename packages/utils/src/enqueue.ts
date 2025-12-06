@@ -1,128 +1,281 @@
 import { Queue } from 'bullmq';
 import {
-  SERVICE_NAMES,
-  TEMPLATE_NAMES,
-  TemplatePayloadMapType,
-  JobOptionsType,
-  AddJobResultType,
-  AddServiceControlJobType,
-  AddServiceStatusJobResultType,
   JOB_TYPES,
-  QUEUE_NAMES
+  QUEUE_NAMES,
+  SERVICE_NAMES,
+  SERVICE_CONTROL_ACTIONS,
+  NotificationChannel,
+  NotificationPriority,
+  DeliveryMode,
+  type NotificationRequest,
 } from '@fundifyhub/types';
-import TEMPLATE_REGISTRY from '@fundifyhub/templates';
 
-export interface EnqueueClient {
-  addAJob<T extends TEMPLATE_NAMES>(
-    templateName: T,
-    variables: TemplatePayloadMapType[T],
-    options?: JobOptionsType
-  ): Promise<AddJobResultType[]>;
-
-  addAServiceControlJob(
-    data: AddServiceControlJobType
-  ): Promise<AddServiceStatusJobResultType>;
+/**
+ * Notification job data for queue processing.
+ * This is the internal structure used by BullMQ workers.
+ */
+export interface NotificationJobData {
+  /** Unique correlation ID for tracking the notification across systems */
+  correlationId: string;
+  /** Name of the template to use for rendering */
+  templateName: string;
+  /** Variables to substitute in the template */
+  variables: Record<string, unknown>;
+  /** Channels to send the notification through */
+  channels: NotificationChannel[];
+  /** How to deliver across multiple channels */
+  deliveryMode: DeliveryMode;
+  /** Priority level for queue ordering */
+  priority: NotificationPriority;
+  /** Recipient information */
+  recipient: {
+    userId?: string;
+    email?: string;
+    phoneNumber?: string;
+    name?: string;
+  };
+  /** Additional metadata for tracking/analytics */
+  metadata?: Record<string, unknown>;
+  /** ISO timestamp for scheduled delivery */
+  scheduledAt?: string;
+  /** ISO timestamp after which notification should not be sent */
+  expiresAt?: string;
 }
 
+/**
+ * Service control job data for managing service lifecycle.
+ */
+export interface ServiceControlJobData {
+  /** Name of the service to control */
+  serviceName: SERVICE_NAMES;
+  /** Action to perform on the service */
+  action: SERVICE_CONTROL_ACTIONS;
+  /** Optional configuration for the action */
+  config?: Record<string, unknown>;
+}
+
+/**
+ * Result of adding a notification job to the queue.
+ */
+export interface AddNotificationJobResult {
+  /** Correlation ID for tracking */
+  correlationId: string;
+  /** BullMQ job ID if successfully added */
+  jobId?: string;
+  /** Error message if job addition failed */
+  error?: string;
+}
+
+/**
+ * Result of adding a service control job to the queue.
+ */
+export interface AddServiceControlJobResult {
+  /** BullMQ job ID if successfully added */
+  jobId?: string;
+  /** Error message if job addition failed */
+  error?: string;
+}
+
+/**
+ * Interface for the enqueue client that provides job queue operations.
+ */
+export interface EnqueueClient {
+  /**
+   * Add a single notification job to the queue.
+   * @param request - The notification request details
+   * @returns Result with correlation ID and job ID or error
+   */
+  addNotificationJob(request: NotificationRequest): Promise<AddNotificationJobResult>;
+  
+  /**
+   * Add multiple notification jobs to the queue in batch.
+   * @param requests - Array of notification requests
+   * @returns Array of results for each job
+   */
+  addNotificationJobs(requests: NotificationRequest[]): Promise<AddNotificationJobResult[]>;
+  
+  /**
+   * Add a service control job to manage service lifecycle.
+   * @param data - The service control job data
+   * @returns Result with job ID or error
+   */
+  addServiceControlJob(data: ServiceControlJobData): Promise<AddServiceControlJobResult>;
+  
+  /**
+   * Close the queue connections gracefully.
+   */
+  close(): Promise<void>;
+}
+
+/**
+ * Creates an enqueue client for adding jobs to the notification and service control queues.
+ * 
+ * @param connection - Redis connection configuration
+ * @param connection.host - Redis host address
+ * @param connection.port - Redis port number
+ * @returns EnqueueClient instance
+ * 
+ * @example
+ * ```typescript
+ * const client = createEnqueueClient({ host: 'localhost', port: 6379 });
+ * 
+ * await client.addNotificationJob({
+ *   templateName: 'emiReminder',
+ *   channels: [NotificationChannel.EMAIL, NotificationChannel.WHATSAPP],
+ *   recipient: { email: 'user@example.com', phoneNumber: '+919876543210' },
+ *   variables: { userName: 'John', amount: '₹5,000' }
+ * });
+ * 
+ * await client.close();
+ * ```
+ */
 export function createEnqueueClient(connection: { host: string; port: number }): EnqueueClient {
-  const emailQueue = new Queue(QUEUE_NAMES.EMAIL_QUEUE, { connection });
-  const whatsappQueue = new Queue(QUEUE_NAMES.WHATSAPP_QUEUE, { connection });
+  const notificationQueue = new Queue(QUEUE_NAMES.NOTIFICATION_QUEUE, { connection });
+  const serviceControlQueue = new Queue(QUEUE_NAMES.SERVICE_CONTROL_QUEUE, { connection });
 
-  const addAJob = async <T extends TEMPLATE_NAMES>(
-    templateName: T,
-    variables: TemplatePayloadMapType[T],
-    options?: JobOptionsType
-  ): Promise<AddJobResultType[]> => {
-    const template = TEMPLATE_REGISTRY[templateName];
+  const addNotificationJob = async (
+    request: NotificationRequest
+  ): Promise<AddNotificationJobResult> => {
+    const correlationId = request.correlationId || generateCorrelationId();
 
-    const servicesToEnqueue = options?.services && options.services.length > 0 ? options.services : template.supportedServices;
-
-    const jobOptions: JobOptionsType = {
-      priority: options?.priority ?? Number(template.defaults?.priority),
-      delay: options?.delay ?? Number(template.defaults?.delay),
-      attempts: options?.attempts ?? Number(template.defaults?.attempts),
-    };
-
-    // Add backoff strategy for retries (exponential with 30s initial delay)
-    const bullmqOptions = {
-      ...jobOptions,
-      backoff: {
-        type: 'exponential',
-        delay: 30000, // 30 seconds initial delay
-      },
-    };
-
-    const results: AddJobResultType[] = [];
-
-    for (const svc of servicesToEnqueue) {
-      // Ensure the template actually supports this service
-      if (!template.supportedServices.includes(svc)) {
-        results.push({ jobId: "", error: `Service not supported by template ${svc}` });
-        continue;
+    try {
+      if (!request.templateName) {
+        return { correlationId, error: 'Template name is required' };
       }
 
-      // Channel-specific validation: fail early if required channel fields are absent
-      if (svc === SERVICE_NAMES.EMAIL) {
-        // templates expect `variables.email` for email
-        // runtime-check because TemplatePayloadMapType is a compile-time type
-        if (!('email' in (variables as any)) || !(variables as any).email) {
-          results.push({ jobId: "", error: `Missing required field "email" for service EMAIL` });
-          continue;
+      if (!request.channels || request.channels.length === 0) {
+        return { correlationId, error: 'At least one channel is required' };
+      }
+
+      const validationError = validateRecipientForChannels(request.recipient, request.channels);
+      if (validationError) {
+        return { correlationId, error: validationError };
+      }
+
+      const bullmqPriority = request.priority || NotificationPriority.NORMAL;
+
+      let delay = 0;
+      if (request.scheduledAt) {
+        const scheduledTime = new Date(request.scheduledAt).getTime();
+        const now = Date.now();
+        delay = Math.max(0, scheduledTime - now);
+      }
+
+      const jobData: NotificationJobData = {
+        correlationId,
+        templateName: request.templateName,
+        variables: request.variables,
+        channels: request.channels,
+        deliveryMode: request.deliveryMode || DeliveryMode.BROADCAST,
+        priority: request.priority || NotificationPriority.NORMAL,
+        recipient: request.recipient,
+        metadata: request.metadata,
+        scheduledAt: request.scheduledAt,
+        expiresAt: request.expiresAt,
+      };
+
+      const job = await notificationQueue.add(
+        JOB_TYPES.SEND_NOTIFICATION,
+        jobData,
+        {
+          priority: bullmqPriority,
+          delay,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000,
+          },
+          jobId: request.idempotencyKey || undefined,
         }
-      }
+      );
 
-      if (svc === SERVICE_NAMES.WHATSAPP) {
-        // templates expect `variables.phoneNumber` for WhatsApp
-        if (!('phoneNumber' in (variables as any)) || !(variables as any).phoneNumber) {
-          results.push({ jobId: "", error: `Missing required field "phoneNumber" for service WHATSAPP` });
-          continue;
-        }
-      }
-
-      try {
-        if (svc === SERVICE_NAMES.EMAIL) {
-          const job = await emailQueue.add(JOB_TYPES.SEND_EMAIL, { templateName, variables }, bullmqOptions);
-          results.push({ jobId: job?.id! });
-        } else if (svc === SERVICE_NAMES.WHATSAPP) {
-          const job = await whatsappQueue.add(JOB_TYPES.SEND_WHATSAPP, { templateName, variables }, bullmqOptions);
-          results.push({ jobId: job?.id! });
-        } else {
-          results.push({ jobId: "", error: 'Unsupported service' });
-        }
-      } catch (err: any) {
-        results.push({ jobId: "", error: err?.message || String(err) });
-      }
+      return {
+        correlationId,
+        jobId: job?.id,
+      };
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      return {
+        correlationId,
+        error: errorMessage,
+      };
     }
-
-    return results;
   };
 
-  const addAServiceControlJob = async (
-    data: AddServiceControlJobType
-  ): Promise<AddServiceStatusJobResultType> => {
+  const addNotificationJobs = async (
+    requests: NotificationRequest[]
+  ): Promise<AddNotificationJobResult[]> => {
+    return Promise.all(requests.map(request => addNotificationJob(request)));
+  };
+
+  const addServiceControlJob = async (
+    data: ServiceControlJobData
+  ): Promise<AddServiceControlJobResult> => {
     try {
-      const { serviceName } = data;
-      let job;
-
-      if (serviceName === SERVICE_NAMES.EMAIL) {
-        job = await emailQueue.add(JOB_TYPES.SERVICE_CONTROL, data, { priority: 1 }); // High priority
-      } else if (serviceName === SERVICE_NAMES.WHATSAPP) {
-        job = await whatsappQueue.add(JOB_TYPES.SERVICE_CONTROL, data, { priority: 1 }); // High priority
-      } else {
-        return { jobId: "", error: 'Unsupported service' };
-      }
-
-      return { jobId: job?.id! };
-    } catch (err: any) {
-      return { jobId: "", error: err?.message || String(err) };
+      const job = await serviceControlQueue.add(
+        JOB_TYPES.SERVICE_CONTROL,
+        data,
+        {
+          priority: 1, // High priority
+          attempts: 1,
+          removeOnComplete: true,
+          removeOnFail: 100,
+        }
+      );
+      return { jobId: job?.id };
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      return { error: errorMessage };
     }
+  };
+
+  const close = async (): Promise<void> => {
+    await notificationQueue.close();
+    await serviceControlQueue.close();
   };
 
   return {
-    addAJob,
-    addAServiceControlJob
+    addNotificationJob,
+    addNotificationJobs,
+    addServiceControlJob,
+    close,
   };
 }
 
+function validateRecipientForChannels(
+  recipient: NotificationRequest['recipient'],
+  channels: NotificationChannel[]
+): string | null {
+  for (const channel of channels) {
+    switch (channel) {
+      case NotificationChannel.EMAIL:
+        if (!recipient.email) {
+          return 'Email address is required for EMAIL channel';
+        }
+        break;
+      case NotificationChannel.WHATSAPP:
+      case NotificationChannel.SMS:
+        if (!recipient.phoneNumber) {
+          return 'Phone number is required for WHATSAPP/SMS channel';
+        }
+        break;
+      case NotificationChannel.IN_APP:
+        if (!recipient.userId) {
+          return 'User ID is required for IN_APP channel';
+        }
+        break;
+      case NotificationChannel.PUSH:
+        if (!recipient.userId) {
+          return 'User ID is required for PUSH channel';
+        }
+        break;
+    }
+  }
+  return null;
+}
+
+function generateCorrelationId(): string {
+  return `notif_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+}
 
 export default createEnqueueClient;

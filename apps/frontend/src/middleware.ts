@@ -11,9 +11,9 @@ logger.info('✅ Frontend configuration loaded');
 // Public routes that don't require authentication
 const publicRoutes = [
   '/',
-  '/auth/login',
-  '/auth/register',
-  '/forgot-password',
+  '/login',
+  '/register',
+  '/reset-password',
   '/about',
   '/contact',
   '/privacy',

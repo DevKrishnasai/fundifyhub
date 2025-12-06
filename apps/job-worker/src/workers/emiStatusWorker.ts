@@ -1,93 +1,64 @@
 import { Job } from 'bullmq';
 import { BaseWorker } from '../utils/base-worker-class';
 import { prisma } from '@fundifyhub/prisma';
-import { SimpleLogger } from '@fundifyhub/logger';
-import { EMI_STATUS, QUEUE_NAMES, OVERDUE_GRACE_PERIOD_DAYS, TEMPLATE_NAMES } from '@fundifyhub/types';
+import type { Logger } from '@fundifyhub/logger';
+import { 
+  EMI_STATUS, 
+  LOAN_STATUS,
+  QUEUE_NAMES, 
+  OVERDUE_GRACE_PERIOD_DAYS, 
+  REQUEST_STAGE,
+  DEFAULT_PENALTY_PERCENTAGE,
+  DEFAULT_LATE_FEE_PERCENTAGE,
+} from '@fundifyhub/types';
 import { calculateEmiBreakdown } from '@fundifyhub/utils';
-import { createEnqueueClient } from '@fundifyhub/utils/src/enqueue';
-import config from '../utils/config';
 
 /**
  * EMI Status Worker
  * -----------------
- * Periodically updates EMI statuses from PENDING to OVERDUE
- * when they pass the grace period (30 days by default).
+ * Periodic job that runs every 6 hours to:
+ * 1. Mark PENDING EMIs as OVERDUE when past grace period
+ * 2. Calculate and apply late fees/penalties
+ * 3. Update loan statistics (overdueEMIs count)
+ * 4. Mark loans as DEFAULTED if too many overdue EMIs
  * 
- * This worker is triggered by a repeatable job every 6 hours.
- * It processes all eligible EMIs in a single job execution.
+ * Note: Notifications are handled separately by the notification system
  */
+
+// Number of consecutive overdue EMIs before loan is marked DEFAULTED
+const DEFAULT_THRESHOLD_EMIS = 3;
 
 interface EMIStatusJobData {
   type: 'UPDATE_OVERDUE_EMIS';
   triggeredAt: string;
 }
 
+interface JobResult {
+  success: boolean;
+  checked: number;
+  markedOverdue: number;
+  penaltiesApplied: number;
+  loansDefaulted: number;
+  error?: string;
+}
+
 export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
-  constructor(queueName: QUEUE_NAMES, logger: SimpleLogger) {
+  constructor(queueName: QUEUE_NAMES, logger: Logger) {
     super(queueName, logger);
   }
 
-  /**
-   * Process EMI status update job
-   * Finds all PENDING EMIs past grace period and marks them OVERDUE
-   */
-  protected async processJob(job: Job<EMIStatusJobData>): Promise<{ 
-    success: boolean; 
-    updated: number;
-    penaltiesCalculated: number;
-    notificationsSent: number;
-    checked: number;
-    error?: string; 
-  }> {
-    const contextLogger = this.logger.child(`[Job ${job.id}] [${this.queueName}]`);
+  protected async processJob(job: Job<EMIStatusJobData>): Promise<JobResult> {
+    const log = this.logger.child(`[EMI-Cron][Job ${job.id}]`);
 
     try {
-      contextLogger.info('Starting EMI status update...');
+      log.info('Starting EMI status update job...');
 
       // Calculate cutoff date (today - grace period)
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - OVERDUE_GRACE_PERIOD_DAYS);
-      cutoffDate.setHours(0, 0, 0, 0); // Start of day
+      cutoffDate.setHours(0, 0, 0, 0);
 
-      contextLogger.info(`Checking EMIs with due date before ${cutoffDate.toISOString()}`);
-
-      // Also check for EMIs due in 3 days for reminders
-      const reminderCutoffDate = new Date();
-      reminderCutoffDate.setDate(reminderCutoffDate.getDate() + 3);
-      reminderCutoffDate.setHours(23, 59, 59, 999); // End of day
-
-      contextLogger.info(`Checking EMIs due before ${reminderCutoffDate.toISOString()} for reminders`);
-
-      // Find EMIs for reminders (due in next 3 days, still pending)
-      const reminderEmis = await prisma.eMISchedule.findMany({
-        where: {
-          status: EMI_STATUS.PENDING,
-          dueDate: { lte: reminderCutoffDate, gte: new Date() }
-        },
-        include: {
-          loan: {
-            select: {
-              id: true,
-              loanNumber: true,
-              request: {
-                select: {
-                  requestNumber: true,
-                  customer: {
-                    select: {
-                      firstName: true,
-                      lastName: true,
-                      phoneNumber: true,
-                      email: true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      });
-
-      contextLogger.info(`Found ${reminderEmis.length} EMIs for reminders`);
+      log.info(`Cutoff date for overdue: ${cutoffDate.toISOString()}`);
 
       // Find all PENDING EMIs past grace period
       const overdueEmis = await prisma.eMISchedule.findMany({
@@ -100,19 +71,12 @@ export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
             select: {
               id: true,
               loanNumber: true,
-                  request: {
-                    select: {
-                      requestNumber: true,
-                      penaltyPercentage: true,
-                      lateFeePercentage: true,
-                  customer: {
-                    select: {
-                      firstName: true,
-                      lastName: true,
-                      phoneNumber: true,
-                      email: true
-                    }
-                  }
+              requestId: true,
+              status: true,
+              request: {
+                select: {
+                  penaltyPercentage: true,
+                  lateFeePercentage: true,
                 }
               }
             }
@@ -120,35 +84,27 @@ export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
         }
       });
 
-      const checkedCount = overdueEmis.length;
-
       if (overdueEmis.length === 0) {
-        contextLogger.info('No EMIs found to update');
-        return { success: true, updated: 0, penaltiesCalculated: 0, notificationsSent: 0, checked: 0 };
+        log.info('No EMIs to mark as overdue');
+        return { success: true, checked: 0, markedOverdue: 0, penaltiesApplied: 0, loansDefaulted: 0 };
       }
 
-      contextLogger.info(`Found ${overdueEmis.length} EMIs to mark as OVERDUE`);
+      log.info(`Found ${overdueEmis.length} EMI(s) to process`);
 
-      // Initialize enqueue client for notifications
-      const enqueueClient = createEnqueueClient({
-        host: config.redis.host,
-        port: config.redis.port
-      });
+      let markedOverdue = 0;
+      let penaltiesApplied = 0;
+      let loansDefaulted = 0;
 
-      let penaltiesCalculated = 0;
-      let notificationsSent = 0;
-
-      // Update all EMIs to OVERDUE status and calculate penalties in a transaction
-      const result = await prisma.$transaction(async (tx) => {
-        // Update EMI statuses and calculate penalties
-        const updatePromises = overdueEmis.map(async (emi) => {
-          // Get all EMIs for this loan to calculate penalties
+      // Process each EMI
+      await prisma.$transaction(async (tx) => {
+        for (const emi of overdueEmis) {
+          // Get all EMIs for this loan to calculate correct penalty
           const allEmis = await tx.eMISchedule.findMany({
             where: { loanId: emi.loanId },
             orderBy: { emiNumber: 'asc' }
           });
 
-          // Calculate breakdown to get late fee
+          // Calculate breakdown for late fee
           const breakdown = calculateEmiBreakdown(
             {
               emiNumber: emi.emiNumber,
@@ -165,155 +121,134 @@ export class EMIStatusWorker extends BaseWorker<EMIStatusJobData> {
               lateFee: e.lateFee,
               dueDate: e.dueDate.toISOString()
             })),
-            emi.loan.request.penaltyPercentage || 4,
-            emi.loan.request.lateFeePercentage || 0.01
+            emi.loan.request.penaltyPercentage || DEFAULT_PENALTY_PERCENTAGE,
+            emi.loan.request.lateFeePercentage || DEFAULT_LATE_FEE_PERCENTAGE
           );
 
-          // Update EMI with OVERDUE status and calculated late fee
+          const daysOverdue = Math.floor(
+            (Date.now() - emi.dueDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
+
+          // Update EMI status and late fee
           await tx.eMISchedule.update({
             where: { id: emi.id },
             data: { 
               status: EMI_STATUS.OVERDUE,
-              lateFee: breakdown.lateFee,
-              updatedAt: new Date()
+              lateFee: breakdown.penalty,
             }
           });
 
-          penaltiesCalculated++;
-          return breakdown.lateFee;
-        });
+          markedOverdue++;
+          if (breakdown.penalty > 0) {
+            penaltiesApplied++;
+          }
 
-        await Promise.all(updatePromises);
-
-        // Group EMIs by loan for statistics update
-        const loanGroups = new Map<string, typeof overdueEmis>();
-        for (const emi of overdueEmis) {
-          const existing = loanGroups.get(emi.loanId) || [];
-          existing.push(emi);
-          loanGroups.set(emi.loanId, existing);
+          // Log to audit log
+          await tx.auditLog.create({
+            data: {
+              actorId: null,
+              action: 'EMI_MARKED_OVERDUE',
+              entityType: 'EMISchedule',
+              entityId: emi.id,
+              description: `EMI #${emi.emiNumber} for loan ${emi.loan.loanNumber} marked as overdue (${daysOverdue} days)`,
+              metadata: {
+                requestId: emi.loan.requestId,
+                emiId: emi.id,
+                emiNumber: emi.emiNumber,
+                daysOverdue,
+                lateFee: breakdown.penalty,
+              },
+              status: 'SUCCESS',
+            }
+          });
         }
 
-        // Update loan statistics
-        for (const [loanId, emis] of loanGroups) {
+        // Group by loan and update statistics
+        const loanIds = [...new Set(overdueEmis.map(e => e.loanId))];
+
+        for (const loanId of loanIds) {
+          // Count overdue EMIs for this loan
           const overdueCount = await tx.eMISchedule.count({
             where: { loanId, status: EMI_STATUS.OVERDUE }
           });
 
+          // Update loan overdue count
           await tx.loan.update({
             where: { id: loanId },
-            data: { 
-              overdueEMIs: overdueCount,
-              updatedAt: new Date()
-            }
+            data: { overdueEMIs: overdueCount }
           });
 
-          contextLogger.info(
-            `Updated loan ${emis[0].loan.loanNumber}: ${emis.length} EMI(s) marked OVERDUE (total overdue: ${overdueCount})`
-          );
-        }
+          // Check if loan should be marked DEFAULTED
+          const loan = await tx.loan.findUnique({
+            where: { id: loanId },
+            select: { status: true, requestId: true }
+          });
 
-        return overdueEmis.length;
+          if (loan && loan.status === LOAN_STATUS.ACTIVE && overdueCount >= DEFAULT_THRESHOLD_EMIS) {
+            await tx.loan.update({
+              where: { id: loanId },
+              data: { status: LOAN_STATUS.DEFAULTED }
+            });
+
+            await tx.request.update({
+              where: { id: loan.requestId },
+              data: { 
+                stage: REQUEST_STAGE.ACTIVE,
+                subStatus: 'DEFAULTED',
+                isBlocked: true,
+                failureReason: `Loan defaulted due to ${overdueCount} consecutive overdue EMIs`,
+                failureType: 'PAYMENT',
+              }
+            });
+
+            await tx.auditLog.create({
+              data: {
+                actorId: null,
+                action: 'LOAN_MARKED_DEFAULTED',
+                entityType: 'Loan',
+                entityId: loanId,
+                description: `Loan marked as defaulted due to ${overdueCount} overdue EMIs`,
+                metadata: {
+                  requestId: loan.requestId,
+                  loanId,
+                  overdueEmiCount: overdueCount,
+                  threshold: DEFAULT_THRESHOLD_EMIS,
+                  defaultedAt: new Date().toISOString(),
+                },
+                status: 'SUCCESS',
+              }
+            });
+
+            loansDefaulted++;
+            log.warn(`Loan ${loanId} marked as DEFAULTED (${overdueCount} overdue EMIs)`);
+          }
+        }
       });
 
-      contextLogger.info(`✅ Successfully updated ${result} EMI(s) to OVERDUE status`);
-      contextLogger.info(`✅ Calculated penalties for ${penaltiesCalculated} EMI(s)`);
-
-      // Send notifications for overdue EMIs
-      for (const emi of overdueEmis) {
-        const customer = emi.loan.request.customer;
-        const customerName = `${customer?.firstName} ${customer?.lastName}`;
-
-        try {
-          await enqueueClient.addAJob(TEMPLATE_NAMES.EMI_OVERDUE, {
-            customerName,
-            email: customer?.email || '',
-            phoneNumber: customer?.phoneNumber || '',
-            loanNumber: emi.loan.loanNumber || '',
-            emiNumber: emi.emiNumber,
-            emiAmount: emi.emiAmount,
-            dueDate: emi.dueDate.toISOString().split('T')[0],
-            daysOverdue: Math.floor((new Date().getTime() - emi.dueDate.getTime()) / (1000 * 60 * 60 * 24)),
-            lateFee: emi.lateFee,
-            totalDue: emi.emiAmount + emi.lateFee,
-            overdueCount: 1, // For this EMI, could aggregate if needed
-            paymentUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/requests/${emi.loan.request.requestNumber}`,
-            companyName: 'FundifyHub'
-          });
-
-          notificationsSent++;
-          contextLogger.info(
-            `📧 Sent overdue notification for EMI #${emi.emiNumber} to ${customerName}`
-          );
-        } catch (error) {
-          contextLogger.error(
-            `Failed to send overdue notification for EMI #${emi.emiNumber}:`,
-            error as Error
-          );
-        }
-      }
-
-      contextLogger.info(`📧 Sent ${notificationsSent} overdue notifications`);
-
-      // Send reminder notifications for EMIs due in 3 days
-      for (const emi of reminderEmis) {
-        const customer = emi.loan.request.customer;
-        const customerName = `${customer?.firstName} ${customer?.lastName}`;
-        const daysUntilDue = Math.ceil((emi.dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-
-        try {
-          await enqueueClient.addAJob(TEMPLATE_NAMES.EMI_REMINDER, {
-            customerName,
-            email: customer?.email || '',
-            phoneNumber: customer?.phoneNumber || '',
-            loanNumber: emi.loan.loanNumber || '',
-            emiNumber: emi.emiNumber,
-            emiAmount: emi.emiAmount,
-            dueDate: emi.dueDate.toISOString().split('T')[0],
-            daysUntilDue,
-            totalOutstanding: 0, // Could calculate if needed
-            paymentUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/requests/${emi.loan.request.requestNumber}`,
-            companyName: 'FundifyHub'
-          });
-
-          notificationsSent++;
-          contextLogger.info(
-            `📧 Sent reminder notification for EMI #${emi.emiNumber} to ${customerName} (${daysUntilDue} days left)`
-          );
-        } catch (error) {
-          contextLogger.error(
-            `Failed to send reminder notification for EMI #${emi.emiNumber}:`,
-            error as Error
-          );
-        }
-      }
-
-      contextLogger.info(`📧 Sent ${notificationsSent} total notifications (${reminderEmis.length} reminders)`);
+      log.info(`✅ Job completed - Marked: ${markedOverdue}, Penalties: ${penaltiesApplied}, Defaulted: ${loansDefaulted}`);
 
       return { 
         success: true, 
-        updated: result,
-        penaltiesCalculated,
-        notificationsSent,
-        checked: checkedCount
+        checked: overdueEmis.length,
+        markedOverdue,
+        penaltiesApplied,
+        loansDefaulted,
       };
 
     } catch (error) {
-      contextLogger.error('Error updating EMI statuses:', error as Error);
+      log.error('EMI status job failed:', error as Error);
       return { 
         success: false, 
-        updated: 0,
-        penaltiesCalculated: 0,
-        notificationsSent: 0,
         checked: 0,
+        markedOverdue: 0,
+        penaltiesApplied: 0,
+        loansDefaulted: 0,
         error: error instanceof Error ? error.message : 'Unknown error' 
       };
     }
   }
 
-  /**
-   * Lower concurrency for cron jobs (one at a time)
-   */
   protected getConcurrency(): number {
-    return 1;
+    return 1; // One job at a time for cron
   }
 }

@@ -22,7 +22,8 @@ export const ourFileRouter: FileRouter = {
    * @onUploadComplete Returns file metadata without public URL (private files)
    */
   assetImageUploader: f({
-    image: { maxFileSize: '4MB', maxFileCount: 5 },
+    image: { maxFileSize: '4MB', maxFileCount: 6 },
+    pdf: { maxFileSize: '4MB', maxFileCount: 4 },
   })
     // Set permissions and file types for this FileRoute
     .middleware(async ({ req }: { req: Request }) => {
@@ -99,42 +100,42 @@ export const ourFileRouter: FileRouter = {
     pdf: { maxFileSize: '8MB', maxFileCount: 5 },
   })
     .middleware(async ({ req }: { req: Request }) => {
-      try {
-        const cookie = req.headers.get('cookie');
-        const validationResult = await get<AuthValidationResponse>(
-          BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE,
-          {
-            headers: {
-              cookie: cookie ?? '',
-            },
+      const cookie = req.headers.get('cookie');
+
+      // If user has a session cookie, try to enrich metadata; otherwise allow anonymous (registration flow)
+      if (cookie) {
+        try {
+          const validationResult = await get<AuthValidationResponse>(
+            BACKEND_API_CONFIG.ENDPOINTS.AUTH.VALIDATE,
+            {
+              headers: { cookie },
+            }
+          );
+
+          if (validationResult.success && validationResult.data?.isAuthenticated) {
+            const user = validationResult.data.user;
+            if (user) {
+              return {
+                userId: user.id,
+                userEmail: user.email,
+                userRoles: user.roles,
+                userDistricts: user.districts ?? [],
+              };
+            }
           }
-        );
-
-        if (
-          !validationResult.success ||
-          !validationResult.data?.isAuthenticated
-        ) {
-          throw new Error('Invalid or expired token');
+        } catch (validationError) {
+          logger.error('UploadThing middleware: Token validation failed:', validationError as Error);
+          // fall through to anonymous
         }
-
-        const user = validationResult.data.user;
-        if (!user) {
-          throw new Error('Authentication required');
-        }
-
-        return {
-          userId: user.id,
-          userEmail: user.email,
-          userRoles: user.roles,
-          userDistricts: user.districts ?? [],
-        };
-      } catch (validationError) {
-        logger.error(
-          'UploadThing middleware: Token validation failed:',
-          validationError as Error
-        );
-        throw new Error('Authentication failed');
       }
+
+      // Anonymous metadata (used for registration flow before login)
+      return {
+        userId: 'registration-anon',
+        userEmail: null,
+        userRoles: [],
+        userDistricts: [],
+      } as any;
     })
     .onUploadComplete(async ({ metadata, file }) => {
       return {

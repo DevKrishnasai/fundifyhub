@@ -3,11 +3,12 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Shield, Clock, MapPin, Star, Upload, CheckCircle, CreditCard } from "lucide-react"
 import Link from "next/link"
+import { PublicHeader } from "@/components/layout/PublicHeader"
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
-      {/* header removed - global Navbar is used */}
+      <PublicHeader />
 
       {/* Hero Section */}
       <section className="py-12 sm:py-16 lg:py-20 px-4 flex items-center min-h-[80vh]">
@@ -25,9 +26,9 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
             <Button size="lg" className="text-base sm:text-lg px-6 sm:px-8 h-12 sm:h-auto" asChild>
-              <Link href="/upload-asset">
+              <Link href="/submit-request">
                 <Upload className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                Upload Your Asset
+                Submit Request
               </Link>
             </Button>
             <Button
@@ -100,10 +101,10 @@ export default function LandingPage() {
         <div className="container mx-auto">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <div>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6">Why choose AssetLend?</h2>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6">Why choose FundifyHub?</h2>
               <div className="space-y-6">
                 <div className="flex gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
                     <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                   </div>
                   <div>
@@ -115,7 +116,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="flex gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent/10 rounded-lg flex items-center justify-center shrink-0">
                     <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-accent" />
                   </div>
                   <div>
@@ -127,7 +128,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="flex gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-chart-3/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-chart-3/10 rounded-lg flex items-center justify-center shrink-0">
                     <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-chart-3" />
                   </div>
                   <div>
@@ -141,7 +142,7 @@ export default function LandingPage() {
             </div>
 
             <div className="relative">
-              <Card className="p-6 sm:p-8 bg-gradient-to-br from-primary/5 to-accent/5 border-2">
+              <Card className="p-6 sm:p-8 bg-linear-to-br from-primary/5 to-accent/5 border-2">
                 <CardContent className="p-0">
                   <div className="text-center mb-6">
                     <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">₹50,000</div>
@@ -247,10 +248,10 @@ export default function LandingPage() {
         <div className="container mx-auto text-center">
           <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 sm:mb-6">Ready to get your loan?</h2>
           <p className="text-lg sm:text-xl text-muted-foreground mb-6 sm:mb-8 max-w-2xl mx-auto">
-            Join thousands of satisfied customers who trust AssetLend for their financial needs.
+            Join thousands of satisfied customers who trust FundifyHub for their financial needs.
           </p>
           <Button size="lg" className="text-base sm:text-lg px-6 sm:px-8 h-12 sm:h-auto" asChild>
-            <Link href="/upload-asset">
+            <Link href="/submit-request">
               Start Your Application
               <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
             </Link>
@@ -267,7 +268,7 @@ export default function LandingPage() {
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                   <CreditCard className="w-4 h-4 text-primary-foreground" />
                 </div>
-                <span className="font-bold text-xl">AssetLend</span>
+                <span className="font-bold text-xl">FundifyHub</span>
               </div>
               <p className="text-sm sm:text-base text-muted-foreground">
                 Quick, secure, and transparent asset-backed loans for everyone.
@@ -354,7 +355,7 @@ export default function LandingPage() {
           </div>
 
           <div className="border-t border-border mt-6 sm:mt-8 pt-6 sm:pt-8 text-center text-muted-foreground text-sm sm:text-base">
-            <p>&copy; 2025 AssetLend. All rights reserved.</p>
+            <p>&copy; 2025 FundifyHub. All rights reserved.</p>
           </div>
         </div>
       </footer>

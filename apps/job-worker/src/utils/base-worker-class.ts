@@ -1,6 +1,6 @@
 import { Worker, Job, WorkerOptions } from 'bullmq';
 import config from './config';
-import { SimpleLogger } from '@fundifyhub/logger';
+import type { Logger } from '@fundifyhub/logger';
 import { QUEUE_NAMES } from '@fundifyhub/types';
 
 /**
@@ -16,10 +16,10 @@ import { QUEUE_NAMES } from '@fundifyhub/types';
  */
 export abstract class BaseWorker<T> {
   protected worker: Worker<T>;
-  protected logger: SimpleLogger;
+  protected logger: Logger;
   protected queueName: QUEUE_NAMES;
 
-  constructor(queueName: QUEUE_NAMES, logger: SimpleLogger) {
+  constructor(queueName: QUEUE_NAMES, logger: Logger) {
     this.logger = logger;
     this.queueName = queueName;
 
