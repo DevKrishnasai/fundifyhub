@@ -13,11 +13,13 @@
 
 import { prisma } from '@fundifyhub/prisma';
 import { NotFoundError, ValidationError, ForbiddenError, ErrorCode } from '@fundifyhub/utils';
-import type { Loan, EMISchedule } from '@fundifyhub/types';
+import type { Loan, EMISchedule, EMIWithBreakdown } from '@fundifyhub/types';
+import { ROLES } from '@fundifyhub/types';
 import { 
-  ROLES, 
   PAYMENT_METHOD,
-  PAYMENT_TYPE, 
+  PAYMENT_TYPE 
+} from '@fundifyhub/types';
+import { 
   CLOSURE_TYPE, 
   LATE_FEE_RATE, 
   DAYS_PER_MONTH,
@@ -25,22 +27,6 @@ import {
 import { canViewLoan, canMakePayment, hasRole, type RBACUser } from '../access-control/rbac';
 import { eventBus } from '../events/bus';
 import logger from '../../utils/logger';
-
-export interface EMIWithBreakdown {
-  principalAmount: number;
-  interestRate: number;
-  tenure: number;
-  monthlyEMI: number;
-  totalAmount: number;
-  totalInterest: number;
-  schedule: {
-    month: number;
-    principalPaid: number;
-    interestPaid: number;
-    totalPaid: number;
-    outstandingBalance: number;
-  }[];
-}
 
 export interface PaymentInput {
   loanId: string;
@@ -62,13 +48,6 @@ export interface PrepaymentInput {
 
 /**
  * LoansService - EMI and payment management
- * 
- * All calculations follow standard EMI formula:
- * EMI = P * r * (1 + r)^n / ((1 + r)^n - 1)
- * where:
- * - P = Principal amount
- * - r = Monthly interest rate (annual rate / 12 / 100)
- * - n = Total number of months
  */
 export class LoansService {
   private static instance: LoansService;
@@ -657,7 +636,7 @@ export class LoansService {
 
     const schedule = [];
     let remainingPrincipal = principalAmount;
-    let currentDate = new Date(startDate);
+    const currentDate = new Date(startDate);
 
     for (let month = 1; month <= tenureMonths; month++) {
       const interestForMonth = remainingPrincipal * monthlyRate;

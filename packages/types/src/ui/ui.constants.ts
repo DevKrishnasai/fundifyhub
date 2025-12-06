@@ -3,10 +3,10 @@
  * @module ui/ui.constants
  */
 
-import { REQUEST_STATUS } from '../request/request.constants';
-import { REQUEST_HISTORY_ACTION, REQUEST_HISTORY_CATEGORY } from '../request/request.constants';
-import { DOCUMENT_TYPE, DOCUMENT_CATEGORY, DOCUMENT_UPLOADER_ROLE } from '../document/document.constants';
-import { ROLES } from '../auth/auth.constants';
+import { REQUEST_STATUS } from '../request/enums';
+import { REQUEST_HISTORY_ACTION, REQUEST_HISTORY_CATEGORY } from '../request/enums';
+import { DOCUMENT_TYPE, DOCUMENT_CATEGORY, DOCUMENT_UPLOADER_ROLE } from '../document/enums';
+import { ROLES } from '../auth/enums';
 import { PERMISSION } from '../auth/auth.utils';
 
 // ============================================

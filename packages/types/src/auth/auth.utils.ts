@@ -1,4 +1,4 @@
-import { ROLES } from './auth.constants';
+import { ROLES } from './enums';
 
 /**
  * Permission constants for role-based access control

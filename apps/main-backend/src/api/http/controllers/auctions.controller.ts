@@ -77,7 +77,7 @@ export const auctionsController = {
       throw new ValidationError(API_MESSAGES.ERROR.UNAUTHORIZED, ErrorCode.AUTHENTICATION_ERROR);
     }
     const result = await auctionsService.placeBid(
-      { auctionId, bidderId: req.user.id, bidAmount },
+      { auctionId, bidAmount },
       req.user as RBACUser
     );
     res.status(201).json({ success: true, data: result });

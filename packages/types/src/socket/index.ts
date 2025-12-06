@@ -1,7 +1,3 @@
-/**
- * Socket domain exports
- * @module socket
- */
-
-export * from './socket.types';
-export * from './socket.constants';
+export * from './enums';
+export * from './constants';
+export * from './models';

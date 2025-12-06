@@ -1,9 +1,4 @@
-/**
- * Document domain barrel export
- * @module document
- */
-
-export * from './document.constants';
-export * from './document.types';
-export * from './document-types';
-
+export * from './models';
+export * from './enums';
+export * from './constants';
+export * from './schemas';

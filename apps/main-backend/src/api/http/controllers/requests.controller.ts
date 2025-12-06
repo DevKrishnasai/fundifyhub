@@ -33,10 +33,7 @@ export const requestsController = {
     // Map district to districtId if needed, or ensure service handles it
     // The schema has 'district' (string), service might expect 'districtId'
     // We'll pass data as is and let service handle mapping or update service
-    const request = await requestsService.create(req.user.id, {
-      ...data,
-      districtId: data.district, // Map district to districtId
-    });
+    const request = await requestsService.create(req.user.id, data);
 
     logger.info('[RequestsController] Request created', { requestId: request.id, userId: req.user.id });
 
@@ -119,7 +116,7 @@ export const requestsController = {
     const { id } = req.params;
     const { agentId } = assignAgentSchema.parse(req.body);
 
-    const request = await requestsService.assignAgent({ requestId: id, agentId });
+    const request = await requestsService.assignAgent(id, { agentId });
 
     logger.info('[RequestsController] Agent assigned to request', { requestId: id, agentId, adminId: req.user.id });
 
@@ -139,7 +136,7 @@ export const requestsController = {
     const { id } = req.params;
     const { adminId } = assignAdminSchema.parse(req.body);
 
-    const request = await requestsService.assignAdmin({ requestId: id, adminId });
+    const request = await requestsService.assignAdmin(id, { adminId });
 
     logger.info('[RequestsController] Admin assigned to request', { requestId: id, adminId, assignedBy: req.user.id });
 
@@ -159,12 +156,11 @@ export const requestsController = {
     const { id } = req.params;
     const offerData = createOfferSchema.parse(req.body);
 
-    const offer = await requestsService.createOffer({
-      requestId: id,
-      tenure: offerData.tenureMonths,
+    const offer = await requestsService.createOffer(id, {
+      tenureMonths: offerData.tenureMonths,
       interestRate: offerData.interestRate,
       processingFeeAmount: offerData.processingFeeAmount,
-      ltvPercentage: offerData.ltvPercentage,
+      ltvPercentage: offerData.ltvPercentage
     });
 
     logger.info('[RequestsController] Offer created', { requestId: id, offerId: offer.id, userId: req.user.id });

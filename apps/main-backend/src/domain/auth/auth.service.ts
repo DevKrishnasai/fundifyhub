@@ -12,50 +12,20 @@
 
 import { prisma } from '@fundifyhub/prisma';
 import { ValidationError, AppError, ForbiddenError, ErrorCode } from '@fundifyhub/utils';
-import type { UserRole } from '@fundifyhub/types';
+import type { 
+  UserRole, 
+  User, 
+  AuthTokens,
+  BackendRegisterPayload, 
+  LoginPayload, 
+  ForgotPasswordPayload, 
+  BackendResetPasswordPayload 
+} from '@fundifyhub/types';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import config from '../../config';
 import logger from '../../utils/logger';
-
-interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  roles: UserRole[];
-}
-
-export interface RegisterInput {
-  email: string;
-  phoneNumber: string;
-  firstName: string;
-  lastName: string;
-  password: string;
-  role: UserRole;
-  districtIds?: string[];
-}
-
-export interface LoginInput {
-  email: string;
-  password: string;
-}
-
-export interface PasswordResetRequestInput {
-  email: string;
-}
-
-export interface PasswordResetConfirmInput {
-  token: string;
-  newPassword: string;
-}
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-  user: User;
-}
 
 /**
  * AuthService - Core authentication business logic
@@ -78,7 +48,7 @@ export class AuthService {
    * 
    * @throws ValidationError if input invalid or email already exists
    */
-  async register(input: RegisterInput): Promise<{ user: User; verificationEmailSent: boolean }> {
+  async register(input: BackendRegisterPayload): Promise<{ user: User; verificationEmailSent: boolean }> {
     try {
       // Validate input
       if (!input.email || !input.password || !input.firstName || !input.lastName) {
@@ -137,7 +107,9 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           roles: user.roles as UserRole[],
-        },
+          isActive: user.isActive,
+          emailVerified: user.emailVerified
+        } as User,
         verificationEmailSent: false,
       };
     } catch (err) {
@@ -157,7 +129,7 @@ export class AuthService {
    * 
    * @throws ForbiddenError if credentials invalid or email not verified
    */
-  async login(input: LoginInput): Promise<AuthTokens> {
+  async login(input: LoginPayload): Promise<AuthTokens> {
     try {
       // Find user
       const user = await prisma.user.findUnique({
@@ -216,7 +188,9 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           roles: user.roles as UserRole[],
-        },
+          isActive: user.isActive,
+          emailVerified: user.emailVerified
+        } as User,
       };
     } catch (err) {
       console.error(`[AuthService.login] Login failed for ${input.email}:`, err);
@@ -235,7 +209,7 @@ export class AuthService {
    * 
    * @throws AppError only for system errors, never for non-existent emails
    */
-  async requestPasswordReset(input: PasswordResetRequestInput): Promise<{ success: boolean }> {
+  async requestPasswordReset(input: ForgotPasswordPayload): Promise<{ success: boolean }> {
     try {
       const user = await prisma.user.findUnique({
         where: { email: input.email.toLowerCase() },
@@ -284,7 +258,7 @@ export class AuthService {
    * 
    * @throws ValidationError if token invalid/expired or password invalid
    */
-  async confirmPasswordReset(input: PasswordResetConfirmInput): Promise<{ success: boolean }> {
+  async confirmPasswordReset(input: BackendResetPasswordPayload): Promise<{ success: boolean }> {
     try {
       if (!input.token || !input.newPassword) {
         throw new ValidationError('Missing token or password', ErrorCode.INVALID_INPUT);
@@ -378,6 +352,7 @@ export class AuthService {
           firstName: updatedUser.firstName,
           lastName: updatedUser.lastName,
           roles: updatedUser.roles as UserRole[],
+          isActive: updatedUser.isActive
         },
       };
     } catch (err) {

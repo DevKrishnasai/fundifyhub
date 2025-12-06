@@ -17,33 +17,17 @@
 import { prisma } from '@fundifyhub/prisma';
 import { ValidationError, NotFoundError, ForbiddenError, BusinessRuleError, ErrorCode } from '@fundifyhub/utils';
 import { canManageAuction, canPlaceBid, canViewAuction, assertCanPerformAction, type RBACUser } from '../access-control';
-import type { Auction, Bid, PlaceBidResponse } from '@fundifyhub/types';
+import type { 
+  Auction, 
+  Bid, 
+  PlaceBidResponse,
+  CreateAuctionInput, 
+  PlaceBidInput, 
+  ListAuctionsInput 
+} from '@fundifyhub/types';
 import { eventBus } from '../events/bus';
 import type { AuctionCreatedEvent, BidPlacedEvent, AuctionEndedEvent } from './auctions.events';
 import logger from '../../utils/logger';
-
-export interface CreateAuctionInput {
-  loanId: string;
-  reservePrice: number;
-  startPrice: number;
-  startDate: Date;
-  endDate: Date;
-  description?: string;
-}
-
-export interface PlaceBidInput {
-  auctionId: string;
-  bidderId: string;
-  bidAmount: number;
-}
-
-export interface ListAuctionsInput {
-  page?: number;
-  pageSize?: number;
-  status?: string;
-  sortBy?: 'createdAt' | 'endDate' | 'highestBid';
-  sortOrder?: 'asc' | 'desc';
-}
 
 /**
  * AuctionsService - Auction lifecycle management
@@ -368,6 +352,10 @@ export class AuctionsService {
    */
   async placeBid(input: PlaceBidInput, user: RBACUser): Promise<PlaceBidResponse> {
     try {
+      if (!user?.id) {
+        throw new ForbiddenError('User not authenticated', ErrorCode.AUTHENTICATION_ERROR);
+      }
+
       if (!input.bidAmount || input.bidAmount <= 0) {
         throw new ValidationError('Invalid bid amount', ErrorCode.INVALID_INPUT);
       }
@@ -428,7 +416,7 @@ export class AuctionsService {
       const bid = await prisma.auctionBid.create({
         data: {
           auctionId: input.auctionId,
-          bidderId: input.bidderId,
+          bidderId: user.id,
           amount: input.bidAmount,
           status: 'WINNING',
         },
@@ -455,7 +443,7 @@ export class AuctionsService {
         where: { id: input.auctionId },
         data: {
           currentHighBid: input.bidAmount,
-          winnerId: input.bidderId,
+          winnerId: user.id,
           winningBidId: bid.id,
           totalBids: { increment: 1 },
           extendedEndTime: newExtendedEndTime,
@@ -467,7 +455,7 @@ export class AuctionsService {
         auctionId: input.auctionId,
         bidId: bid.id,
         amount: input.bidAmount,
-        bidder: input.bidderId,
+        bidder: user.id,
       });
 
       // Emit bid placed event
@@ -477,7 +465,7 @@ export class AuctionsService {
         aggregateId: input.auctionId,
         data: {
           auctionId: input.auctionId,
-          bidderId: input.bidderId,
+          bidderId: user.id,
           bidAmount: input.bidAmount,
         },
       } as BidPlacedEvent);

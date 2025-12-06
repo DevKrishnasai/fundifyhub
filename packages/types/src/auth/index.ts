@@ -1,9 +1,6 @@
-/**
- * Auth domain barrel export
- * @module auth
- */
-
-export * from './auth.constants';
-export * from './auth.types';
-export * from './auth.schemas';
+export * from './models';
+export * from './enums';
+export * from './constants';
+export * from './schemas';
+// utils kept as is? I will keep it for now.
 export * from './auth.utils';

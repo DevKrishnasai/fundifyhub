@@ -2,11 +2,8 @@ import { Job } from 'bullmq';
 import { BaseWorker } from '../utils/base-worker-class';
 import type { Logger } from '@fundifyhub/logger';
 import { QUEUE_NAMES, NotificationChannel, SERVICE_NAMES } from '@fundifyhub/types';
-import {
-  NotificationService,
-  type NotificationRequest,
-} from '@fundifyhub/providers/notifications';
-import type { NotificationJobData } from '@fundifyhub/utils/server';
+import type { NotificationJobData, NotificationRequest } from '@fundifyhub/types';
+import { NotificationService } from '@fundifyhub/providers/notifications';
 import { serviceManager } from '../services/service-manager';
 
 /**
