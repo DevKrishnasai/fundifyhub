@@ -144,6 +144,14 @@ enum OfferStatus {
   CANCELLED // Admin cancelled the offer
 }
 
+enum IDProofType {
+  AADHAAR
+  PAN
+  PASSPORT
+  DRIVING_LICENSE
+  VOTER_ID
+}
+
 // ============================================
 // GEOGRAPHY HIERARCHY MODELS
 // ============================================
@@ -349,6 +357,14 @@ model User {
   isActive      Boolean @default(true)
   emailVerified Boolean @default(false)
   phoneVerified Boolean @default(false)
+
+  // User verification (admin approval after ID proof submission)
+  isVerified          Boolean       @default(false)
+  idProofType         IDProofType?
+  idProofNumber       String?
+  idProofDocumentUrl  String?
+  verifiedAt          DateTime?
+  verifiedBy          String? // User ID of admin who verified
 
   // Address stored as a simple string
   address String?
@@ -1053,6 +1069,11 @@ model Document {
 
   // Status
   status DocumentStatus @default(ACTIVE)
+  // Verification tracking
+  isVerified Boolean   @default(false) // Admin verification status
+  verifiedBy String? // Admin user ID who verified
+  verifiedAt DateTime? // Timestamp of verification
+
 
   // Metadata
   description  String? // Optional description/notes

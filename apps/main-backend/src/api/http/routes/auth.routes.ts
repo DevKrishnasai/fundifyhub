@@ -20,6 +20,18 @@ import {
   logoutUser,
   asyncHandler,
 } from '../middlewares';
+import {
+  registerHandler,
+  loginHandler,
+  refreshTokenHandler,
+  logoutHandler,
+  requestPasswordResetHandler,
+  confirmPasswordResetHandler,
+  verifyEmailHandler,
+  getCurrentUserHandler,
+  sendOtpHandler,
+  verifyOtpHandler,
+} from '../controllers/auth.controller';
 
 const router: Router = Router();
 
@@ -27,140 +39,79 @@ const router: Router = Router();
  * POST /auth/register
  * Register new user
  * 
- * TODO: (agent) Create registerHandler in controllers/auth.controller.ts
  */
-router.post('/register', (req, res) => {
-  // TODO: (agent) Validate input: email, password, fullName, phone
-  // TODO: (agent) Call authService.register()
-  // TODO: (agent) Return user + tokens
-
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
-  });
-});
+router.post('/register', registerHandler);
 
 /**
  * POST /auth/login
  * User login
  * 
- * TODO: (agent) Create loginHandler
  */
-router.post('/login', (req, res) => {
-  // TODO: (agent) Validate input: email, password
-  // TODO: (agent) Call authService.login()
-  // TODO: (agent) Return user + tokens
-
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
-  });
-});
+router.post('/login', loginHandler);
 
 /**
  * POST /auth/refresh
  * Refresh access token
  * 
- * TODO: (agent) Create refreshTokenHandler
  */
-router.post('/refresh', (req, res) => {
-  // TODO: (agent) Get refresh token from cookie or body
-  // TODO: (agent) Call authService.refreshAccessToken()
-  // TODO: (agent) Return new access token
-
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
-  });
-});
+router.post('/refresh', refreshTokenHandler);
 
 /**
  * POST /auth/logout
  * Logout user
  * 
- * TODO: (agent) Create logoutHandler
  */
-router.post('/logout', authenticateUser, requireAuthentication, logoutUser, (req, res) => {
-  // TODO: (agent) Blacklist current access token
-  // TODO: (agent) Return success
-
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
-  });
-});
+router.post('/logout', logoutHandler);
 
 /**
- * POST /auth/request-password-reset
- * Request password reset
+ * POST /auth/forgot-password
+ * Request password reset (alias for request-password-reset)
  * 
- * TODO: (agent) Create requestPasswordResetHandler
  */
-router.post('/request-password-reset', (req, res) => {
-  // TODO: (agent) Validate input: email
-  // TODO: (agent) Call authService.requestPasswordReset()
-  // TODO: (agent) Return success message
-
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
-  });
-});
+router.post('/forgot-password', requestPasswordResetHandler);
+router.post('/request-password-reset', requestPasswordResetHandler);
 
 /**
- * POST /auth/confirm-password-reset
- * Confirm password reset with OTP
+ * POST /auth/reset-password
+ * Confirm password reset with OTP (alias for confirm-password-reset)
  * 
- * TODO: (agent) Create confirmPasswordResetHandler
  */
-router.post('/confirm-password-reset', (req, res) => {
-  // TODO: (agent) Validate input: email, otp, newPassword
-  // TODO: (agent) Call authService.confirmPasswordReset()
-  // TODO: (agent) Return success message
-
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
-  });
-});
+router.post('/reset-password', confirmPasswordResetHandler);
+router.post('/confirm-password-reset', confirmPasswordResetHandler);
 
 /**
  * POST /auth/verify-email
  * Verify email with token
  * 
- * TODO: (agent) Create verifyEmailHandler
  */
-router.post('/verify-email', (req, res) => {
-  // TODO: (agent) Validate input: email, token
-  // TODO: (agent) Call authService.verifyEmail()
-  // TODO: (agent) Return success message
-
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
-  });
-});
+router.post('/verify-email', verifyEmailHandler);
 
 /**
  * GET /auth/me
  * Get current authenticated user
  * 
- * TODO: (agent) Create getCurrentUserHandler
  */
-router.get('/me', authenticateUser, requireAuthentication, (req, res) => {
-  // TODO: (agent) Return current user from req.user
-  res.status(501).json({
-    success: false,
-    message: 'Not implemented',
-    code: 'NOT_IMPLEMENTED',
-  });
-});
+router.get('/me', getCurrentUserHandler);
+
+/**
+ * GET /auth/validate or /user/validate
+ * Validate user session
+ * 
+ */
+router.get('/validate', getCurrentUserHandler);
+
+/**
+ * POST /auth/send-otp
+ * Send OTP for verification
+ * 
+ */
+router.post('/send-otp', sendOtpHandler);
+
+/**
+ * POST /auth/verify-otp
+ * Verify OTP code
+ * 
+ */
+router.post('/verify-otp', verifyOtpHandler);
 
 export default router;

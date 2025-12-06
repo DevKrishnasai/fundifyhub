@@ -14,6 +14,7 @@
  */
 
 import authRoutes from './auth.routes';
+import userRoutes from './user.routes';
 import requestsRoutes from './requests.routes';
 import loansRoutes from './loans.routes';
 import paymentsRoutes from './payments.routes';
@@ -22,8 +23,10 @@ import adminRoutes from './admin.routes';
 import notificationsRoutes from './notifications.routes';
 import geographyRoutes from './geography.routes';
 import healthRoutes from './health.routes';
+import documentRoutes from './document.routes';
 
 export { default as authRoutes } from './auth.routes';
+export { default as userRoutes } from './user.routes';
 export { default as requestsRoutes } from './requests.routes';
 export { default as loansRoutes } from './loans.routes';
 export { default as paymentsRoutes } from './payments.routes';
@@ -32,6 +35,7 @@ export { default as adminRoutes } from './admin.routes';
 export { default as notificationsRoutes } from './notifications.routes';
 export { default as geographyRoutes } from './geography.routes';
 export { default as healthRoutes } from './health.routes';
+export { default as documentRoutes } from './document.routes';
 
 
 /**
@@ -46,15 +50,17 @@ export { default as healthRoutes } from './health.routes';
  * ```
  */
 export function registerRoutes(app: any): void {
-  app.use('/api/auth', authRoutes);
-  app.use('/api/requests', requestsRoutes);
-  app.use('/api/loans', loansRoutes);
-  app.use('/api/payments', paymentsRoutes);
-  app.use('/api/auctions', auctionsRoutes);
-  app.use('/api/admin', adminRoutes);
-  app.use('/api/notifications', notificationsRoutes);
-  app.use('/api/geography', geographyRoutes);
-  app.use('/api/health', healthRoutes);
+  app.use('/auth', authRoutes);
+  app.use('/user', userRoutes);
+  app.use('/requests', requestsRoutes);
+  app.use('/loans', loansRoutes);
+  app.use('/payments', paymentsRoutes);
+  app.use('/auctions', auctionsRoutes);
+  app.use('/admin', adminRoutes);
+  app.use('/notifications', notificationsRoutes);
+  app.use('/geography', geographyRoutes);
+  app.use('/health', healthRoutes);
+  app.use('/documents', documentRoutes);
 
   console.log('[Routes] All routes registered');
 }

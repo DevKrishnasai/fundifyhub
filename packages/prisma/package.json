@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "npx dotenv -e ../../.env -- prisma generate && tsc -b --force",
-    "dev": "tsc --watch",
+    "dev": "tsc -b --watch",
     "lint": "eslint .",
     "clean": "rimraf dist",
     "db:generate": "npx dotenv -e ../../.env -- prisma generate",

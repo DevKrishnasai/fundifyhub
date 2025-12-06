@@ -1,9 +1,14 @@
 // Payload types
 export interface RequestUpdatedPayload {
   requestId: string;
-  data: any; // TODO: Define specific update payload
+  stage?: string;
+  subStatus?: string;
+  status?: string;
+  currentStatus?: string;
+  message?: string;
   updatedBy: string;
   timestamp: string;
+  data?: any;
 }
 
 export interface RequestStatusChangedPayload {

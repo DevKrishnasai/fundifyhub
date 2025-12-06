@@ -12,7 +12,7 @@ import {
   NAV_ITEMS,
   hasPermission,
   type NavMenuItem,
-  type PERMISSION,
+  type Permission,
 } from "@fundifyhub/types"
 import {
   ChevronLeft,
@@ -103,7 +103,7 @@ export function Sidebar({
       // Check permission requirement
       if (item.permissions && item.permissions.length > 0) {
         const hasRequiredPermission = item.permissions.some((permission) =>
-          hasPermission(user.roles || [], permission as PERMISSION)
+          hasPermission(user.roles || [], permission as Permission)
         )
         if (!hasRequiredPermission) return false
       }
@@ -140,7 +140,7 @@ export function Sidebar({
       >
         <IconComponent className="h-5 w-5 shrink-0" />
         {!collapsed && (
-          <span className="flex-1">{item.label}</span>
+          <span className="flex-1">{item.label ?? item.title}</span>
         )}
         {!collapsed && item.badge && (
           <Badge variant="secondary" className="ml-auto text-xs">

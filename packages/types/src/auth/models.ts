@@ -1,5 +1,5 @@
 import { DistrictType, StateType } from '../geography';
-import { UserRole } from './enums';
+import { UserRole, OtpChannel, OtpPurpose } from './enums';
 
 /**
  * User entity type
@@ -28,6 +28,14 @@ export interface User {
   emailVerified?: boolean;
   phoneVerified?: boolean;
   
+  // User verification (admin approval)
+  isVerified?: boolean;
+  idProofType?: string | null;
+  idProofNumber?: string | null;
+  idProofDocumentUrl?: string | null;
+  verifiedAt?: Date | null;
+  verifiedBy?: string | null;
+  
   // Address
   address?: string | null;
   city?: string | null;
@@ -46,6 +54,8 @@ export interface User {
 export interface JWTPayload {
   id: string;
   email: string;
+  firstName?: string;
+  lastName?: string;
   roles: UserRole[];
   homeDistrictId?: string | null;
   districts?: string[];
@@ -99,6 +109,22 @@ export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
   user: User;
+}
+
+export interface OTPVerificationRecord {
+  id: string;
+  sessionId: string;
+  userId?: string | null;
+  identifier: string;
+  type: OtpChannel;
+  purpose: OtpPurpose;
+  expiresAt: Date;
+  isUsed: boolean;
+  isVerified: boolean;
+  attempts: number;
+  resendCount: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // ============================================

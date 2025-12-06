@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsc -b --force",
-    "dev": "tsc --watch",
+    "dev": "tsc -b --watch",
     "lint": "eslint src --ext .ts",
     "clean": "rimraf dist",
     "prepack": "pnpm build"

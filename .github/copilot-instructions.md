@@ -1,372 +1,270 @@
-# Engineering Guidelines & Rules for the Coding Agent
+# **DevAgent – FundifyHub Coding Instructions (Plain Markdown Version)**
 
-These rules are **mandatory** for any code or changes made in this repo.
-The goal: **clean, consistent, type-safe, future-proof** code that matches our architecture.
-
----
-
-## 1. General Principles
-
-1. **Type-safety first**
-
-   * No `any` type allowed (except in very rare, well-justified cases with comments).
-   * Use `unknown` + proper narrowing instead of `any`.
-
-2. **Separation of concerns**
-
-   * Domain logic stays in **domain services**, not controllers and not providers.
-   * Providers only talk to external systems (Razorpay, UploadThing, WhatsApp, etc.).
-   * Frontend components should be mostly **presentational**; data logic goes in **adapters/hooks**.
-
-3. **Consistency over cleverness**
-
-   * Prefer simple, boring, consistent code to “smart” hacks.
-   * Follow the same patterns everywhere (e.g. same folder naming, same hook structure).
-
-4. **Small, focused modules**
-
-   * Functions: 10–40 lines where possible.
-   * Files: one main concern per file (e.g. `loans.service.ts`, not `loansAndPayments.ts`).
-
-5. **No dead code**
-
-   * Remove unused functions/types/variables.
-   * Don’t leave commented-out code lying around.
+You are a **general-purpose implementation + verification agent** for the **FundifyHub monorepo**.
+Your job is to take any coding task (backend, frontend, shared packages, infra) and convert it into **correct, fully typed, architecture-aligned code** while continuously checking and refining your work.
 
 ---
 
-## 2. File, Folder & Naming Conventions
+# **Architecture Overview**
 
-### 2.1. Folder naming
+FundifyHub is a domain-driven monorepo financial platform with multi-tenant pawn/asset-backed loans.
 
-* **Folders**: kebab-case
+### **Components**
 
-  * ✅ `loan-service`, `user-profile`, `access-control`
-  * ❌ `LoanService`, `User_profile`
+* **Frontend:** Next.js 15 (App Router) – `apps/frontend`
+* **Backend:** Express API + WebSocket – `apps/main-backend`
+* **Worker:** BullMQ job processor – `apps/job-worker`
+* **Shared Packages:**
 
-In our structure we already use:
+  * `@fundifyhub/types` – ALL domain types, enums, constants, schemas
+  * `@fundifyhub/utils` – helpers
+  * `@fundifyhub/providers` – notifications, storage, payments, cache, realtime
+  * `@fundifyhub/prisma` – Prisma ORM (source of truth)
 
-* `domain/loans`, `infra-adapters`, `access-control`, etc.
+### **Canonical Model Source**
 
-### 2.2. File naming
-
-* **TypeScript/JavaScript files**: kebab-case
-
-  * `loans.service.ts`
-  * `assignments.service.ts`
-  * `loans.controller.ts`
-  * `loans.routes.ts`
-  * `rbac.ts`, `env.ts`, `client.ts`
-
-* **React components** (in `/components` or `/app`):
-
-  * Still kebab-case filenames:
-
-    * `loan-table.tsx`
-    * `loan-details-card.tsx`
-  * Component names are **PascalCase**:
-
-    * `LoanTable`, `LoanDetailsCard`.
-
-### 2.3. Naming for variables, types, etc.
-
-* **Variables & functions** → `camelCase`
-
-  * `loanId`, `customerName`, `fetchLoans`, `createLoanRequest`.
-* **Classes & React components & types/interfaces** → `PascalCase`
-
-  * `LoanService`, `LoanCard`, `UserRole`, `LoanStatus`.
-* **Enums** → `PascalCase` for name, `SCREAMING_SNAKE_CASE` for values if string enums.
-* **Constants** → `SCREAMING_SNAKE_CASE`
-
-  * `MAX_LOAN_TENURE_MONTHS`, `DEFAULT_PAGE_SIZE`.
-
-### 2.4. Names should be explicit
-
-* `loan`, `loanRequest`, `loanId` are good.
-* Avoid rubbish like `data1`, `res2`, `tmp`, `obj`.
+`packages/prisma/prisma/schema.prisma`
+→ Always reflect backend domain logic according to this schema.
 
 ---
 
-## 3. TypeScript Rules
+# **Core Engineering Principles**
 
-1. **Strict mode ON**
+### **Schema-First**
 
-   * `strict: true` in `tsconfig.json`.
-   * No `skipLibCheck` for internal packages.
+* All DB changes must come from migrations.
+* Types in `@fundifyhub/types` must align with Prisma schema.
+* Never create models or fields that don't exist in Prisma.
 
-2. **No `any`**
+### **Domain-Driven**
 
-   * If absolutely impossible, **must** be:
+* Business logic belongs in:
 
-     ```ts
-     const foo: any = bar; // TODO: (agent) narrow this type later
-     ```
-   * This should be rare.
+  ```
+  apps/main-backend/src/domain/<module>/*.service.ts
+  ```
+* Controllers are thin wrappers (validation + response formatting).
 
-3. **Prefer interfaces & types from `packages/types`**
+### **Provider-Agnostic**
 
-   * Reuse `Loan`, `User`, `Region`, `NotificationEvent`, etc.
-   * Don’t re-create ad-hoc types in apps if shared types exist.
+External services (Razorpay, Twilio, WhatsApp, S3, UploadThing, Redis, Socket.io, etc.) must be accessed via:
 
-4. **Use `unknown` for dynamic data**
+```
+@fundifyhub/providers/<module>
+```
 
-   * Example: webhook payloads:
+### **Strict Type-Safety**
 
-     ```ts
-     function handleWebhook(payload: unknown) {
-       // validate using zod before using
-     }
-     ```
+* No `any`
+* Use Zod schemas for request/response validation
+* Use `zod.infer` for typed DTOs
+* All enums/constants/types must come from shared packages
 
-5. **Use zod for input validation**
+### **Region + Role-Aware**
 
-   * Define schemas in `domain/*/validators.ts` or `utils` where appropriate.
-   * Validate request bodies in controllers / route handlers using zod schemas.
-
-6. **Never ignore Promise errors**
-
-   * No bare `promise.then()` without `.catch()` unless `await` is used in a `try/catch`.
-   * Use `void someAsyncFn()` only if fire-and-forget is really intended and justified.
+* All actions must respect the user’s role and assigned geography (district/state)
 
 ---
 
-## 4. JSDoc & Documentation Rules
+# **Coding Workflow**
 
-1. **Every exported function, class, and complex type must have a JSDoc block.**
+When the user gives a task:
 
-   Example:
+## **1. Understand & Restate**
 
-   ```ts
-   /**
-    * Creates a new loan request for the given customer.
-    *
-    * @param customerId - ID of the customer creating the loan.
-    * @param payload - Loan payload including asset and amount.
-    * @returns The created loan with initial status.
-    */
-   export async function createLoanRequest(customerId: string, payload: CreateLoanPayload): Promise<Loan> {
-     // ...
-   }
-   ```
+Explain what the task truly requires and which parts of the repo it touches.
 
-2. **Domain services & adapters should be well documented**:
+## **2. Explore the Repo**
 
-   * What they do.
-   * What assumptions they make.
-   * What errors they might throw.
+Search and read relevant:
 
-3. **Public React components** get JSDoc above the component declaration:
+* Domain services
+* Controllers
+* Shared types
+* Providers
+* Prisma schema
+* Frontend features
+* API clients/hooks/components
 
-   ```ts
-   /**
-    * Displays a table of loans for the current view (customer/agent/admin).
-    */
-   export function LoanTable(props: LoanTableProps) { ... }
-   ```
+Follow existing patterns.
 
-4. **Complex interfaces & types** should be documented:
+## **3. Plan Before Editing**
 
-   ```ts
-   /**
-    * Notification event payload used by the orchestrator.
-    */
-   export interface NotificationEvent { ... }
-   ```
+Provide a short, safe, incremental plan:
 
----
+* Files to edit / create
+* Types/schemas to update
+* Logic changes required
+* Potential migrations
+* Needed providers or helpers
 
-## 5. Backend Best Practices
+Avoid large refactors unless required.
 
-### 5.1. Controllers
+## **4. Edit in Small Steps**
 
-* Controllers must:
+While editing:
 
-  * validate input (using `zod` or shared validators),
-  * call **domain services**,
-  * format HTTP responses.
-* Controllers must **NOT**:
+* Maintain consistency with existing architecture
+* Keep imports clean (use package aliases)
+* Remove duplicate logic
+* Use Zod validation consistently
+* Never introduce magic strings
+* Ensure changes compile frequently
 
-  * contain business rules.
-  * directly call external providers (Razorpay, Redis, etc.).
+## **5. Run Checks**
 
-### 5.2. Domain services
+After each major change:
 
-* Domain services:
+* Run build
+* Run lint
+* Run tests (if applicable)
+* Check TypeScript diagnostics
+* Review diffs
 
-  * contain **all business logic**.
-  * enforce rules (assignment, status transitions, permissions via RBAC helpers).
-  * emit domain events using `events/bus.ts`.
+Fix issues immediately.
 
-* Domain services must:
+## **6. Requirements Cross-Check**
 
-  * accept and return typed domain models.
-  * not know about HTTP or Express.
+After every iteration:
 
-### 5.3. Infra adapters
+* Does the code align with schema?
+* Does it follow DDD boundaries?
+* Is there any hardcoded string?
+* Are types imported from shared packages?
+* Does code compile and lint without errors?
+* Does the new logic follow architectural conventions?
 
-* All external calls go through `infra-adapters` which use `packages/providers`.
+If not, fix and recheck.
 
-  * e.g. `payments-adapter`, `notification-adapter`, `storage-adapter`.
+## **7. Ask for Help Only When Truly Blocked**
 
-* Adapters:
+Examples:
 
-  * are thin wrappers around provider factories.
-  * handle mapping between domain types ↔ provider-specific types.
-  * no business rules inside.
+* Missing required env variables
+* Conflicting domain definitions
+* Ambiguous business rules
 
-### 5.4. Error handling
-
-* Use `try/catch` in controllers and top-level domain functions.
-* Throw application-level errors with meaningful codes/messages.
-
-  * e.g. `throw new AppError("LOAN_NOT_FOUND", "Loan not found", 404);`
-* Log errors via `logger` with relevant context (userId, loanId, etc.).
+Otherwise continue autonomously.
 
 ---
 
-## 6. Frontend Best Practices
+# **Backend Coding Rules**
 
-### 6.1. Components
+### **Controllers (thin)**
 
-* Prefer smaller components:
+* Validate using Zod schemas from `@fundifyhub/types`
+* Call service (no business logic in controller)
+* Convert domain errors to HTTP errors
+* Return typed responses
 
-  * container components (data fetching & wiring),
-  * presentational components (pure UI).
+### **Domain Services**
 
-* Don’t put heavy business logic in components:
+* Implement all business rules
+* Enforce workflow transitions (ex: request approval → loan creation)
+* Throw `DomainError` for invalid states
+* Call repositories for persistence
 
-  * Use hooks (`useLoans`, `useNotifications`) + adapters.
+### **Repositories**
 
-### 6.2. Hooks & React Query
+* Use Prisma via `@fundifyhub/prisma`
 
-* Use **React Query** for:
+### **Logging**
 
-  * all server-side data fetching & caching.
+Always use `@fundifyhub/logger` with:
 
-* Standard pattern:
+* userId
+* requestId
+* domain context
 
-  ```ts
-  function useLoans(view: LoanView) {
-    return useQuery({
-      queryKey: ["loans", view],
-      queryFn: () => loansAdapter.fetchLoans(view),
-    });
-  }
+### **Naming Conventions**
+
+* `kebab-case.ts` for files
+* `PascalCase` for types
+* `SCREAMING_SNAKE_CASE` for constants
+
+---
+
+# **Frontend Coding Rules**
+
+### **Data Layer**
+
+* Use React Query ONLY for data fetching
+* All API calls must go through `lib/apiClient.ts`
+* No fetch/axios in components
+
+### **Forms**
+
+* Use React Hook Form + Zod resolver
+* Use shared types & schemas from `@fundifyhub/types`
+
+### **UI Components**
+
+* Use shared UI primitives:
+
+  * button
+  * input
+  * card
+  * select
+  * table
+  * dialog
+
+### **Routing / Layout**
+
+* Must follow Next.js App Router patterns (`app/` folder)
+* Group by feature/module (not random pages)
+
+---
+
+# **Integration Points**
+
+### **Payments**
+
+* Razorpay webhook signature must be validated via:
+
+  ```
+  RAZORPAY_WEBHOOK_SECRET
   ```
 
-* Mutations:
+### **Realtime**
 
-  * Always handle `onSuccess` and `onError`.
-  * On relevant mutation success, invalidate or update related queries.
+* Use `@fundifyhub/providers/realtime` to emit socket events
 
-### 6.3. Forms
+### **Notifications**
 
-* Always use `react-hook-form` + `zod` for forms.
+Use:
 
-  * Validation schema defined once and reused.
+```
+@fundifyhub/providers/notifications
+```
 
-### 6.4. Role-based UI
+### **Storage**
 
-* Role & region logic lives in `lib/utils/role.ts`.
-* Components/pages use helpers:
+File uploads must go through UploadThing providers.
 
-  * `isCustomer(user)`, `isDistrictAdmin(user)`, etc.
-* Don’t hardcode roles in random components; centralize logic.
+### **Redis + Queues**
 
----
-
-## 7. Realtime Best Practices
-
-1. **Socket.io client** lives in one place: `realtime-adapter.ts`.
-2. Don’t open multiple socket connections per tab; reuse one.
-3. Use hooks like `useRealtimeLoanUpdates` to subscribe/unsubscribe.
-4. On realtime events:
-
-   * Prefer updating React Query cache via `setQueryData` or invalidation.
-5. Name events clearly:
-
-   * `loan.update`, `loan.assigned`, `notification.new`, `auction.bid`.
+* Use Redis provider for caching
+* Use BullMQ provider for job queues
 
 ---
 
-## 8. Notifications & Background Jobs
+# **Key Reference Files**
 
-1. Do not send emails/WhatsApp directly in controller or domain service.
-
-   * Always use `notification-adapter.publishEvent` → orchestrator → job → worker.
-
-2. Workers must:
-
-   * respect rate limits,
-   * log failures with enough context (user, template, channel).
-
-3. Never block HTTP responses waiting for notifications; use async jobs.
+* `ARCHITECTURE.md`
+* `ENGINEERING_GUIDELINES.md`
+* `packages/types/src/index.ts`
+* `apps/main-backend/src/domain/*/*.service.ts`
+* `apps/frontend/src/features/*`
 
 ---
 
-## 9. Git & Commit Rules (Agent)
+# **Output Expectations**
 
-1. Commits must be **scoped & clear**:
+Every task must end with:
 
-   * `feat(loans): add assignment service`
-   * `fix(notifications): correct overdue template`
-   * `refactor(frontend): extract loan adapter`
+* Summary of changes
+* Checklist of requirements (met or pending)
+* Verification results (build, lint)
+* Follow-up steps and assumptions
+* Workspace must be left **fully buildable and lint-free**
 
-2. No huge “everything in one commit” if avoidable.
-
-3. Don’t commit failing tests or lint errors.
-
----
-
-## 10. TODO / Progress Logging
-
-We maintain a `TODO.md` (or `docs/TODO.md`) at repo root to track work.
-
-**Rules for TODO file:**
-
-* Structure example:
-
-  ```md
-  # TODO / Progress
-
-  ## [DATE] Agent Session
-
-  - [x] Implement Loan prisma schema
-  - [x] Add LoanService.createLoanRequest
-  - [ ] Implement AssignmentService.selfAssignLoanToDistrictAdmin
-  - [ ] Frontend: /dashboard/loans basic list for customer
-  - [ ] Add realtime loan.update listener on frontend
-  ```
-
-* For every session / batch of changes, the agent must:
-
-  * Add a new section or update an existing one.
-  * Mark items `[x]` when completed.
-  * Add new tasks when new work is started.
-
-* Keep TODO items **short and action-based**:
-
-  * “Implement X”
-  * “Refactor Y”
-  * “Add Z tests”
-
----
-
-## 11. What the Agent Must Never Do
-
-1. **Never**:
-
-   * introduce `any` without a comment + reason.
-   * bypass type checks with `as any` without justification.
-2. **Never**:
-
-   * call external SDKs directly in controllers or domain → must use `providers`.
-3. **Never**:
-
-   * mix different responsibilities in a single file (e.g. controller + service in one file).
-4. **Never**:
-
-   * introduce breaking schema changes without updating types & relevant services.
-
-- check details what to do in REFINED_CODEBASE.md

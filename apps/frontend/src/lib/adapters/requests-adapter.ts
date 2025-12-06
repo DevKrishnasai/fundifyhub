@@ -96,6 +96,7 @@ export interface UpdateStatusPayload {
  */
 export interface AssignAgentPayload {
   agentId: string;
+  inspectionDate: string;
 }
 
 /**

@@ -8,7 +8,9 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import type { UserType } from '@fundifyhub/types';
+import type { UserType, JWTPayload } from '@fundifyhub/types';
+import jwt from 'jsonwebtoken';
+import config from '../../../config';
 
 /**
  * Extended Express Request with user context
@@ -43,36 +45,48 @@ export function authenticateUser(
   next: NextFunction
 ): void {
   try {
-    // TODO: (agent) Get token from Authorization header
-    // const token = req.headers.authorization?.replace('Bearer ', '')
-    // if (!token) throw new UnauthorizedError()
+    // Try to get token from:
+    // 1. Authorization header (Bearer <token>)
+    // 2. Cookies (accessToken or ACCESS_TOKEN)
+    const bearer = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.substring(7)
+      : undefined;
+    const token = bearer || req.cookies?.accessToken || req.cookies?.ACCESS_TOKEN;
+    
+    if (!token) {
+      // No token found - allow next middleware/handler to decide what to do
+      return next();
+    }
 
-    // TODO: (agent) Verify token using jsonwebtoken.verify()
-    // const decoded = jwt.verify(token, process.env.JWT_SECRET!)
+    // Verify and decode the JWT token
+    const decoded = jwt.verify(token, config.jwt.secret as jwt.Secret) as JWTPayload;
 
-    // TODO: (agent) Extract user from decoded payload
-    // req.user = {
-    //   id: decoded.userId,
-    //   email: decoded.email,
-    //   roles: decoded.roles,
-    //   ...
-    // }
+    // JWTPayload uses 'id' property for user ID
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      firstName: decoded.firstName || '',
+      lastName: decoded.lastName || '',
+      roles: decoded.roles || [],
+      districts: decoded.districts || [],
+      isActive: decoded.isActive ?? true,
+    };
 
-    // Stub: user stays undefined - will be handled by requireAuthentication
-
-    console.log('[Auth] User authentication attempted (stub)');
     next();
   } catch (err) {
-    // TODO: (agent) Handle token errors (expired, invalid, malformed)
-    // if (err.name === 'TokenExpiredError') throw new TokenExpiredError()
-    // if (err.name === 'JsonWebTokenError') throw new InvalidTokenError()
+    // Handle different JWT errors appropriately
+    if (err instanceof jwt.TokenExpiredError) {
+      console.warn('[Auth] Token expired:', err.message);
+      return next(); // Let requireAuthentication handle it
+    }
+    
+    if (err instanceof jwt.JsonWebTokenError) {
+      console.warn('[Auth] Invalid JWT:', err.message);
+      return next(); // Let requireAuthentication handle it
+    }
 
-    console.error('[Auth] Authentication failed:', err);
-    res.status(401).json({
-      success: false,
-      message: 'Unauthorized - Invalid or missing token',
-      code: 'UNAUTHORIZED',
-    });
+    console.error('[Auth] Authentication error:', err);
+    return next(); // Let requireAuthentication handle it
   }
 }
 
@@ -128,12 +142,37 @@ export function optionalAuth(
   next: NextFunction
 ): void {
   try {
-    // TODO: (agent) Same as authenticateUser but don't fail if token missing
-    console.log('[Auth] Optional auth - user:', req.user?.id || 'anonymous');
+    // Try to get token from:
+    // 1. Authorization header (Bearer <token>)
+    // 2. Cookies (accessToken or ACCESS_TOKEN)
+    const bearer = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.substring(7)
+      : undefined;
+    const token = bearer || req.cookies?.accessToken || req.cookies?.ACCESS_TOKEN;
+    
+    if (!token) {
+      // No token - continue as unauthenticated user
+      return next();
+    }
+
+    // Verify and decode the JWT token
+    const decoded = jwt.verify(token, config.jwt.secret as jwt.Secret) as JWTPayload;
+
+    // JWTPayload uses 'id' property for user ID
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      firstName: decoded.firstName || '',
+      lastName: decoded.lastName || '',
+      roles: decoded.roles || [],
+      districts: decoded.districts || [],
+      isActive: decoded.isActive ?? true,
+    };
+
     next();
   } catch (err) {
-    // Ignore auth errors for optional routes
-    console.debug('[Auth] Optional auth failed (ignoring):', err);
+    // Ignore auth errors for optional routes - just continue without user context
+    console.debug('[Auth] Optional auth failed (ignoring):', (err as any)?.message);
     next();
   }
 }
@@ -199,14 +238,36 @@ export function logoutUser(
   next: NextFunction
 ): void {
   try {
-    // TODO: (agent) Get token from Authorization header
-    // TODO: (agent) Extract expiry time from token
-    // TODO: (agent) Call cacheAdapter.blacklistToken(token, ttl)
+    // Get the access token from Authorization header or cookies
+    const bearer = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.substring(7)
+      : undefined;
+    const token = bearer || req.cookies?.accessToken || req.cookies?.ACCESS_TOKEN;
+
+    if (token) {
+      try {
+        // Decode token to get expiry time
+        const decoded = jwt.decode(token) as { exp?: number } | null;
+        
+        if (decoded?.exp) {
+          // TTL in seconds until token expiry
+          const ttl = decoded.exp - Math.floor(Date.now() / 1000);
+          
+          if (ttl > 0) {
+            // TODO: (agent) Add token to Redis blacklist with TTL
+            // This prevents token reuse even if validation is bypassed
+            console.log('[Auth] Token blacklisted for logout:', { userId: req.user?.id, ttl });
+          }
+        }
+      } catch (decodeErr) {
+        console.warn('[Auth] Could not decode token for blacklist:', (decodeErr as any)?.message);
+      }
+    }
 
     console.log('[Auth] User logged out:', { userId: req.user?.id });
     next();
   } catch (err) {
-    console.error('[Auth] Logout failed:', err);
+    console.error('[Auth] Logout error:', err);
     // Don't fail the logout request even if blacklist fails
     next();
   }

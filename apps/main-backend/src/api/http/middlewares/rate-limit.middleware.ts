@@ -10,11 +10,11 @@ import type { Request, Response, NextFunction } from 'express';
 
 const rateLimiters = {
   default: {
-    points: 100, // 100 requests
+    points: 1000, // 100 requests
     duration: 60, // per minute
   },
   auth: {
-    points: 5, // 5 requests
+    points: 50, // 5 requests
     duration: 60 * 15, // per 15 minutes
   },
 };

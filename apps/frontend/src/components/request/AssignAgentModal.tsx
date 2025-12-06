@@ -42,7 +42,7 @@ export default function AssignAgentModal({ open, onOpenChange, onSubmit, distric
         const list = Array.isArray(resp.data?.agents) ? resp.data.agents : [];
         setAgents(list);
         // Set first agent as default if none selected
-        setAgentId((current) => (!current && list.length > 0) ? list[0].id : current);
+        setAgentId((current) => (!current && list.length > 0 && list[0]) ? list[0].id : current);
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Failed to fetch agents'));

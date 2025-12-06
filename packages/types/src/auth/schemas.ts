@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { ROLES } from './enums';
+import { ROLES, OTP_CHANNELS, OTP_PURPOSES, ID_PROOF_TYPES } from './enums';
+import { OTP_CONSTANTS } from './constants';
 
 // ============================================================================
 // Authentication Schemas
@@ -31,8 +32,21 @@ export const backendRegisterSchema = z.object({
     ROLES.DISTRICT_ADMIN,
     ROLES.STATE_ADMIN,
     ROLES.SUPER_ADMIN,
-  ]),
+  ]).default(ROLES.CUSTOMER).optional(),
   districtIds: z.array(z.string()).optional(),
+  emailSessionId: z.string().min(1),
+  phoneSessionId: z.string().min(1),
+  // ID Proof fields
+  idProofType: z.enum([
+    ID_PROOF_TYPES.AADHAAR,
+    ID_PROOF_TYPES.PAN,
+    ID_PROOF_TYPES.PASSPORT,
+    ID_PROOF_TYPES.DRIVING_LICENSE,
+    ID_PROOF_TYPES.VOTER_ID,
+  ]).optional(),
+  idProofNumber: z.string().optional(),
+  // Accept either a full URL or a raw file key (uploadthing returns fileKey)
+  idProofDocumentUrl: z.string().min(1).optional(),
 });
 
 export const phoneSchema = z.string().regex(/^\d{10}$/, 'Phone must be exactly 10 digits');
@@ -46,14 +60,20 @@ export const forgotPasswordSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
 });
 
+// Define otpSchema early so it can be used in resetPasswordSchema
+export const otpSchema = z.string().length(OTP_CONSTANTS.CODE_LENGTH, `OTP must be exactly ${OTP_CONSTANTS.CODE_LENGTH} digits`).regex(/^\d+$/, 'OTP must contain only digits');
+
 export const resetPasswordSchema = z.object({
-  token: z.string().min(1, 'Reset token is required'),
+  sessionId: z.string().min(1, 'Session ID is required'),
+  otp: otpSchema,
   email: z.string().email('Please enter a valid email address'),
   newPassword: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 export const backendResetPasswordSchema = z.object({
-  token: z.string().min(1, 'Reset token is required'),
+  sessionId: z.string().min(1, 'Session ID is required'),
+  otp: z.string().length(OTP_CONSTANTS.CODE_LENGTH, `OTP must be exactly ${OTP_CONSTANTS.CODE_LENGTH} digits`).regex(/^\d+$/, 'OTP must contain only digits'),
+  email: z.string().email('Please enter a valid email address'),
   newPassword: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
@@ -101,11 +121,11 @@ export const updateUserSchema = z.object({
 // OTP Schemas
 // ============================================================================
 
-export const otpSchema = z.string().length(6, 'OTP must be exactly 6 digits').regex(/^\d+$/, 'OTP must contain only digits');
-
 export const sendOtpSchema = z.object({
   email: z.string().email('Please enter a valid email address').optional(),
   phone: z.string().regex(/^\d{10}$/, 'Phone must be exactly 10 digits').optional(),
+  purpose: z.nativeEnum(OTP_PURPOSES),
+  channel: z.nativeEnum(OTP_CHANNELS).optional(),
 }).refine(data => data.email || data.phone, {
   message: 'Either email or phone is required',
 });
@@ -113,6 +133,11 @@ export const sendOtpSchema = z.object({
 export const verifyOtpSchema = z.object({
   sessionId: z.string().min(1, 'Session ID is required'),
   otp: otpSchema,
+  purpose: z.nativeEnum(OTP_PURPOSES).optional(),
+});
+
+export const registerWithOtpSchema = backendRegisterSchema.extend({
+  district: z.string().optional(),
 });
 
 // ============================================================================
@@ -144,3 +169,4 @@ export type UpdateUserPayload = z.infer<typeof updateUserSchema>;
 export type SendOtpPayload = z.infer<typeof sendOtpSchema>;
 export type VerifyOtpPayload = z.infer<typeof verifyOtpSchema>;
 export type EmailConfigPayload = z.infer<typeof emailConfigSchema>;
+export type RegisterWithOtpPayload = z.infer<typeof registerWithOtpSchema>;

@@ -13,6 +13,7 @@
     "@fundifyhub/logger": "workspace:*",
     "@fundifyhub/types": "workspace:*",
     "@fundifyhub/utils": "workspace:*",
+    "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-avatar": "1.1.1",
     "@radix-ui/react-checkbox": "1.1.2",
     "@radix-ui/react-dialog": "1.1.2",

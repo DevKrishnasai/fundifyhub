@@ -7,13 +7,27 @@ import { REQUEST_STATUS } from '../request/enums';
 import { REQUEST_HISTORY_ACTION, REQUEST_HISTORY_CATEGORY } from '../request/enums';
 import { DOCUMENT_TYPE, DOCUMENT_CATEGORY, DOCUMENT_UPLOADER_ROLE } from '../document/enums';
 import { ROLES } from '../auth/enums';
-import { PERMISSION } from '../auth/auth.utils';
+import { PERMISSION, type Permission } from '../auth/auth.utils';
+
+// ============================================
+// NAV TYPES
+// ============================================
+
+export interface NavMenuItem {
+  title: string;
+  label?: string; // Fallback to title if not provided
+  href: string;
+  icon: string;
+  badge?: string;
+  roles?: (typeof ROLES)[keyof typeof ROLES][];
+  permissions?: Permission[];
+}
 
 // ============================================
 // NAVIGATION ITEMS
 // ============================================
 
-export const NAV_ITEMS = [
+export const NAV_ITEMS: NavMenuItem[] = [
   {
     title: 'Dashboard',
     href: '/dashboard',

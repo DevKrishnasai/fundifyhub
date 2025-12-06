@@ -35,10 +35,10 @@ export function DashboardStatsGrid({
   stats,
   loading = false,
   columns = 4,
-  className,
+  className = "",
 }: DashboardStatsGridProps) {
   if (loading) {
-    return <StatsGridSkeleton count={stats.length || 4} className={className} />
+    return <StatsGridSkeleton  count={stats.length || 4} className={className } />
   }
 
   const gridCols = {
@@ -49,17 +49,17 @@ export function DashboardStatsGrid({
 
   return (
     <div className={cn("grid gap-4", gridCols[columns], className)}>
-      {stats.map((stat, index) => (
-        <StatsCard
-          key={index}
-          title={stat.title}
-          value={stat.value}
-          icon={stat.icon}
-          iconColor={stat.iconColor}
-          subtitle={stat.subtitle}
-          trend={stat.trend}
-        />
-      ))}
+      {stats.map((stat, index) => {
+        const props: any = {
+          title: stat.title,
+          value: stat.value,
+          icon: stat.icon,
+        }
+        if (stat.iconColor !== undefined) props.iconColor = stat.iconColor
+        if (stat.subtitle !== undefined) props.subtitle = stat.subtitle
+        if (stat.trend !== undefined) props.trend = stat.trend
+        return <StatsCard key={index} {...props} />
+      })}
     </div>
   )
 }

@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "tsc -b --force",
-    "dev": "tsc --watch",
+    "dev": "tsc -b --watch",
     "lint": "eslint .",
     "clean": "rimraf dist",
     "test:templates": "ts-node src/__tests__/send-templates.ts"

@@ -14,7 +14,7 @@ export const BACKEND_API_CONFIG = {
       SEND_OTP: '/api/v1/auth/send-otp',
       VERIFY_OTP: '/api/v1/auth/verify-otp',
       RESEND_OTP: '/api/v1/auth/resend-otp',
-      VALIDATE: '/api/v1/user/validate',
+      VALIDATE: '/api/v1/auth/validate',
       CHANGE_PASSWORD: '/api/v1/auth/change-password',
       FORGOT_PASSWORD: '/api/v1/auth/forgot-password',
       RESET_PASSWORD: '/api/v1/auth/reset-password',

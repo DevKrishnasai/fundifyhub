@@ -171,17 +171,18 @@ export function RequestActionProvider({ children }: { children: React.ReactNode 
 
         case WORKFLOW_EVENTS.ASSIGN_AGENT:
           if (!input?.agentId) throw new Error('Agent ID is required');
+          if (!input?.inspectionDate) throw new Error('Inspection date is required');
           await assignAgent.mutateAsync({ 
             id: request.id, 
-            data: { agentId: input.agentId } 
+            data: { agentId: input.agentId, inspectionDate: input.inspectionDate } 
           });
           break;
 
-        case WORKFLOW_EVENTS.SELF_ASSIGN:
+        case WORKFLOW_EVENTS.ASSIGN_TO_ME:
           await selfAssign.mutateAsync(request.id);
           break;
 
-        case WORKFLOW_EVENTS.CONFIRM_OFFER:
+        case WORKFLOW_EVENTS.ACCEPT_OFFER:
           await confirmOffer.mutateAsync(request.id);
           break;
 
@@ -224,22 +225,23 @@ export function RequestActionProvider({ children }: { children: React.ReactNode 
           });
           break;
 
-        case WORKFLOW_EVENTS.APPROVE_REQUEST:
-          await updateStatus.mutateAsync({ 
-            id: request.id, 
-            data: { status: REQUEST_STATUS.APPROVED } 
-          });
-          break;
+        // TODO: Map these to proper workflow events when available
+        // case WORKFLOW_EVENTS.APPROVE_REQUEST:
+        //   await updateStatus.mutateAsync({ 
+        //     id: request.id, 
+        //     data: { status: REQUEST_STATUS.APPROVED } 
+        //   });
+        //   break;
 
-        case WORKFLOW_EVENTS.REJECT_REQUEST:
-          await updateStatus.mutateAsync({ 
-            id: request.id, 
-            data: { 
-              status: REQUEST_STATUS.REJECTED,
-              reason: input?.reason || input?.notes 
-            } 
-          });
-          break;
+        // case WORKFLOW_EVENTS.REJECT_REQUEST:
+        //   await updateStatus.mutateAsync({ 
+        //     id: request.id, 
+        //     data: { 
+        //       status: REQUEST_STATUS.REJECTED,
+        //       reason: input?.reason || input?.notes 
+        //     } 
+        //   });
+        //   break;
 
         default:
           throw new Error(`Action ${actionId} not implemented`);

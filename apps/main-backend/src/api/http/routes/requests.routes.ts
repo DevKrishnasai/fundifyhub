@@ -29,6 +29,7 @@ import {
   checkPermission,
   asyncHandler,
 } from '../middlewares';
+import { prisma } from '@fundifyhub/prisma';
 
 const router: Router = Router();
 
@@ -59,46 +60,165 @@ router.post(
 /**
  * GET /requests
  * List requests (role-based filtering)
- * 
- * TODO: (agent) Create listRequestsHandler
  */
 router.get(
   '/',
   authenticateUser,
   requireAuthentication,
-  (req, res) => {
-    // TODO: (agent) Validate query: page, limit, filters
-    // TODO: (agent) Call requestsService.list() with user context
-    // TODO: (agent) Return paginated requests
+  asyncHandler(async (req, res) => {
+    const user = req.user!;
+    const { prisma } = req.app.locals;
 
-    res.status(501).json({
-      success: false,
-      message: 'Not implemented',
-      code: 'NOT_IMPLEMENTED',
+    // Parse query params
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const sortBy = (req.query.sortBy as string) || 'createdAt';
+    const sortOrder = (req.query.sortOrder as string) || 'desc';
+    const skip = (page - 1) * limit;
+
+    // Build where clause based on user role
+    const whereClause: any = {};
+    
+    if (user.roles.includes('CUSTOMER')) {
+      whereClause.customerId = user.id;
+    } else if (user.roles.includes('AGENT') && user.homeDistrictId) {
+      whereClause.districtId = user.homeDistrictId;
+    } else if (user.districts && user.districts.length > 0 && !user.roles.includes('SUPER_ADMIN')) {
+      whereClause.districtId = { in: user.districts };
+    }
+
+    // Add status filter if provided
+    if (req.query.status) {
+      whereClause.workflowStatus = req.query.status;
+    }
+
+    const [requests, total] = await Promise.all([
+      prisma.request.findMany({
+        where: whereClause,
+        skip,
+        take: limit,
+        orderBy: { [sortBy]: sortOrder },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phoneNumber: true,
+            },
+          },
+          district: {
+            select: {
+              id: true,
+              name: true,
+              state: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          assets: {
+            select: {
+              id: true,
+              description: true,
+              estimatedValue: true,
+              category: true,
+            },
+          },
+        },
+      }),
+      prisma.request.count({ where: whereClause }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        requests,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
     });
-  }
+  })
 );
 
 /**
  * GET /requests/:requestId
  * Get request by ID
- * 
- * TODO: (agent) Create getRequestHandler
  */
 router.get(
   '/:requestId',
   authenticateUser,
   requireAuthentication,
-  (req, res) => {
-    // TODO: (agent) Call requestsService.getById() with RBAC check
-    // TODO: (agent) Return request with all related data
+  asyncHandler(async (req, res) => {
+    const user = req.user!;
+    const { requestId } = req.params;
+    const { prisma } = req.app.locals;
 
-    res.status(501).json({
-      success: false,
-      message: 'Not implemented',
-      code: 'NOT_IMPLEMENTED',
+    const request = await prisma.request.findUnique({
+      where: { id: requestId },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+        district: {
+          select: {
+            id: true,
+            name: true,
+            state: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        assets: true,
+        documents: true,
+        loan: true,
+        inspection: true,
+        offers: true,
+      },
     });
-  }
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found',
+      });
+    }
+
+    // Check access permissions
+    const hasAccess = 
+      request.customerId === user.id ||
+      user.roles.includes('SUPER_ADMIN') ||
+      (user.roles.includes('AGENT') && request.districtId === user.homeDistrictId) ||
+      (user.districts && user.districts.includes(request.districtId));
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: request,
+    });
+  })
 );
 
 /**

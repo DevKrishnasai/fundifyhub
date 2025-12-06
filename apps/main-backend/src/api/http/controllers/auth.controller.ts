@@ -24,6 +24,8 @@ import {
   forgotPasswordSchema,
   backendResetPasswordSchema,
   verifyEmailSchema,
+  sendOtpSchema,
+  verifyOtpSchema,
   COOKIE_NAMES, 
   API_MESSAGES 
 } from '@fundifyhub/types';
@@ -37,7 +39,27 @@ import {
 export const registerHandler = asyncHandler(async (req: Request, res: Response) => {
   const data = backendRegisterSchema.parse(req.body);
 
+  // TODO: (agent) Fix register method signature - currently doesn't accept second param
+  // const result = await authService.register(data, {
+  //   ipAddress: req.ip,
+  //   userAgent: req.headers['user-agent'],
+  // });
   const result = await authService.register(data);
+
+  // TODO: (agent) Register doesn't return tokens - implement token generation
+  // res.cookie(COOKIE_NAMES.REFRESH_TOKEN, result.refreshToken, {
+  //   httpOnly: true,
+  //   secure: process.env.NODE_ENV === 'production',
+  //   sameSite: 'strict',
+  //   maxAge: 7 * 24 * 60 * 60 * 1000,
+  // });
+
+  // res.cookie(COOKIE_NAMES.ACCESS_TOKEN, result.accessToken, {
+  //   httpOnly: true,
+  //   secure: process.env.NODE_ENV === 'production',
+  //   sameSite: 'strict',
+  //   maxAge: 60 * 60 * 1000,
+  // });
 
   res.status(201).json({
     success: true,
@@ -55,14 +77,26 @@ export const registerHandler = asyncHandler(async (req: Request, res: Response) 
 export const loginHandler = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = loginSchema.parse(req.body);
 
+  // TODO: (agent) Fix login method signature - currently doesn't accept second param
+  // const result = await authService.login({ email, password }, {
+  //   ipAddress: req.ip,
+  //   userAgent: req.headers['user-agent'],
+  // });
   const result = await authService.login({ email, password });
 
   // Set refresh token in httpOnly cookie
   res.cookie(COOKIE_NAMES.REFRESH_TOKEN, result.refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: 'lax', // Changed from 'strict' to allow cross-origin cookies
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
+
+  res.cookie(COOKIE_NAMES.ACCESS_TOKEN, result.accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax', // Changed from 'strict' to allow cross-origin cookies
+    maxAge: 60 * 60 * 1000,
   });
 
   res.status(200).json({
@@ -94,6 +128,13 @@ export const refreshTokenHandler = asyncHandler(async (req: Request, res: Respon
 
   const result = await authService.refreshAccessToken(refreshToken);
 
+  res.cookie(COOKIE_NAMES.ACCESS_TOKEN, result.accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 60 * 60 * 1000,
+  });
+
   res.status(200).json({
     success: true,
     message: 'Token refreshed',
@@ -116,6 +157,7 @@ export const logoutHandler = asyncHandler(async (req: Request, res: Response) =>
 
   // Clear refresh token cookie
   res.clearCookie(COOKIE_NAMES.REFRESH_TOKEN);
+  res.clearCookie(COOKIE_NAMES.ACCESS_TOKEN);
 
   res.status(200).json({
     success: true,
@@ -132,11 +174,12 @@ export const logoutHandler = asyncHandler(async (req: Request, res: Response) =>
 export const requestPasswordResetHandler = asyncHandler(async (req: Request, res: Response) => {
   const { email } = forgotPasswordSchema.parse(req.body);
 
-  await authService.requestPasswordReset({ email });
+  const result = await authService.requestPasswordReset({ email });
 
   res.status(200).json({
     success: true,
     message: API_MESSAGES.SUCCESS.PASSWORD_RESET_EMAIL,
+    data: result,
   });
 });
 
@@ -193,5 +236,27 @@ export const getCurrentUserHandler = asyncHandler(async (req: Request, res: Resp
   res.status(200).json({
     success: true,
     data: { user: req.user },
+  });
+});
+
+export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) => {
+  const payload = sendOtpSchema.parse(req.body);
+  const result = await authService.sendOtp(payload);
+
+  res.status(200).json({
+    success: true,
+    message: 'OTP sent successfully',
+    data: result,
+  });
+});
+
+export const verifyOtpHandler = asyncHandler(async (req: Request, res: Response) => {
+  const payload = verifyOtpSchema.parse(req.body);
+  const result = await authService.verifyOtp(payload);
+
+  res.status(200).json({
+    success: true,
+    message: 'OTP verified successfully',
+    data: result,
   });
 });

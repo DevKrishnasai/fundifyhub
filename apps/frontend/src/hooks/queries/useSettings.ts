@@ -46,17 +46,18 @@ export function useUpdateProfile() {
   })
 }
 
-export function useChangePassword() {
-  return useMutation({
-    mutationFn: async (data: ChangePasswordPayload) => {
-      const result = await postWithResult<void>(AUTH.CHANGE_PASSWORD, data)
-      if (!result.ok) {
-        throw new Error(result.error.message ?? 'Failed to change password')
-      }
-      return result.data
-    }
-  })
-}
+// useChangePassword moved to useAuthMutations to avoid conflicts
+// export function useChangePassword() {
+//   return useMutation({
+//     mutationFn: async (data: ChangePasswordPayload) => {
+//       const result = await postWithResult<void>(AUTH.CHANGE_PASSWORD, data)
+//       if (!result.ok) {
+//         throw new Error(result.error.message ?? 'Failed to change password')
+//       }
+//       return result.data
+//     }
+//   })
+// }
 
 // ============================================================================
 // Services (Email, WhatsApp, etc.)

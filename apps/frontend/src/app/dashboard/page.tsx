@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AppLayout, PageContainer } from "@/components/layout/AppLayout"
 import { StatsCard } from "@/components/dashboard/StatsCard"
+import { VerificationBanner } from "@/components/dashboard/VerificationBanner"
 import { RequestCardList } from "@/components/features/requests/RequestCard"
 import { ROLES } from "@fundifyhub/types"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { useUserDashboardStats } from "@/hooks/queries/useDashboard"
 import { useRequests, useUserRequests, useAssignedRequests } from "@/hooks/queries"
 import Link from "next/link"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { 
   FileText, 
   IndianRupee, 
@@ -242,15 +244,31 @@ function DashboardContent() {
                 Refresh
               </Button>
               {isCustomer && (
-                <Button asChild>
-                  <Link href="/submit-request">
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Request
-                  </Link>
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <Button asChild disabled={!user.isVerified}>
+                          <Link href={user.isVerified ? "/submit-request" : "#"} className={!user.isVerified ? "pointer-events-none" : ""}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            New Request
+                          </Link>
+                        </Button>
+                      </div>
+                    </TooltipTrigger>
+                    {!user.isVerified && (
+                      <TooltipContent>
+                        <p>Complete verification to create requests</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
           </div>
+
+          {/* Verification Banner (for customers only) */}
+          {isCustomer && <VerificationBanner />}
 
           {/* Error State */}
           {error && (

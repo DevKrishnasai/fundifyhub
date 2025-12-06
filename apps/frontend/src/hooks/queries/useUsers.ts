@@ -204,7 +204,7 @@ export function useUpdateUser() {
 /**
  * Update current user profile
  */
-export function useUpdateProfile() {
+export function useUpdateUserProfile() {
   const queryClient = useQueryClient()
 
   return useMutation({

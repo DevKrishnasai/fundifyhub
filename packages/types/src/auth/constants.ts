@@ -67,3 +67,9 @@ export const VALIDATION_PATTERNS = {
   /** Indian phone number: exactly 10 digits */
   PHONE_NUMBER: /^\d{10}$/,
 } as const;
+
+export const OTP_CONSTANTS = {
+  CODE_LENGTH: 6,
+  DEFAULT_EXPIRY_MINUTES: 10,
+  MAX_ATTEMPTS: 5,
+} as const;

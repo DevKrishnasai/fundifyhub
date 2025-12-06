@@ -1,5 +1,8 @@
 import { api, BackendEnvelope } from '../api-client';
+import { BACKEND_API_CONFIG } from '../urls';
 import type { NotificationList, NotificationUnreadCount } from '@fundifyhub/types';
+
+const { NOTIFICATIONS } = BACKEND_API_CONFIG.ENDPOINTS;
 
 export interface NotificationFilters {
   read?: boolean;
@@ -28,14 +31,14 @@ async function safeApiCall<T>(promise: Promise<any>): Promise<AdapterResponse<T>
 
 export const notificationsAdapter = {
   getNotifications: (filters: NotificationFilters) => 
-    safeApiCall<NotificationList>(api.get('/notifications', { params: filters })),
+    safeApiCall<NotificationList>(api.get(NOTIFICATIONS.LIST, { params: filters })),
 
   getUnreadCount: () => 
-    safeApiCall<NotificationUnreadCount>(api.get('/notifications/unread-count')),
+    safeApiCall<NotificationUnreadCount>(api.get(NOTIFICATIONS.UNREAD_COUNT)),
 
   markAsRead: (id: string) => 
-    safeApiCall<void>(api.put(`/notifications/${id}/read`)),
+    safeApiCall<void>(api.put(NOTIFICATIONS.MARK_READ(id))),
 
   markAllAsRead: () => 
-    safeApiCall<void>(api.put('/notifications/read-all')),
+    safeApiCall<void>(api.put(NOTIFICATIONS.MARK_ALL_READ)),
 };

@@ -28,7 +28,7 @@
   },
   "scripts": {
     "build": "tsc -b --force",
-    "dev": "tsc --watch",
+    "dev": "tsc -b --watch",
     "lint": "eslint .",
     "clean": "rimraf dist"
   },

@@ -19,13 +19,20 @@ import type {
   BackendRegisterPayload, 
   LoginPayload, 
   ForgotPasswordPayload, 
-  BackendResetPasswordPayload 
+  BackendResetPasswordPayload,
+  SendOtpPayload,
+  VerifyOtpPayload,
+  OtpPurpose,
 } from '@fundifyhub/types';
+import { OTP_CONSTANTS, OTP_PURPOSES, NotificationTemplateName, NotificationChannel, DeliveryMode, NotificationPriority, DOCUMENT_TYPE, DOCUMENT_CATEGORY, DOCUMENT_UPLOADER_ROLE } from '@fundifyhub/types';
+import { NotificationService } from '@fundifyhub/providers';
+import { documentService } from '../documents/document.service';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import config from '../../config';
 import logger from '../../utils/logger';
+import { checkAndIncrementAttempts, checkAndIncrementOtpRate } from '../../utils/rate-limit';
 
 /**
  * AuthService - Core authentication business logic
@@ -36,6 +43,74 @@ import logger from '../../utils/logger';
  * TODO: (agent) Inject logger dependency
  */
 export class AuthService {
+  private notificationService: NotificationService;
+
+  constructor() {
+    this.notificationService = NotificationService.getInstance();
+    // Initialize notification service
+    this.notificationService.initialize().catch((err: Error) => {
+      logger.error('[AuthService] Failed to initialize NotificationService', { error: err });
+    });
+  }
+
+  private generateOtpCode(): string {
+    return Math.floor(10 ** (OTP_CONSTANTS.CODE_LENGTH - 1) + Math.random() * 9 * 10 ** (OTP_CONSTANTS.CODE_LENGTH - 1)).toString();
+  }
+
+  private hashOtp(sessionId: string, otp: string): string {
+    return crypto.createHmac('sha256', config.otp.hmacSecret).update(`${sessionId}:${otp}`).digest('hex');
+  }
+
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  private getExpiryFromToken(token: string): Date {
+    const decoded = jwt.decode(token) as { exp?: number } | null;
+    if (decoded?.exp) {
+      return new Date(decoded.exp * 1000);
+    }
+    // fallback 7 days
+    return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  }
+
+  private sanitizeUser(user: any): User {
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      roles: user.roles as UserRole[],
+      isActive: user.isActive,
+      emailVerified: user.emailVerified,
+      phoneNumber: user.phoneNumber ?? undefined,
+      phoneVerified: user.phoneVerified ?? undefined,
+      homeDistrictId: user.homeDistrictId ?? undefined,
+      districts: user.districts ?? undefined,
+    };
+  }
+
+  private async ensureOtpVerified(sessionId: string, expectedPurpose: OtpPurpose, expectedIdentifier?: string) {
+    const record = await prisma.oTPVerification.findUnique({ where: { sessionId } });
+    if (!record || record.expiresAt < new Date()) {
+      throw new ValidationError('Invalid or expired OTP session', ErrorCode.INVALID_TOKEN, { fieldErrors: { sessionId: 'OTP session expired' } });
+    }
+
+    if (record.type !== expectedPurpose) {
+      throw new ValidationError('OTP purpose mismatch', ErrorCode.INVALID_INPUT, { expected: expectedPurpose });
+    }
+
+    if (!record.isVerified || record.isUsed) {
+      throw new ValidationError('OTP not verified', ErrorCode.INVALID_INPUT, { fieldErrors: { otp: 'Please verify OTP first' } });
+    }
+
+    if (expectedIdentifier && record.identifier !== expectedIdentifier) {
+      throw new ValidationError('OTP identifier mismatch', ErrorCode.INVALID_INPUT);
+    }
+
+    await prisma.oTPVerification.update({ where: { id: record.id }, data: { isUsed: true, userId: record.userId ?? undefined } });
+    return record;
+  }
   /**
    * Register a new user
    * 
@@ -48,6 +123,136 @@ export class AuthService {
    * 
    * @throws ValidationError if input invalid or email already exists
    */
+  async sendOtp(payload: SendOtpPayload): Promise<{ sessionId: string; expiresAt: Date; debugCode?: string }> {
+    const identifier = payload.email?.toLowerCase() || payload.phone;
+    if (!identifier) {
+      throw new ValidationError('Email or phone is required', ErrorCode.INVALID_INPUT);
+    }
+
+    const rate = await checkAndIncrementOtpRate(identifier);
+    if (!rate.ok) {
+      throw new ValidationError('Too many OTP requests. Please try again later.', ErrorCode.RATE_LIMIT_EXCEEDED, {
+        retryAfterMs: rate.reason === 'minute' ? 60_000 : 3_600_000,
+      });
+    }
+
+    const code = this.generateOtpCode();
+    const sessionId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + OTP_CONSTANTS.DEFAULT_EXPIRY_MINUTES * 60 * 1000);
+
+    const hashedCode = this.hashOtp(sessionId, code);
+
+    await prisma.oTPVerification.create({
+      data: {
+        sessionId,
+        identifier,
+        type: payload.purpose,
+        code: hashedCode,
+        expiresAt,
+        isUsed: false,
+        isVerified: false,
+        attempts: 0,
+        resendCount: 0,
+      },
+    });
+
+    logger.info(`[AuthService.sendOtp] OTP issued for ${identifier} (${payload.purpose})`, { sessionId });
+
+    // Log OTP code in development for testing
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`\n🔐 OTP CODE FOR TESTING: ${code} (expires in ${OTP_CONSTANTS.DEFAULT_EXPIRY_MINUTES} minutes)`);
+    }
+
+    // Send OTP via NotificationService
+    try {
+      const channels = [];
+      const recipient: any = {};
+
+      if (payload.email) {
+        channels.push(NotificationChannel.EMAIL);
+        recipient.email = payload.email;
+      }
+
+      if (payload.phone) {
+        channels.push(NotificationChannel.WHATSAPP);
+        recipient.phoneNumber = payload.phone;
+      }
+
+      await this.notificationService.send({
+        templateName: NotificationTemplateName.OTP_VERIFICATION,
+        recipient,
+        variables: {
+          otpCode: code,
+          expiresInMinutes: OTP_CONSTANTS.DEFAULT_EXPIRY_MINUTES,
+          companyName: 'FundifyHub',
+          purpose: payload.purpose,
+        },
+        channels,
+        deliveryMode: DeliveryMode.BROADCAST,
+        priority: NotificationPriority.CRITICAL,
+        correlationId: sessionId,
+        metadata: {
+          sessionId,
+          purpose: payload.purpose,
+          identifier,
+        },
+      });
+
+      logger.info('[AuthService.sendOtp] OTP sent via NotificationService', {
+        sessionId,
+        channels,
+        identifier,
+      });
+    } catch (err) {
+      // Don't fail the request if notification fails, but log it
+      logger.error('[AuthService.sendOtp] Failed to send OTP notification', {
+        error: err,
+        sessionId,
+        identifier,
+      });
+    }
+
+    return {
+      sessionId,
+      expiresAt,
+      debugCode: process.env.NODE_ENV === 'production' ? undefined : code,
+    };
+  }
+
+  async verifyOtp(payload: VerifyOtpPayload): Promise<{ verified: boolean; identifier: string; purpose: OtpPurpose }> {
+    const record = await prisma.oTPVerification.findUnique({ where: { sessionId: payload.sessionId } });
+    if (!record) {
+      throw new ValidationError('Invalid OTP session', ErrorCode.INVALID_TOKEN);
+    }
+
+    const attemptCheck = await checkAndIncrementAttempts(record.identifier);
+    if (!attemptCheck.ok) {
+      throw new ValidationError('Too many OTP attempts. Please try later.', ErrorCode.RATE_LIMIT_EXCEEDED, {
+        retryAfterMs: attemptCheck.retryAfterMs,
+        fieldErrors: { otp: 'Too many attempts. Please retry later.' },
+      });
+    }
+
+    if (record.expiresAt < new Date()) {
+      throw new ValidationError('OTP expired', ErrorCode.INVALID_TOKEN, { fieldErrors: { otp: 'OTP expired' } });
+    }
+
+    const hashed = this.hashOtp(payload.sessionId, payload.otp);
+    if (hashed !== record.code) {
+      await prisma.oTPVerification.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
+      throw new ValidationError('Invalid OTP', ErrorCode.INVALID_TOKEN, { fieldErrors: { otp: 'Invalid OTP' } });
+    }
+
+    const updated = await prisma.oTPVerification.update({
+      where: { id: record.id },
+      data: { isVerified: true, isUsed: true, attempts: { increment: 1 } },
+    });
+
+    logger.info('[AuthService.verifyOtp] OTP verified', { sessionId: record.sessionId, purpose: record.type });
+
+    return { verified: true, identifier: updated.identifier, purpose: updated.type as OtpPurpose };
+  }
+
   async register(input: BackendRegisterPayload): Promise<{ user: User; verificationEmailSent: boolean }> {
     try {
       // Validate input
@@ -72,6 +277,13 @@ export class AuthService {
         });
       }
 
+      const email = input.email.toLowerCase();
+      const phone = input.phoneNumber;
+
+      // Ensure OTPs are verified
+      await this.ensureOtpVerified(input.emailSessionId, OTP_PURPOSES.REGISTER_EMAIL, email);
+      await this.ensureOtpVerified(input.phoneSessionId, OTP_PURPOSES.REGISTER_PHONE, phone);
+
       // Hash password
       const hashedPassword = await bcrypt.hash(input.password, 10);
 
@@ -82,34 +294,92 @@ export class AuthService {
       // Create user
       const user = await prisma.user.create({
         data: {
-          email: input.email.toLowerCase(),
-          phoneNumber: input.phoneNumber,
+          email,
+          phoneNumber: phone,
           firstName: input.firstName,
           lastName: input.lastName,
           password: hashedPassword,
-          roles: [input.role],
+          roles: [input.role || 'CUSTOMER'],
           homeDistrictId: input.districtIds?.[0],
           resetToken: verificationToken,
           resetTokenExpiry: verificationExpiry,
-          emailVerified: false,
+          emailVerified: true,
+          phoneVerified: true,
           isActive: true,
+          // ID Proof fields (user submits during registration, admin verifies later)
+          idProofType: input.idProofType,
+          idProofNumber: input.idProofNumber,
+          idProofDocumentUrl: input.idProofDocumentUrl,
+          isVerified: false, // Admin will verify the ID proof documents
         },
       });
 
-      // TODO: (agent) Send verification email via notification service
+      // Create document record for ID proof if provided
+      if (input.idProofDocumentUrl && input.idProofType) {
+        try {
+          // Extract file key from URL (assuming uploadthing URL structure)
+          const fileKey = input.idProofDocumentUrl.split('/').pop() || input.idProofDocumentUrl;
+          
+          await documentService.createDocument({
+            fileKey,
+            fileName: `${input.idProofType}_${user.id}`,
+            fileSize: 0, // Size not known during registration
+            fileType: 'application/pdf', // Assuming PDF for ID proofs
+            documentType: DOCUMENT_TYPE.ID_PROOF,
+            documentCategory: DOCUMENT_CATEGORY.IDENTITY,
+            uploadedBy: user.id,
+            uploaderRole: DOCUMENT_UPLOADER_ROLE.USER_SUBMITTED,
+            description: `${input.idProofType} - ${input.idProofNumber}`,
+            metadata: {
+              idProofType: input.idProofType,
+              idProofNumber: input.idProofNumber,
+            },
+            isPublic: false,
+          });
+
+          logger.info('[AuthService.register] ID proof document created', {
+            userId: user.id,
+            idProofType: input.idProofType,
+          });
+        } catch (docErr) {
+          logger.error('[AuthService.register] Failed to create ID proof document', {
+            error: docErr,
+            userId: user.id,
+          });
+          // Don't fail registration if document creation fails
+        }
+      }
+
+      // Send welcome email
+      try {
+        await this.notificationService.send({
+          templateName: NotificationTemplateName.WELCOME,
+          recipient: {
+            email: user.email,
+            name: `${user.firstName} ${user.lastName}`,
+          },
+          variables: {
+            userName: `${user.firstName} ${user.lastName}`,
+            companyName: 'FundifyHub',
+          },
+          channels: [NotificationChannel.EMAIL],
+          deliveryMode: DeliveryMode.SINGLE,
+          priority: NotificationPriority.NORMAL,
+          correlationId: user.id,
+        });
+
+        logger.info('[AuthService.register] Welcome email sent', { userId: user.id });
+      } catch (notifErr) {
+        logger.error('[AuthService.register] Failed to send welcome email', {
+          error: notifErr,
+          userId: user.id,
+        });
+      }
 
       logger.info(`[AuthService.register] User registered: ${user.email}`, { userId: user.id, role: input.role });
 
       return {
-        user: {
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          roles: user.roles as UserRole[],
-          isActive: user.isActive,
-          emailVerified: user.emailVerified
-        } as User,
+        user: this.sanitizeUser(user),
         verificationEmailSent: false,
       };
     } catch (err) {
@@ -182,15 +452,7 @@ export class AuthService {
       return {
         accessToken,
         refreshToken,
-        user: {
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          roles: user.roles as UserRole[],
-          isActive: user.isActive,
-          emailVerified: user.emailVerified
-        } as User,
+        user: this.sanitizeUser(user),
       };
     } catch (err) {
       console.error(`[AuthService.login] Login failed for ${input.email}:`, err);
@@ -209,7 +471,7 @@ export class AuthService {
    * 
    * @throws AppError only for system errors, never for non-existent emails
    */
-  async requestPasswordReset(input: ForgotPasswordPayload): Promise<{ success: boolean }> {
+  async requestPasswordReset(input: ForgotPasswordPayload): Promise<{ success: boolean; sessionId?: string; expiresAt?: Date }> {
     try {
       const user = await prisma.user.findUnique({
         where: { email: input.email.toLowerCase() },
@@ -221,24 +483,13 @@ export class AuthService {
         return { success: true };
       }
 
-      // Generate reset token
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      const otpResult = await this.sendOtp({ email: user.email, purpose: OTP_PURPOSES.RESET_PASSWORD });
 
-      // Store token in database
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          resetToken,
-          resetTokenExpiry: resetExpiry,
-        },
-      });
+      await prisma.oTPVerification.update({ where: { sessionId: otpResult.sessionId }, data: { userId: user.id } });
 
-      // TODO: (agent) Send reset email via notification service
+      logger.info(`[AuthService.requestPasswordReset] Password reset OTP sent to: ${user.email}`, { userId: user.id });
 
-      logger.info(`[AuthService.requestPasswordReset] Password reset email sent to: ${user.email}`, { userId: user.id });
-
-      return { success: true };
+      return { success: true, sessionId: otpResult.sessionId, expiresAt: otpResult.expiresAt };
     } catch (err) {
       console.error(`[AuthService.requestPasswordReset] Password reset request failed:`, err);
       throw new AppError(ErrorCode.INTERNAL_ERROR, 'Failed to process password reset request');
@@ -260,24 +511,21 @@ export class AuthService {
    */
   async confirmPasswordReset(input: BackendResetPasswordPayload): Promise<{ success: boolean }> {
     try {
-      if (!input.token || !input.newPassword) {
-        throw new ValidationError('Missing token or password', ErrorCode.INVALID_INPUT);
+      if (!input.sessionId || !input.newPassword) {
+        throw new ValidationError('Missing session or password', ErrorCode.INVALID_INPUT);
       }
 
       if (input.newPassword.length < 8) {
         throw new ValidationError('Password must be at least 8 characters', ErrorCode.INVALID_INPUT);
       }
 
-      // Find user by reset token
-      const user = await prisma.user.findFirst({
-        where: {
-          resetToken: input.token,
-          resetTokenExpiry: { gt: new Date() },
-        },
-      });
+      const identifier = input.email.toLowerCase();
+      const otpRecord = await this.ensureOtpVerified(input.sessionId, OTP_PURPOSES.RESET_PASSWORD, identifier);
+
+      const user = await prisma.user.findUnique({ where: { email: identifier } });
 
       if (!user) {
-        throw new ValidationError('Invalid or expired reset token', ErrorCode.INVALID_TOKEN);
+        throw new ValidationError('Account not found for provided email', ErrorCode.USER_NOT_FOUND);
       }
 
       // Hash new password
@@ -292,6 +540,8 @@ export class AuthService {
           resetTokenExpiry: null,
         },
       });
+
+      await prisma.oTPVerification.update({ where: { id: otpRecord.id }, data: { userId: user.id, isUsed: true } });
 
       logger.info('[AuthService.confirmPasswordReset] Password reset confirmed successfully', { userId: user.id });
 
@@ -346,14 +596,7 @@ export class AuthService {
 
       return {
         success: true,
-        user: {
-          id: updatedUser.id,
-          email: updatedUser.email,
-          firstName: updatedUser.firstName,
-          lastName: updatedUser.lastName,
-          roles: updatedUser.roles as UserRole[],
-          isActive: updatedUser.isActive
-        },
+        user: this.sanitizeUser(updatedUser),
       };
     } catch (err) {
       console.error('[AuthService.verifyEmail] Email verification failed:', err);
