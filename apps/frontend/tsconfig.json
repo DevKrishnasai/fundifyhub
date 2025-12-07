@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.react.json",
   "compilerOptions": {
-    "composite": true,
     "plugins": [
       {
         "name": "next"

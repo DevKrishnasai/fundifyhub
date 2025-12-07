@@ -1,11 +1,23 @@
-import { UTApi } from "uploadthing/server";
-import type { UploadThingListFilesResponse } from "@fundifyhub/types";
-import config from './config';
+/**
+ * UploadThing Storage Utilities
+ * 
+ * Simple wrapper around UploadThing SDK for file operations.
+ */
 
-// Initialize UploadThing API using validated config (token validated at import)
-const utapi = new UTApi({
-  token: config.uploadthing.token,
-});
+import { UTApi } from 'uploadthing/server';
+import { CLIENT_CONSTANTS } from "@fundifyhub/types";
+import config from './config';
+import logger from './logger';
+
+// Initialize UploadThing API client
+const utapi = config.uploadthing.token ? new UTApi({ token: config.uploadthing.token }) : null;
+
+// Validate configuration on startup
+if (!utapi) {
+  logger.error('UploadThing not configured. File storage features will not work.');
+} else {
+  logger.info('UploadThing storage initialized successfully');
+}
 
 /**
  * Generate a signed URL for accessing a private file
@@ -26,19 +38,24 @@ const utapi = new UTApi({
  */
 export async function generateSignedUrl(
   fileKey: string,
-  expiresIn: number = 900
+  expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<{ url: string; expiresAt: Date }> {
+  if (!utapi) {
+    return { url: '', expiresAt: new Date(0) };
+  }
+
   try {
     const result = await utapi.getSignedURL(fileKey, { expiresIn });
-    
-    const expiresAt = new Date(Date.now() + expiresIn * 1000);
-    
+    // getSignedURL returns a single { url: string } object when given a string key
+    const urlString = typeof result === 'string' ? result : (result as any).url || '';
     return {
-      url: result.url,
-      expiresAt,
+      url: urlString,
+      expiresAt: new Date(Date.now() + expiresIn * 1000),
     };
   } catch (error) {
-    throw new Error("Failed to generate signed URL");
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey}: ${msg}`);
+    return { url: '', expiresAt: new Date(0) };
   }
 }
 
@@ -47,11 +64,11 @@ export async function generateSignedUrl(
  *
  * Creates temporary, authenticated URLs for accessing multiple private files
  * stored in UploadThing. All URLs expire after the same specified time period.
+ * Demo/placeholder file keys are skipped and return empty URLs.
  *
  * @param fileKeys - Array of unique UploadThing file keys
  * @param expiresIn - Expiration time in seconds for all URLs (default: 900 = 15 minutes)
  * @returns Promise resolving to array of objects with fileKey, signed URL, and expiration date
- * @throws Error if any signed URL generation fails
  *
  * @example
  * ```typescript
@@ -61,23 +78,31 @@ export async function generateSignedUrl(
  */
 export async function generateSignedUrls(
   fileKeys: string[],
-  expiresIn: number = 900
+  expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<Array<{ fileKey: string; url: string; expiresAt: Date }>> {
+  if (!utapi || fileKeys.length === 0) {
+    return fileKeys.map(key => ({ fileKey: key, url: '', expiresAt: new Date(0) }));
+  }
+
   try {
-    const results = await Promise.all(
-      fileKeys.map(async (fileKey) => {
-        const result = await utapi.getSignedURL(fileKey, { expiresIn });
-        return {
-          fileKey,
-          url: result.url,
-          expiresAt: new Date(Date.now() + expiresIn * 1000),
-        };
-      })
-    );
+    const results = await utapi.getSignedURL(fileKeys as any, { expiresIn }) as any;
+    const expiresAt = new Date(Date.now() + expiresIn * 1000);
     
-    return results;
+    // Handle array of results
+    if (Array.isArray(results)) {
+      return results.map((urlData: any, index: number) => ({
+        fileKey: fileKeys[index],
+        url: typeof urlData === 'string' ? urlData : (urlData.url || ''),
+        expiresAt,
+      }));
+    }
+    
+    // Fallback if not an array
+    return fileKeys.map(key => ({ fileKey: key, url: '', expiresAt: new Date(0) }));
   } catch (error) {
-    throw new Error("Failed to generate signed URLs");
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to generate signed URLs: ${msg}`);
+    return fileKeys.map(key => ({ fileKey: key, url: '', expiresAt: new Date(0) }));
   }
 }
 
@@ -100,45 +125,97 @@ export async function generateSignedUrls(
 export async function deleteUploadThingFiles(
   fileKeys: string[]
 ): Promise<{ success: boolean; deletedCount: number }> {
+  if (!utapi || fileKeys.length === 0) {
+    return { success: false, deletedCount: 0 };
+  }
+
   try {
     await utapi.deleteFiles(fileKeys);
-    
     return {
       success: true,
       deletedCount: fileKeys.length,
     };
   } catch (error) {
-    throw new Error("Failed to delete files from UploadThing");
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to delete files: ${msg}`);
+    throw new Error('Failed to delete files from UploadThing');
   }
 }
 
 /**
- * Get file information from UploadThing
+ * Delete a single file from UploadThing storage
  *
- * Retrieves metadata about a file stored in UploadThing without downloading it.
- * Useful for checking file existence, size, type, and other properties.
+ * Permanently removes a file from UploadThing storage. This operation cannot be undone.
  *
- * @param fileKey - The unique file key to get information for
- * @returns Promise resolving to file information object
- * @throws Error if file is not found or retrieval fails
+ * @param fileKey - The file key to delete
+ * @returns Promise resolving to success status
+ * @throws Error if file deletion fails
+ */
+export async function deleteUploadThingFile(
+  fileKey: string
+): Promise<{ success: boolean }> {
+  if (!utapi) {
+    return { success: false };
+  }
+
+  try {
+    await utapi.deleteFiles(fileKey);
+    return { success: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to delete file ${fileKey}: ${msg}`);
+    throw new Error(`Failed to delete file from UploadThing`);
+  }
+}
+
+/**
+ * Upload a file to UploadThing storage
+ *
+ * Uploads a buffer to UploadThing and returns the file key and URL.
+ *
+ * @param buffer - The file content as a Buffer
+ * @param fileName - The name to give the file
+ * @param mimeType - The MIME type of the file (e.g., 'application/pdf')
+ * @returns Promise resolving to upload result with file key and URL
+ * @throws Error if upload fails
  *
  * @example
  * ```typescript
- * const fileInfo = await getFileInfo("file_123");
- * console.log(`File size: ${fileInfo.size} bytes`);
+ * const result = await uploadFile(pdfBuffer, 'document.pdf', 'application/pdf');
+ * console.log(`Uploaded: ${result.fileKey}`);
  * ```
  */
-export async function getFileInfo(fileKey: string) {
+export async function uploadFile(
+  buffer: Buffer,
+  fileName: string,
+  mimeType: string
+): Promise<{ fileKey: string; url: string; fileName: string; fileSize: number }> {
+  if (!utapi) {
+    throw new Error('UploadThing not configured');
+  }
+
   try {
-    const files = await utapi.listFiles();
-    const file = files.files.find((f) => f.key === fileKey);
-    
-    if (!file) {
-      throw new Error("File not found");
+    // Convert Buffer to Blob for File constructor
+    const blob = new Blob([buffer as any], { type: mimeType });
+    const file = new File([blob], fileName, { type: mimeType });
+    const result = await utapi.uploadFiles(file);
+
+    if (!result.data) {
+      throw new Error('Upload failed');
     }
-    
-    return file;
+
+    return {
+      fileKey: result.data.key,
+      url: result.data.url,
+      fileName: result.data.name,
+      fileSize: result.data.size,
+    };
   } catch (error) {
-    throw new Error("Failed to get file information");
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to upload file ${fileName}: ${msg}`);
+    throw new Error(`Failed to upload file to UploadThing`);
   }
 }
+
+// Export the provider for direct access if needed
+// All exports above

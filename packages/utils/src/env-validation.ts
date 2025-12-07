@@ -30,7 +30,7 @@ const jwtEnvSchema = z.object({
 export const frontendEnvSchema = z.object({
   ...commonEnvSchema.shape,
   NEXT_PUBLIC_API_URL: z.string().url('NEXT_PUBLIC_API_URL must be a valid URL'),
-  NEXT_PUBLIC_WS_URL: z.string().url('NEXT_PUBLIC_WS_URL must be a valid URL'),
+  // NEXT_PUBLIC_WS_URL is now derived from NEXT_PUBLIC_API_URL (WebSocket consolidated into main backend)
   // UploadThing configuration (frontend also needs token for client-side uploads)
   UPLOADTHING_TOKEN: z.string().min(1, 'UPLOADTHING_TOKEN is required'),
 });
@@ -51,11 +51,13 @@ export const mainBackendEnvSchema = z.object({
 
   // UploadThing configuration
   UPLOADTHING_TOKEN: z.string().min(1, 'UPLOADTHING_TOKEN is required'),
+  // Optional system signature image file key stored in UploadThing (used to apply system stamp)
+  SYSTEM_SIGNATURE_FILE_KEY: z.string().optional(),
   
   // Razorpay payment gateway configuration
   RAZORPAY_KEY_ID: z.string().min(1, 'RAZORPAY_KEY_ID is required'),
   RAZORPAY_KEY_SECRET: z.string().min(1, 'RAZORPAY_KEY_SECRET is required'),
-  RAZORPAY_WEBHOOK_SECRET: z.string().optional(), // Optional: defaults to KEY_SECRET if not provided
+  RAZORPAY_WEBHOOK_SECRET: z.string().min(1, 'RAZORPAY_WEBHOOK_SECRET is required'),
   
   // Optional metrics (StatsD/Datadog)
   // Optional OTP HMAC secret (if not provided, JWT_SECRET will be used)
@@ -65,19 +67,10 @@ export const mainBackendEnvSchema = z.object({
   // Bcrypt rounds configurable
   BCRYPT_ROUNDS: z.string().default('10').transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'BCRYPT_ROUNDS must be a positive integer'),
   // OTP attempts policy (Policy B): total attempts (resends + failed verifies) allowed in a time window
-  // OTP attempts policy (Policy B): total attempts (resends + failed verifies) allowed in a time window
   // Provide sensible defaults for local/dev so application code doesn't need inline fallbacks.
   OTP_ATTEMPTS_LIMIT: z.string().default('5').transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'OTP_ATTEMPTS_LIMIT must be a positive integer'),
   // Window for attempts in milliseconds (default: 1 hour)
   OTP_ATTEMPTS_WINDOW_MS: z.string().default(String(60 * 60 * 1000)).transform((val) => parseInt(val)).refine((n) => !isNaN(n) && n > 0, 'OTP_ATTEMPTS_WINDOW_MS must be a positive integer'),
-});
-
-// Live sockets environment variables
-export const liveSocketsEnvSchema = z.object({
-  ...commonEnvSchema.shape,
-
-  // WebSocket server configuration
-  WS_PORT: z.string().transform((val: string) => parseInt(val)).refine((val: number) => !isNaN(val) && val > 0 && val < 65536, 'WS_PORT must be a valid port number'),
 });
 
 // Job worker environment variables
@@ -126,23 +119,6 @@ export function validateMainBackendEnv(): z.infer<typeof mainBackendEnvSchema> {
 }
 
 /**
- * Validates environment variables for the live sockets application
- * @throws {Error} If validation fails with detailed error message
- */
-export function validateLiveSocketsEnv(): z.infer<typeof liveSocketsEnvSchema> {
-  try {
-    return liveSocketsEnvSchema.parse(process.env);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const zodError = error as z.ZodError;
-      const errorMessages = zodError.issues.map((err: z.ZodIssue) => `${err.path.join('.')}: ${err.message}`).join('\n');
-      throw new Error(`Live Sockets environment validation failed:\n${errorMessages}`);
-    }
-    throw error;
-  }
-}
-
-/**
  * Validates environment variables for the job worker application
  * @throws {Error} If validation fails with detailed error message
  */
@@ -161,5 +137,4 @@ export function validateJobWorkerEnv(): z.infer<typeof jobWorkerEnvSchema> {
 
 export type FrontendEnv = z.infer<typeof frontendEnvSchema>;
 export type MainBackendEnv = z.infer<typeof mainBackendEnvSchema>;
-export type LiveSocketsEnv = z.infer<typeof liveSocketsEnvSchema>;
 export type JobWorkerEnv = z.infer<typeof jobWorkerEnvSchema>;

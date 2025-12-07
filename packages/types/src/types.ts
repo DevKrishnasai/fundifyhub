@@ -1,4 +1,35 @@
-import { CONNECTION_STATUS, SERVICE_CONTROL_ACTIONS, SERVICE_NAMES, TEMPLATE_NAMES } from "./constants";
+import { CONNECTION_STATUS, SERVICE_NAMES, TEMPLATE_NAMES, UserRole } from "./constants";
+
+// ---------- JSON VALUE TYPE ---------------
+// Type-safe replacement for `any` when dealing with JSON data
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonArray = JsonValue[];
+export type JsonObject = { [key: string]: JsonValue };
+export type JsonValue = JsonPrimitive | JsonArray | JsonObject;
+
+// ---------- SERVICE CONFIGURATION TYPES ---------------
+
+export interface EmailConfigType {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  from: string;
+}
+
+export interface ServiceConfigType {
+  serviceName: SERVICE_NAMES;
+  status: string;
+  isEnabled: boolean;
+  isActive: boolean;
+  connectionStatus: CONNECTION_STATUS;
+  lastConnectedAt?: Date;
+  lastError?: string;
+  config?: EmailConfigType | Record<string, unknown>;
+  qrCode?: string;
+}
+
+// ---------- UTILS ENV CONFIG TYPE ---------------
 
 export interface UtilsEnvConfigType {
   redis: {
@@ -8,18 +39,313 @@ export interface UtilsEnvConfigType {
   };
 }
 
+// ============================================
+// GEOGRAPHY TYPES
+// ============================================
+
+export interface CountryType {
+  id: string;
+  name: string;
+  code: string;  // ISO 3166-1 alpha-2
+  isActive: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  states?: StateType[];
+}
+
+export interface StateType {
+  id: string;
+  name: string;
+  code: string;
+  countryId: string;
+  isActive: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  country?: CountryType;
+  districts?: DistrictType[];
+}
+
+export interface DistrictType {
+  id: string;
+  name: string;
+  code: string;
+  stateId: string;
+  isActive: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  state?: StateType;
+  warehouses?: WarehouseType[];
+}
+
+export interface WarehouseType {
+  id: string;
+  name: string;
+  code: string;
+  districtId: string;
+  address: string | null;
+  
+  // Geolocation
+  latitude: number | null;
+  longitude: number | null;
+  
+  // Contact
+  contactPerson: string | null;
+  contactPhone: string | null;
+  
+  // Capacity
+  capacity: number | null;
+  currentCount: number;
+  
+  isActive: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  district?: DistrictType;
+  assets?: AssetType[];
+}
+
+// ============================================
+// USER ASSIGNMENT TYPES
+// ============================================
+
+export interface UserStateAssignmentType {
+  id: string;
+  userId: string;
+  stateId: string;
+  isPrimary: boolean;
+  assignedAt: Date;
+  assignedBy: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  // Relations
+  user?: UserType;
+  state?: StateType;
+}
+
+export interface UserDistrictAssignmentType {
+  id: string;
+  userId: string;
+  districtId: string;
+  isPrimary: boolean;
+  assignedAt: Date;
+  assignedBy: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  // Relations
+  user?: UserType;
+  district?: DistrictType;
+}
+
+// ============================================
+// USER TYPE (Updated with multiple roles)
+// ============================================
+
 export interface UserType {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  roles: string[];
-  // Districts assigned to the user. Always an array.
-  districts: string[];
+  phoneNumber?: string;
+  
+  // Multiple roles (users can have multiple roles)
+  roles: UserRole[];
+  
+  // Home district for customers
+  homeDistrictId?: string | null;
+  
+  // Computed district IDs (from districtAssignments, populated by API)
+  districts?: string[];
+  
   isActive: boolean;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
+  
+  // Address
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  
+  // Soft delete
+  deletedAt?: Date | null;
+  deletedBy?: string | null;
+  
+  createdAt?: Date;
+  updatedAt?: Date;
+  
+  // Relations
+  homeDistrict?: DistrictType | null;
+  stateAssignments?: UserStateAssignmentType[];
+  districtAssignments?: UserDistrictAssignmentType[];
 }
 
-export interface JWTPayloadType extends UserType {}
+export interface JWTPayloadType {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
+  roles: UserRole[];  // Multiple roles (e.g., [CUSTOMER, AGENT])
+  homeDistrictId?: string | null;
+  // For geographic scope (array of district IDs)
+  districts?: string[];  // User's assigned district IDs
+  stateIds?: string[];   // User's assigned state IDs (for STATE_ADMIN)
+  iat?: number;
+  exp?: number;
+}
+
+// ============================================
+// ASSET & AUCTION TYPES
+// ============================================
+
+export interface AssetType {
+  id: string;
+  assetType: string;
+  brand: string;
+  model: string;
+  condition: string;  // AssetCondition enum value
+  purchaseYear: number;
+  description: string;
+  
+  // Valuation
+  estimatedValue: number | null;
+  inspectedValue: number | null;
+  
+  // Depreciation tracking
+  depreciationRate: number | null;
+  lastValuationDate: Date | null;
+  currentMarketValue: number | null;
+  
+  status: string;  // AssetStatus enum value
+  warehouseId: string | null;
+  requestId: string;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  request?: RequestType;
+  warehouse?: WarehouseType | null;
+  movements?: AssetMovementType[];
+  auctionListings?: AuctionListingType[];
+}
+
+export interface AssetMovementType {
+  id: string;
+  assetId: string;
+  movementType: string;  // MovementType enum value
+  fromWarehouseId: string | null;
+  toWarehouseId: string | null;
+  movementDate: Date;
+  movedBy: string;
+  notes: string | null;
+  attachments: JsonValue | null;
+  verifiedBy: string | null;
+  verifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  asset?: AssetType;
+  fromWarehouse?: WarehouseType | null;
+  toWarehouse?: WarehouseType | null;
+}
+
+export interface AuctionListingType {
+  id: string;
+  listingNumber: string;
+  assetId: string;
+  
+  // Timing
+  startTime: Date;
+  endTime: Date;
+  extendedEndTime: Date | null;
+  
+  // Pricing
+  reservePrice: number;
+  startingBid: number;
+  bidIncrement: number;
+  buyNowPrice: number | null;
+  
+  // State
+  status: string;  // AuctionStatus enum value
+  currentHighBid: number | null;
+  totalBids: number;
+  
+  // Winner
+  winnerId: string | null;
+  winningBidId: string | null;
+  finalPrice: number | null;
+  
+  // Description
+  title: string;
+  description: string;
+  mediaUrls: JsonValue | null;
+  
+  // Terms
+  termsAndConditions: string | null;
+  pickupLocation: string | null;
+  pickupDeadline: Date | null;
+  
+  // Admin tracking
+  createdById: string;
+  approvedAt: Date | null;
+  approvedBy: string | null;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  asset?: AssetType;
+  winner?: UserType | null;
+  createdBy?: UserType;
+  bids?: AuctionBidType[];
+}
+
+export interface AuctionBidType {
+  id: string;
+  auctionId: string;
+  bidderId: string;
+  amount: number;
+  status: string;  // BidStatus enum value
+  maxAutoBid: number | null;
+  isAutoBid: boolean;
+  placedAt: Date;
+  outbidAt: Date | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  auction?: AuctionListingType;
+  bidder?: UserType;
+}
 
 // ---------- EMI & REQUEST RELATED ---------------
 
@@ -35,17 +361,150 @@ export interface AdminEMISchedulePreview {
     interest: number;
     balance: number;
   }>;
+  // Optional processing fee applied at disbursement (not part of EMI calculation)
+  processingFee?: number | null;
 }
 
 export interface RequestHistoryItem {
   id: string;
   requestId: string;
-  actorId: string | null;
+  actorId: string; // Required for audit
   action: string;
-  metadata: Record<string, unknown> | null;
+  // Structured metadata for known events. Keep a fallback of free-form object
+  // for legacy or untyped events.
+  metadata:
+    | StatusUpdateMetadata
+    | AdminRequestedInfoMetadata
+    | DocumentUploadedMetadata
+    | RescheduleRequestMetadata
+    | DisbursementMetadata
+    | Record<string, unknown>
+    | null;
   createdAt: Date;
   request?: RequestType;
   actor?: UserType | null;
+}
+
+// ----- RequestHistory metadata shapes -----
+export interface StatusUpdateMetadata {
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  note?: string | null;
+}
+
+export interface AdminRequestedInfoMetadata {
+  requestedBy?: string | null; // admin id
+  requestedByName?: string | null; // optional human-friendly name
+  // Free-form note/message the admin provided (preferred field: note)
+  note?: string | null;
+  message?: string | null; // legacy field kept for compatibility
+  // Keep metadata minimal: who requested and a note/message. Avoid role/fields/dueBy in shared metadata.
+}
+
+export interface DocumentUploadedMetadata {
+  documentId?: string | null;
+  fileKey?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  fileType?: string | null;
+  documentType?: string | null;
+  uploaderId?: string | null;
+  uploaderRole?: string | null;
+  // snapshot of request status at time of upload
+  fromStatus?: string | null;
+  toStatus?: string | null;
+}
+
+export interface RescheduleRequestMetadata {
+  // Dates are date-only strings in YYYY-MM-DD format (no time component)
+  previousInspectionAt?: string | null; // date-only (YYYY-MM-DD)
+  requestedInspectionAt?: string | null; // date-only (YYYY-MM-DD)
+  reason?: string | null;
+}
+
+export interface DisbursementMetadata {
+  loanId?: string | null;
+  amount?: number | null;
+  transactionRef?: string | null;
+  proofDocumentId?: string | null;
+}
+
+// Payment-related metadata shapes
+export interface PaymentInitiatedMetadata {
+  paymentOrderId: string;
+  razorpayOrderId: string;
+  emiId: string;
+  emiNumber: number;
+  emiAmount: number;
+  penalty: number;
+  totalAmount: number;
+  initiatedBy: string; // customer ID
+}
+
+export interface PaymentSuccessMetadata {
+  paymentOrderId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  emiId: string;
+  emiNumber: number;
+  amountPaid: number;
+  penalty: number;
+  paymentMethod?: string | null;
+  paidAt: string; // ISO timestamp
+}
+
+export interface PaymentFailedMetadata {
+  paymentOrderId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId?: string | null;
+  emiId: string;
+  emiNumber: number;
+  attemptedAmount: number;
+  failureReason?: string | null;
+  failureCode?: string | null;
+  failedAt: string; // ISO timestamp
+}
+
+export interface PaymentExpiredMetadata {
+  paymentOrderId: string;
+  razorpayOrderId: string;
+  emiId: string;
+  emiNumber: number;
+  totalAmount: number;
+  expiredAt: string; // ISO timestamp
+}
+
+export interface EMIOverdueMetadata {
+  emiId: string;
+  emiNumber: number;
+  emiAmount: number;
+  dueDate: string; // ISO date
+  daysOverdue: number;
+  lateFee: number;
+  previousStatus: string;
+}
+
+export interface EMIPenaltyAppliedMetadata {
+  emiId: string;
+  emiNumber: number;
+  penaltyAmount: number;
+  penaltyType: string; // 'LATE_FEE' or 'OVERDUE_PENALTY'
+  daysLate: number;
+  calculatedAt: string; // ISO timestamp
+}
+
+export interface LoanDefaultedMetadata {
+  loanId: string;
+  overdueEmiCount: number;
+  totalOverdueAmount: number;
+  defaultedAt: string; // ISO timestamp
+}
+
+export interface LoanCompletedMetadata {
+  loanId: string;
+  totalPaidAmount: number;
+  totalEmisPaid: number;
+  completedAt: string; // ISO timestamp
 }
 
 export interface HistoryEventDescription {
@@ -58,7 +517,11 @@ export interface HistoryEventDescription {
 // TODO [P-3]: Fix any type usage below
 export interface TemplateDefinitionType<T extends TEMPLATE_NAMES> {
   supportedServices: SERVICE_NAMES[];
-  defaults?: JobOptionsType;
+  defaults?: {
+    priority?: number;
+    delay?: number;
+    attempts?: number;
+  };
   getSubject?: (payload: TemplatePayloadMapType[T]) => string;
   renderEmail?: (payload: TemplatePayloadMapType[T]) => Promise<string> | string;
   renderWhatsApp?: (payload: TemplatePayloadMapType[T]) => Promise<string> | string;
@@ -96,6 +559,34 @@ export interface LoginAlertPayloadType {
   supportUrl: string;
   resetPasswordUrl: string;
   companyName: string;
+}
+
+export interface PasswordResetPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+  companyName: string;
+  supportUrl: string;
+  companyUrl?: string;
+  logoUrl?: string;
+}
+
+export interface AdminUserCreatedPayloadType {
+  email: string;
+  phoneNumber: string;
+  customerName: string;
+  tempPassword: string;
+  loginUrl: string;
+  resetPasswordUrl: string;
+  companyName: string;
+  supportUrl: string;
+  companyUrl?: string;
+  logoUrl?: string;
+  createdByAdmin: string;
+  assignedRoles: string[];
+  assignedDistricts: string[];
 }
 
 export interface RequestStatusNotificationsPayloadType {
@@ -229,6 +720,8 @@ export type TemplatePayloadMapType = {
   [TEMPLATE_NAMES.OTP_VERIFICATION]: OTPVerificationPayloadType;
   [TEMPLATE_NAMES.WELCOME]: WelcomePayloadType;
   [TEMPLATE_NAMES.LOGIN_ALERT]: LoginAlertPayloadType;
+  [TEMPLATE_NAMES.PASSWORD_RESET]: PasswordResetPayloadType;
+  [TEMPLATE_NAMES.ADMIN_USER_CREATED]: AdminUserCreatedPayloadType;
   [TEMPLATE_NAMES.ASSET_PLEDGE]: AssetPledgePayloadType;
   [TEMPLATE_NAMES.EMI_REMINDER]: EMIReminderPayloadType;
   [TEMPLATE_NAMES.EMI_OVERDUE]: EMIOverduePayloadType;
@@ -239,42 +732,8 @@ export type TemplatePayloadMapType = {
 // -----------TEMPLATE RELATED END-----------
 
 // ------- JOB RELATED --------------
-export interface JobOptionsType {
-  services?: SERVICE_NAMES[];
-  priority?: number;
-  delay?: number;
-  attempts?: number;
-  backoff?: {type: 'fixed' | 'exponential'; delay: number;};
-}
 
-export interface AddJobResultType {
-  jobId: string | number;
-  error?: string;
-}
-
-export interface AddJobType<T extends TEMPLATE_NAMES> {
-  templateName: T;
-  variables: TemplatePayloadMapType[T];
-  options?: JobOptionsType;
-}
-
-export interface AddServiceControlJobType {
-  action: SERVICE_CONTROL_ACTIONS;
-  serviceName: SERVICE_NAMES;
-  reason?: string;
-  triggeredBy?: string;
-}
-
-export interface AddServiceStatusJobResultType extends AddJobResultType {}
-
-export interface ServiceStatusJobDataType {
-  serviceName: SERVICE_NAMES;
-  isActive: boolean;
-  connectionStatus: CONNECTION_STATUS;
-  lastError?: string;
-  timestamp: Date;
-}
-
+// NOTE: Legacy job types removed. Use NotificationRequest from notification-types.ts instead.
 
 // ------- JOB RELATED END ----------
 
@@ -282,41 +741,52 @@ export interface ServiceStatusJobDataType {
 
 export interface RequestType {
   id: string;
-  requestNumber: string | null;
+  requestNumber: string; // Required for production
   customerId: string;
   requestedAmount: number;
-  district: string;
+  
+  // Geography - FK to District (replaces string district)
+  districtId: string;
+  
+  // Workflow state tracking
   currentStatus: string;
+  previousStatus: string | null;  // For rollback/audit - tracks last status before current
+  statusChangedAt: Date | null;   // When status was last changed
+  statusChangedBy: string | null; // User ID who changed the status
   
-  // Asset details
-  purchaseYear: number | null;
-  assetType: string;
-  assetBrand: string;
-  assetModel: string;
-  assetCondition: string;
-  AdditionalDescription: string | null;
+  // Asset relation - now separate model
+  asset?: AssetType | null;
   
-  // Admin Offer Details
+  // Current active offer reference
+  activeOfferId: string | null;
+  
+  // Admin Offer Details (legacy - kept for backward compatibility)
   adminOfferedAmount: number | null;
   adminTenureMonths: number | null;
   adminInterestRate: number | null;
   adminEmiSchedule: AdminEMISchedulePreview | null;
   offerMadeDate: Date | null;
   offerResponseDate: Date | null;
+  adminProcessingFee: number;
   penaltyPercentage: number | null;
   lateFeePercentage: number | null;
   adminRequestedInfo: string | null;
   
-  // Bank Details
-  bankAccountNumber: string | null;
-  bankIfscCode: string | null;
-  bankAccountName: string | null;
-  upiId: string | null;
+  // Bank Details reference
+  disbursementAccountId: string | null;
   bankDetailsSubmittedAt: Date | null;
   
   // Assignment
   assignedAgentId: string | null;
+  assignedAdminId: string | null;
   inspectionScheduledAt: Date | null;
+  
+  // Comments toggle
+  commentsEnabled: boolean;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
   
   submittedDate: Date;
   createdAt: Date;
@@ -325,17 +795,76 @@ export interface RequestType {
   // Relations
   customer?: UserType;
   assignedAgent?: UserType | null;
+  assignedAdmin?: UserType | null;
+  district?: DistrictType;
+  disbursementAccount?: BankDetailsType | null;
+  offers?: AdminOfferType[];
   loan?: LoanType | null;
   documents?: DocumentType[];
-  emisSchedule?: EMIScheduleType[];
+  emiSchedules?: EMIScheduleType[];
   payments?: PaymentType[];
+  paymentOrders?: PaymentOrderType[];
   comments?: CommentType[];
   inspections?: InspectionType[];
 }
 
+// Bank Details Type
+export interface BankDetailsType {
+  id: string;
+  userId: string;
+  accountNumber: string;
+  ifscCode: string;
+  accountName: string;
+  bankName: string | null;
+  branchName: string | null;
+  upiId: string | null;
+  isVerified: boolean;
+  verifiedAt: Date | null;
+  isPrimary: boolean;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  user?: UserType;
+}
+
+// Admin Offer Type
+export interface AdminOfferType {
+  id: string;
+  requestId: string;
+  offeredById: string;
+  offeredAmount: number;
+  tenureMonths: number;
+  interestRate: number;
+  processingFee: number;
+  emiAmount: number | null;
+  totalInterest: number | null;
+  totalAmount: number | null;
+  emiSchedule: JsonValue | null;
+  penaltyPercentage: number;
+  lateFeePercentage: number;
+  status: string;  // OfferStatus enum value
+  expiresAt: Date | null;
+  respondedAt: Date | null;
+  revision: number;
+  previousOfferId: string | null;
+  notes: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  request?: RequestType;
+  offeredBy?: UserType;
+  previousOffer?: AdminOfferType | null;
+}
+
 export interface LoanType {
   id: string;
-  loanNumber: string | null;
+  loanNumber: string; // Required for production
   requestId: string;
   
   // Fixed Loan Terms
@@ -350,16 +879,16 @@ export interface LoanType {
   
   // Loan Status & Dates
   status: string;
-  approvedDate: Date | null;
+  approvedDate: Date; // Required for active loans
   disbursedDate: Date | null;
-  firstEMIDate: Date | null;
-  lastEMIDate: Date | null;
+  firstEMIDate: Date; // Required for active loans
+  lastEMIDate: Date; // Required for active loans
   
   // Payment Tracking
   totalPaidAmount: number;
-  remainingAmount: number | null;
+  remainingAmount: number; // Required for active loans
   paidEMIs: number;
-  remainingEMIs: number | null;
+  remainingEMIs: number; // Required for active loans
   overdueEMIs: number;
   
   // Transfer Details
@@ -371,6 +900,10 @@ export interface LoanType {
   closedDate: Date | null;
   closureType: string | null;
   
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
   createdAt: Date;
   updatedAt: Date;
   
@@ -378,6 +911,7 @@ export interface LoanType {
   request?: RequestType;
   emisSchedule?: EMIScheduleType[];
   payments?: PaymentType[];
+  paymentOrders?: PaymentOrderType[];
 }
 
 export interface EMIScheduleType {
@@ -400,6 +934,7 @@ export interface EMIScheduleType {
   loan?: LoanType;
   request?: RequestType;
   payments?: PaymentType[];
+  paymentOrders?: PaymentOrderType[];
 }
 
 export interface PaymentType {
@@ -410,9 +945,9 @@ export interface PaymentType {
   amount: number;
   paymentType: string;
   paymentMethod: string;
-  paymentReference: string | null;
+  paymentReference: string; // Required for audit
   paidDate: Date;
-  processedBy: string | null;
+  processedBy: string; // Required for audit
   remarks: string | null;
   receiptPath: string | null;
   createdAt: Date;
@@ -424,29 +959,46 @@ export interface PaymentType {
   emiSchedule?: EMIScheduleType | null;
 }
 
-export interface DocumentType {
+// PaymentOrder - Tracks Razorpay order lifecycle
+export interface PaymentOrderType {
   id: string;
-  fileKey: string;
-  fileName: string;
-  fileSize: number;
-  fileType: string;
-  documentType: string;
-  documentCategory: string;
-  requestId: string | null;
-  uploadedBy: string;
-  isPublic: boolean;
-  isVerified: boolean;
-  verifiedBy: string | null;
-  verifiedAt: Date | null;
-  status: string;
-  description: string | null;
-  displayOrder: number | null;
-  metadata: any | null; // JSON
+  razorpayOrderId: string;
+  loanId: string;
+  requestId: string;
+  emiScheduleId: string;
+  customerId: string;
+  
+  // Amount breakdown (in INR)
+  emiAmount: number;
+  penalty: number;
+  totalAmount: number;
+  
+  // Status tracking
+  status: string; // PAYMENT_ORDER_STATUS
+  attempts: number;
+  lastAttemptAt: Date | null;
+  
+  // Payment details (populated after success)
+  razorpayPaymentId: string | null;
+  razorpaySignature: string | null;
+  paymentMethod: string | null;
+  paidAt: Date | null;
+  
+  // Failure tracking
+  failureReason: string | null;
+  failureCode: string | null;
+  
+  // Metadata
+  notes: Record<string, unknown> | null;
+  expiresAt: Date;
+  
   createdAt: Date;
   updatedAt: Date;
   
   // Relations
-  request?: RequestType | null;
+  loan?: LoanType;
+  request?: RequestType;
+  emiSchedule?: EMIScheduleType;
 }
 
 export interface CommentType {
@@ -456,6 +1008,11 @@ export interface CommentType {
   content: string;
   isInternal: boolean;
   commentType: string;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
   createdAt: Date;
   updatedAt: Date;
   
@@ -475,12 +1032,49 @@ export interface InspectionType {
   estimatedValue: number | null;
   notes: string | null;
   recommendApprove: boolean | null;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
   createdAt: Date;
   updatedAt: Date;
   
   // Relations
   request?: RequestType;
   agent?: UserType | null;
+}
+
+export interface DocumentType {
+  id: string;
+  fileKey: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  documentType: string;
+  documentCategory: string;
+  requestId: string | null;
+  uploadedBy: string;
+  uploaderRole?: string | null;
+  isPublic: boolean;
+  status: string;
+  description: string | null;
+  displayOrder: number | null;
+  metadata: JsonValue | null;
+  
+  // Soft delete
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Runtime fields (not stored in DB)
+  url?: string | null;
+  urlExpiresAt?: string | null;
+  
+  // Relations
+  request?: RequestType | null;
 }
 
 // ------- REQUEST & LOAN TYPES END ----------

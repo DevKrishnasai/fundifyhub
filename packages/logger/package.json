@@ -31,9 +31,12 @@
   "author": "FundifyHub Team",
   "license": "ISC",
   "packageManager": "pnpm@10.17.1",
-  "dependencies": {},
+  "dependencies": {
+    "winston": "^3.18.3",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
   "devDependencies": {
-    "rimraf": "^6.0.1"
+    "rimraf": "^6.1.2"
   },
   "engines": {
     "node": ">=18.0.0"

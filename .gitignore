@@ -109,5 +109,11 @@ Thumbs.db
 *.tsbuildinfo
 next-env.d.ts
 
+# Compiled files in src folders (should be in dist/)
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts.map
+
 # webwhatsapp
 .wwebjs_*/

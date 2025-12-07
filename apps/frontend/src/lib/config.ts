@@ -37,8 +37,55 @@ if (typeof window === 'undefined' && !isNextBuild) {
 const config = {
   env,
   public: {
-    apiUrl: env.NEXT_PUBLIC_API_URL,
-    wsUrl: env.NEXT_PUBLIC_WS_URL,
+    // At build-time this is the NEXT_PUBLIC_API_URL. In the browser (dev),
+    // when developers use `http://localhost:3001` for the API, that value
+    // won't resolve from a mobile device. To make local mobile testing easy
+    // we rewrite localhost/127.0.0.1 to the current `window.location.hostname`
+    // at runtime (only in the browser). This preserves the configured port.
+    apiUrl: ((): string | undefined => {
+      const raw = env.NEXT_PUBLIC_API_URL as string | undefined;
+      if (typeof window === 'undefined') return raw;
+      if (!raw) return raw;
+      try {
+        const u = new URL(raw);
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+          // preserve protocol and port, replace host with the host serving the frontend
+          return `${u.protocol}//${window.location.hostname}${u.port ? `:${u.port}` : ''}`;
+        }
+        return raw;
+      } catch (e) {
+        // If it's not a valid URL, just return raw
+        return raw;
+      }
+    })(),
+    // WebSocket URL - if not provided, derive from API URL (consolidated architecture)
+    // Same rewriting logic for mobile testing
+    wsUrl: ((): string | undefined => {
+      const raw = env.NEXT_PUBLIC_WS_URL as string | undefined;
+      const apiUrl = env.NEXT_PUBLIC_API_URL as string | undefined;
+      
+      // If no WS URL provided, derive from API URL
+      let wsUrl = raw;
+      if (!wsUrl && apiUrl) {
+        // Convert http:// to ws:// or https:// to wss://
+        wsUrl = apiUrl.replace(/^http/, 'ws');
+      }
+      
+      if (typeof window === 'undefined') return wsUrl;
+      if (!wsUrl) return wsUrl;
+      
+      try {
+        const u = new URL(wsUrl);
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+          // preserve protocol and port, replace host with the host serving the frontend
+          const wsProtocol = u.protocol === 'wss:' ? 'wss:' : 'ws:';
+          return `${wsProtocol}//${window.location.hostname}${u.port ? `:${u.port}` : ''}`;
+        }
+        return wsUrl;
+      } catch (e) {
+        return wsUrl;
+      }
+    })(),
     uploadthingToken: env.UPLOADTHING_TOKEN,
   },
   nodeEnv: env.NODE_ENV,

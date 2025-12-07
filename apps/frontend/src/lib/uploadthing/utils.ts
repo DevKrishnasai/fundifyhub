@@ -1,5 +1,6 @@
 // Utility functions for handling private UploadThing files
 import { UTApi } from "uploadthing/server";
+import { CLIENT_CONSTANTS } from "@fundifyhub/types";
 
 const utapi = new UTApi();
 
@@ -9,7 +10,7 @@ const utapi = new UTApi();
  * @param expiresIn - Expiration time in seconds (default: 3600 = 1 hour)
  * @returns Signed URL string
  */
-export async function getSignedUrl(fileKey: string, expiresIn: number = 3600): Promise<string> {
+export async function getSignedUrl(fileKey: string, expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES): Promise<string> {
   try {
     const result = await utapi.getSignedURL(fileKey, { expiresIn });
     return result.url;
@@ -25,7 +26,7 @@ export async function getSignedUrl(fileKey: string, expiresIn: number = 3600): P
  * @param expiresIn - Expiration time in seconds (default: 3600 = 1 hour)
  * @returns Array of signed URLs
  */
-export async function getSignedUrls(fileKeys: string[], expiresIn: number = 3600): Promise<string[]> {
+export async function getSignedUrls(fileKeys: string[], expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES): Promise<string[]> {
   try {
     const results = await Promise.all(
       fileKeys.map(key => utapi.getSignedURL(key, { expiresIn }))

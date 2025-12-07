@@ -37,6 +37,13 @@ const config = {
 		url: env.REDIS_URL,
 	},
 
+	// Razorpay payment gateway
+	razorpay: {
+		keyId: env.RAZORPAY_KEY_ID,
+		keySecret: env.RAZORPAY_KEY_SECRET,
+		webhookSecret: env.RAZORPAY_WEBHOOK_SECRET,
+	},
+
 	// OTP / attempts policy
 	otp: {
 		hmacSecret: env.OTP_HMAC_SECRET ?? env.JWT_SECRET,
@@ -48,6 +55,9 @@ const config = {
 	uploadthing: {
 		token: env.UPLOADTHING_TOKEN,
 	},
+
+	// Optional system signature asset (UploadThing file key)
+	systemSignatureFileKey: env.SYSTEM_SIGNATURE_FILE_KEY || null,
 
 	// Database
 	database: {

@@ -26,7 +26,6 @@
     "db:status": "pnpm --filter @fundifyhub/prisma run db:status",
     "dev:frontend": "turbo run dev --filter=frontend",
     "dev:main": "turbo run dev --filter=main-backend",
-    "dev:sockets": "turbo run dev --filter=live-sockets",
     "dev:worker": "turbo run dev --filter=job-worker"
   },
   "keywords": [
@@ -46,21 +45,21 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@types/node": "^22.18.11",
-    "@typescript-eslint/eslint-plugin": "^8.46.3",
-    "@typescript-eslint/parser": "^8.46.3",
+    "@types/node": "^24.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.48.0",
+    "@typescript-eslint/parser": "^8.48.0",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-unused-imports": "^4.3.0",
-    "prettier": "^3.6.2",
+    "prettier": "^3.7.3",
     "tsx": "^4.20.6",
-    "turbo": "^2.6.0",
+    "turbo": "^2.6.1",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.3"
+    "typescript-eslint": "^8.48.0"
   },
   "dependencies": {
     "react-hot-toast": "^2.6.0",
-    "rimraf": "^6.0.1",
-    "zod": "^4.1.12"
+    "rimraf": "^6.1.2",
+    "zod": "^4.1.13"
   }
 }

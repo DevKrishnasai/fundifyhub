@@ -10,8 +10,7 @@ This is a pnpm workspace monorepo with Turborepo for build orchestration.
 fundifyhub-2.0/
 ├── apps/                    # Application packages
 │   ├── frontend/           # Next.js 15 frontend application
-│   ├── main-backend/       # Express.js main API server
-│   ├── live-sockets/       # WebSocket server for real-time features
+│   ├── main-backend/       # Express.js API + WebSocket server (consolidated)
 │   └── job-worker/         # Background job processor (BullMQ, email, WhatsApp)
 ├── packages/               # Shared libraries
 │   ├── types/             # TypeScript types, interfaces, and constants
@@ -159,8 +158,7 @@ import { UserType } from '../../../packages/types/src/types';
 # Development
 pnpm dev                    # Run all apps in dev mode
 pnpm dev:frontend          # Run only frontend
-pnpm dev:main              # Run only main-backend
-pnpm dev:sockets           # Run only live-sockets
+pnpm dev:main              # Run only main-backend (includes WebSocket)
 pnpm dev:worker            # Run only job-worker
 
 # Building
@@ -271,7 +269,7 @@ LOG_LEVEL=info
 DATABASE_URL="postgresql://user:pass@localhost:5432/fundifyhub"
 SEED_USER_PASSWORD="Password123!"
 
-# Redis (main-backend, job-worker, live-sockets)
+# Redis (main-backend, job-worker)
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_URL="redis://localhost:6379"
@@ -285,11 +283,10 @@ JWT_REFRESH_EXPIRES_IN="30d"
 API_PORT=3001
 API_HOST=localhost
 FRONTEND_URL="http://localhost:3000"
-WS_PORT=3002
 
 # Frontend (Next.js Public Variables)
+# WebSocket is now consolidated into main-backend on port 3001
 NEXT_PUBLIC_API_URL="http://localhost:3001"
-NEXT_PUBLIC_WS_URL="ws://localhost:3002"
 ```
 
 Place a `.env` file at the repository root (copy from `.env.example`). Apps use `dotenv` to load environment variables from the root.
@@ -358,7 +355,7 @@ docs(readme): update setup instructions
 chore(deps): update dependencies
 ```
 
-Scope can be: `frontend`, `main-backend`, `live-sockets`, `job-worker`, `types`, `utils`, `logger`, `prisma`, `templates`, `infra`
+Scope can be: `frontend`, `main-backend`, `job-worker`, `types`, `utils`, `logger`, `prisma`, `templates`, `infra`
 
 ## Troubleshooting
 

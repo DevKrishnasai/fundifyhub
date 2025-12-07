@@ -22,7 +22,8 @@ export const ourFileRouter: FileRouter = {
    * @onUploadComplete Returns file metadata without public URL (private files)
    */
   assetImageUploader: f({
-    image: { maxFileSize: '4MB', maxFileCount: 5 },
+    image: { maxFileSize: '4MB', maxFileCount: 6 },
+    pdf: { maxFileSize: '4MB', maxFileCount: 4 },
   })
     // Set permissions and file types for this FileRoute
     .middleware(async ({ req }: { req: Request }) => {

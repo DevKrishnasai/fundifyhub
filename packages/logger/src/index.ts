@@ -1,2 +1,2 @@
-export { createLogger, SimpleLogger } from './logger';
-export type { SimpleLoggerConfig } from './logger';
+export { createLogger } from './logger';
+export type { LoggerConfig, Logger, LogLevel, LogMeta } from './logger';

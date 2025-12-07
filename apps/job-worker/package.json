@@ -18,9 +18,9 @@
     "bullmq": "^5.63.0",
     "dotenv": "^17.2.3",
     "nodemailer": "^7.0.10",
-    "puppeteer": "^24.26.1",
+    "puppeteer": "^24.31.0",
     "qrcode": "^1.5.4",
-    "whatsapp-web.js": "^1.34.1"
+    "whatsapp-web.js": "^1.34.2"
   },
   "devDependencies": {
     "@types/nodemailer": "^7.0.3",
