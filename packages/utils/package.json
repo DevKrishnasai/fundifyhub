@@ -24,7 +24,6 @@
     "test:templates": "ts-node src/__tests__/send-templates.ts"
   },
   "dependencies": {
-    "@fundifyhub/templates": "workspace:*",
     "@fundifyhub/types": "workspace:*",
     "bullmq": "^5.63.0",
     "dotenv": "^16.4.5",

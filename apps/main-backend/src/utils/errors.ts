@@ -5,7 +5,7 @@
  * These errors can be caught by the global error handler middleware.
  */
 
-import { ValidationErrorItem } from './response';
+import { ValidationErrorItem } from '../api/utils/response';
 
 /**
  * Base application error

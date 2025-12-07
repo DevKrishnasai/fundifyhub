@@ -1,13 +1,12 @@
 /**
  * Cache Utility Module
  *
- * Uses RedisCacheProvider from @fundifyhub/providers for consistent
- * framework-based caching across the application.
+ * Simple Redis caching using ioredis directly.
  *
  * @module utils/cache
  */
 
-import { RedisCacheProvider, createRedisCacheProvider } from '@fundifyhub/providers';
+import Redis from 'ioredis';
 import { CACHE_TTL as TTL_CONSTANTS } from '@fundifyhub/types';
 import config from './config';
 import logger from './logger';
@@ -83,56 +82,46 @@ export const CACHE_KEYS = {
 } as const;
 
 /**
- * Cache client wrapper using RedisCacheProvider
+ * Cache client wrapper using ioredis
  */
 class CacheClient {
-  private provider: RedisCacheProvider | null = null;
-  private isConnected: boolean = false;
-  private connectionPromise: Promise<void> | null = null;
+  private client: Redis | null = null;
+  private keyPrefix = 'fundifyhub:cache:';
 
   constructor() {
-    // Initialize provider with config
+    // Initialize Redis client
     if (config.redis.host && config.redis.port) {
-      this.provider = createRedisCacheProvider({
+      this.client = new Redis({
         host: config.redis.host,
         port: config.redis.port,
-        keyPrefix: 'fundifyhub:cache:',
-        defaultTtl: CACHE_TTL.MEDIUM,
-        maxRetries: 3,
-        connectTimeout: 10000,
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times) => {
+          if (times > 3) return null;
+          return Math.min(times * 200, 2000);
+        },
+        lazyConnect: true,
+      });
+
+      this.client.on('error', (err) => {
+        logger.error('[Cache] Redis error:', err);
+      });
+
+      this.client.on('connect', () => {
+        logger.info('[Cache] Redis connected');
+      });
+
+      // Connect in background
+      this.client.connect().catch((err) => {
+        logger.error('[Cache] Failed to connect to Redis:', err);
       });
     }
   }
 
   /**
-   * Ensure Redis connection is established
+   * Get full key with prefix
    */
-  private async ensureConnection(): Promise<boolean> {
-    if (!this.provider) {
-      return false;
-    }
-
-    if (this.isConnected) {
-      return true;
-    }
-
-    if (!this.connectionPromise) {
-      this.connectionPromise = this.provider.connect()
-        .then(() => {
-          this.isConnected = true;
-          logger.info('[Cache] Redis connected via RedisCacheProvider');
-        })
-        .catch((err: Error) => {
-          logger.error('[Cache] Failed to connect to Redis:', err);
-          this.isConnected = false;
-        })
-        .finally(() => {
-          this.connectionPromise = null;
-        });
-    }
-
-    await this.connectionPromise;
-    return this.isConnected;
+  private getKey(key: string): string {
+    return `${this.keyPrefix}${key}`;
   }
 
   /**
@@ -140,10 +129,12 @@ class CacheClient {
    */
   async get<T>(key: string): Promise<T | null> {
     try {
-      if (!await this.ensureConnection() || !this.provider) return null;
+      if (!this.client) return null;
 
-      const result = await this.provider.get<T>(key);
-      return result.found ? (result.value ?? null) : null;
+      const value = await this.client.get(this.getKey(key));
+      if (!value) return null;
+
+      return JSON.parse(value) as T;
     } catch (err) {
       logger.error(`[Cache] Error getting key ${key}:`, err as Error);
       return null;
@@ -155,10 +146,15 @@ class CacheClient {
    */
   async set<T>(key: string, value: T, ttlSeconds: number = CACHE_TTL.MEDIUM): Promise<boolean> {
     try {
-      if (!await this.ensureConnection() || !this.provider) return false;
+      if (!this.client) return false;
 
-      const result = await this.provider.set(key, value, { ttl: ttlSeconds });
-      return result.success;
+      const fullKey = this.getKey(key);
+      if (ttlSeconds > 0) {
+        await this.client.setex(fullKey, ttlSeconds, JSON.stringify(value));
+      } else {
+        await this.client.set(fullKey, JSON.stringify(value));
+      }
+      return true;
     } catch (err) {
       logger.error(`[Cache] Error setting key ${key}:`, err as Error);
       return false;
@@ -170,10 +166,10 @@ class CacheClient {
    */
   async del(key: string): Promise<boolean> {
     try {
-      if (!await this.ensureConnection() || !this.provider) return false;
+      if (!this.client) return false;
 
-      const result = await this.provider.delete(key);
-      return result.success;
+      await this.client.del(this.getKey(key));
+      return true;
     } catch (err) {
       logger.error(`[Cache] Error deleting key ${key}:`, err as Error);
       return false;
@@ -185,10 +181,13 @@ class CacheClient {
    */
   async delPattern(pattern: string): Promise<number> {
     try {
-      if (!await this.ensureConnection() || !this.provider) return 0;
+      if (!this.client) return 0;
 
-      const result = await this.provider.deletePattern(pattern);
-      return result.deletedCount;
+      const keys = await this.client.keys(this.getKey(pattern));
+      if (keys.length === 0) return 0;
+
+      await this.client.del(...keys);
+      return keys.length;
     } catch (err) {
       logger.error(`[Cache] Error deleting pattern ${pattern}:`, err as Error);
       return 0;
@@ -293,16 +292,16 @@ class CacheClient {
    * Check if cache is available
    */
   isAvailable(): boolean {
-    return this.isConnected && this.provider !== null;
+    return this.client !== null && this.client.status === 'ready';
   }
 
   /**
    * Close Redis connection
    */
   async close(): Promise<void> {
-    if (this.provider) {
-      await this.provider.disconnect();
-      this.isConnected = false;
+    if (this.client) {
+      await this.client.quit();
+      this.client = null;
     }
   }
 
@@ -310,12 +309,16 @@ class CacheClient {
    * Get cache stats
    */
   async stats(): Promise<{ keyCount: number; memoryUsage?: number }> {
-    if (!this.provider || !this.isConnected) {
+    if (!this.client) {
       return { keyCount: 0 };
     }
 
     try {
-      return await this.provider.stats();
+      const keys = await this.client.keys(`${this.keyPrefix}*`);
+      const info = await this.client.info('memory');
+      const memMatch = info.match(/used_memory:(\d+)/);
+      const memoryUsage = memMatch ? parseInt(memMatch[1]) : undefined;
+      return { keyCount: keys.length, memoryUsage };
     } catch {
       return { keyCount: 0 };
     }

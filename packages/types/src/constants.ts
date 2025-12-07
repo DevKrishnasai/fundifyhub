@@ -1733,15 +1733,20 @@ export enum MODAL_COMPONENTS {
   APPROVE_MODAL = 'ApproveModal',
   DISBURSEMENT_MODAL = 'DisbursementModal',
   OFFER_DECLINE_MODAL = 'OfferDeclineModal',
+  DECLINE_OFFER_MODAL = 'DeclineOfferModal',
   CANCEL_WITHDRAW_MODAL = 'CancelWithdrawModal',
+  CANCEL_MODAL = 'CancelModal',
+  WITHDRAW_MODAL = 'WithdrawModal',
   REQUEST_INFO_MODAL = 'RequestInfoModal',
   REQUEST_BANK_DETAILS_MODAL = 'RequestBankDetailsModal',
   BANK_DETAILS_MODAL = 'BankDetailsModal',
   RESCHEDULE_MODAL = 'RescheduleModal',
   COMPLETE_INSPECTION_MODAL = 'CompleteInspectionModal',
   AGENT_ISSUE_MODAL = 'AgentIssueModal',
+  REPORT_ISSUE_MODAL = 'ReportIssueModal',
   REFUSE_SIGNATURE_MODAL = 'RefuseSignatureModal',
   EXPLANATION_MODAL = 'ExplanationModal',
+  TRANSFER_FAILED_MODAL = 'TransferFailedModal',
 }
 
 // Agent issue types for AgentIssueModal

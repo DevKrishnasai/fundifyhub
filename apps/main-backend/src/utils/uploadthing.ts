@@ -1,28 +1,22 @@
 /**
  * UploadThing Storage Utilities
  * 
- * This file provides a thin wrapper around @fundifyhub/providers/storage
- * for consistent storage operations across the backend.
- * 
- * All file operations use the UploadThingProvider abstraction.
+ * Simple wrapper around UploadThing SDK for file operations.
  */
 
-import { createUploadThingProvider } from "@fundifyhub/providers";
+import { UTApi } from 'uploadthing/server';
 import { CLIENT_CONSTANTS } from "@fundifyhub/types";
 import config from './config';
 import logger from './logger';
 
-// Initialize UploadThing provider using validated config
-const storageProvider = createUploadThingProvider({
-  token: config.uploadthing.token,
-  defaultExpiresIn: CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT,
-});
+// Initialize UploadThing API client
+const utapi = config.uploadthing.token ? new UTApi({ token: config.uploadthing.token }) : null;
 
-// Validate provider configuration on startup
-if (!storageProvider.isConfigured()) {
-  logger.error('UploadThing provider not configured. File storage features will not work.');
+// Validate configuration on startup
+if (!utapi) {
+  logger.error('UploadThing not configured. File storage features will not work.');
 } else {
-  logger.info('UploadThing storage provider initialized successfully');
+  logger.info('UploadThing storage initialized successfully');
 }
 
 /**
@@ -46,21 +40,23 @@ export async function generateSignedUrl(
   fileKey: string,
   expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<{ url: string; expiresAt: Date }> {
-  const result = await storageProvider.generateSignedUrl(fileKey, { expiresIn });
-
-  if (!result.success) {
-    // For file not found or demo files, return empty URL
-    if (result.error?.includes('not found') || result.error?.includes('not configured')) {
-      logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey}: ${result.error}`);
-      return { url: '', expiresAt: new Date(0) };
-    }
-    throw new Error(`Failed to generate signed URL for ${fileKey}: ${result.error}`);
+  if (!utapi) {
+    return { url: '', expiresAt: new Date(0) };
   }
 
-  return {
-    url: result.url!,
-    expiresAt: result.expiresAt!,
-  };
+  try {
+    const result = await utapi.getSignedURL(fileKey, { expiresIn });
+    // getSignedURL returns a single { url: string } object when given a string key
+    const urlString = typeof result === 'string' ? result : (result as any).url || '';
+    return {
+      url: urlString,
+      expiresAt: new Date(Date.now() + expiresIn * 1000),
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.warn(`UploadThing getSignedURL failed for fileKey=${fileKey}: ${msg}`);
+    return { url: '', expiresAt: new Date(0) };
+  }
 }
 
 /**
@@ -84,18 +80,30 @@ export async function generateSignedUrls(
   fileKeys: string[],
   expiresIn: number = CLIENT_CONSTANTS.SIGNED_URL_EXPIRES_SHORT
 ): Promise<Array<{ fileKey: string; url: string; expiresAt: Date }>> {
-  const result = await storageProvider.generateSignedUrls(fileKeys, { expiresIn });
-
-  if (!result.success) {
-    logger.error(`Failed to generate signed URLs: batch operation failed`);
-    throw new Error("Failed to generate signed URLs");
+  if (!utapi || fileKeys.length === 0) {
+    return fileKeys.map(key => ({ fileKey: key, url: '', expiresAt: new Date(0) }));
   }
 
-  return result.results.map(item => ({
-    fileKey: item.fileKey,
-    url: item.url ?? '',
-    expiresAt: item.expiresAt ?? new Date(0),
-  }));
+  try {
+    const results = await utapi.getSignedURL(fileKeys as any, { expiresIn }) as any;
+    const expiresAt = new Date(Date.now() + expiresIn * 1000);
+    
+    // Handle array of results
+    if (Array.isArray(results)) {
+      return results.map((urlData: any, index: number) => ({
+        fileKey: fileKeys[index],
+        url: typeof urlData === 'string' ? urlData : (urlData.url || ''),
+        expiresAt,
+      }));
+    }
+    
+    // Fallback if not an array
+    return fileKeys.map(key => ({ fileKey: key, url: '', expiresAt: new Date(0) }));
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to generate signed URLs: ${msg}`);
+    return fileKeys.map(key => ({ fileKey: key, url: '', expiresAt: new Date(0) }));
+  }
 }
 
 /**
@@ -117,17 +125,21 @@ export async function generateSignedUrls(
 export async function deleteUploadThingFiles(
   fileKeys: string[]
 ): Promise<{ success: boolean; deletedCount: number }> {
-  const result = await storageProvider.deleteFiles(fileKeys);
-
-  if (!result.success) {
-    logger.error(`Failed to delete files: batch operation failed`);
-    throw new Error("Failed to delete files from UploadThing");
+  if (!utapi || fileKeys.length === 0) {
+    return { success: false, deletedCount: 0 };
   }
 
-  return {
-    success: true,
-    deletedCount: result.successCount,
-  };
+  try {
+    await utapi.deleteFiles(fileKeys);
+    return {
+      success: true,
+      deletedCount: fileKeys.length,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to delete files: ${msg}`);
+    throw new Error('Failed to delete files from UploadThing');
+  }
 }
 
 /**
@@ -142,14 +154,18 @@ export async function deleteUploadThingFiles(
 export async function deleteUploadThingFile(
   fileKey: string
 ): Promise<{ success: boolean }> {
-  const result = await storageProvider.deleteFile(fileKey);
-
-  if (!result.success) {
-    logger.error(`Failed to delete file ${fileKey}: ${result.error}`);
-    throw new Error(`Failed to delete file from UploadThing: ${fileKey}`);
+  if (!utapi) {
+    return { success: false };
   }
 
-  return { success: true };
+  try {
+    await utapi.deleteFiles(fileKey);
+    return { success: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to delete file ${fileKey}: ${msg}`);
+    throw new Error(`Failed to delete file from UploadThing`);
+  }
 }
 
 /**
@@ -174,24 +190,32 @@ export async function uploadFile(
   fileName: string,
   mimeType: string
 ): Promise<{ fileKey: string; url: string; fileName: string; fileSize: number }> {
-  const result = await storageProvider.uploadFile({
-    content: buffer,
-    fileName,
-    mimeType,
-  });
-
-  if (!result.success || !result.fileKey) {
-    logger.error(`Failed to upload file ${fileName}: ${result.error}`);
-    throw new Error(`Failed to upload file to UploadThing: ${result.error}`);
+  if (!utapi) {
+    throw new Error('UploadThing not configured');
   }
 
-  return {
-    fileKey: result.fileKey,
-    url: result.url ?? '',
-    fileName: result.fileName ?? fileName,
-    fileSize: result.fileSize ?? buffer.length,
-  };
+  try {
+    // Convert Buffer to Blob for File constructor
+    const blob = new Blob([buffer as any], { type: mimeType });
+    const file = new File([blob], fileName, { type: mimeType });
+    const result = await utapi.uploadFiles(file);
+
+    if (!result.data) {
+      throw new Error('Upload failed');
+    }
+
+    return {
+      fileKey: result.data.key,
+      url: result.data.url,
+      fileName: result.data.name,
+      fileSize: result.data.size,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to upload file ${fileName}: ${msg}`);
+    throw new Error(`Failed to upload file to UploadThing`);
+  }
 }
 
 // Export the provider for direct access if needed
-export { storageProvider };
+// All exports above

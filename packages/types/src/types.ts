@@ -199,6 +199,9 @@ export interface UserType {
 export interface JWTPayloadType {
   id: string;
   email: string;
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
   roles: UserRole[];  // Multiple roles (e.g., [CUSTOMER, AGENT])
   homeDistrictId?: string | null;
   // For geographic scope (array of district IDs)

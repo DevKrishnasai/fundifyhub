@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@fundifyhub/logger": "workspace:*",
-    "@fundifyhub/notifications": "workspace:*",
     "@fundifyhub/prisma": "workspace:*",
     "@fundifyhub/utils": "workspace:*",
     "bullmq": "^5.63.0",

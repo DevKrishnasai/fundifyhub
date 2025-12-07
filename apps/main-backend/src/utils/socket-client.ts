@@ -17,7 +17,7 @@ import {
   emitToUser,
   emitToRole,
   getIO,
-} from '../socket';
+} from '../realtime/socket-server';
 import logger from './logger';
 import {
   type RequestUpdatedPayload,
@@ -68,13 +68,15 @@ export function emitRequestUpdated(payload: {
 
     const eventPayload: RequestUpdatedPayload = {
       requestId: payload.requestId,
-      field: payload.field,
-      oldValue: payload.oldValue,
-      newValue: payload.newValue,
-      status: payload.status,
-      message: payload.message,
-      updatedBy: payload.updatedBy,
-      timestamp: new Date().toISOString(),
+      status: payload.status as REQUEST_STATUS | undefined,
+      updatedBy: payload.updatedBy?.id,
+      updatedAt: new Date().toISOString(),
+      changes: {
+        field: payload.field,
+        oldValue: payload.oldValue,
+        newValue: payload.newValue,
+        message: payload.message,
+      },
     };
 
     socketEmitRequestUpdated(eventPayload);
@@ -91,14 +93,15 @@ export function emitRequestUpdated(payload: {
  */
 export function emitRequestStatusChanged(payload: {
   requestId: string;
-  previousStatus: string;
+  oldStatus: string;
   newStatus: string;
-  changedBy: {
+  updatedBy: {
     id: string;
     name: string;
     role: string;
   };
-  reason?: string;
+  updatedAt?: string;
+  note?: string;
 }): void {
   try {
     const io = getIO();
@@ -108,8 +111,12 @@ export function emitRequestStatusChanged(payload: {
     }
 
     const eventPayload: RequestStatusChangedPayload = {
-      ...payload,
-      timestamp: new Date().toISOString(),
+      requestId: payload.requestId,
+      oldStatus: payload.oldStatus as REQUEST_STATUS,
+      newStatus: payload.newStatus as REQUEST_STATUS,
+      updatedBy: payload.updatedBy.id,
+      updatedAt: payload.updatedAt || new Date().toISOString(),
+      note: payload.note,
     };
 
     socketEmitRequestStatusChanged(eventPayload);
@@ -146,9 +153,12 @@ export function emitRequestCommentAdded(payload: {
 
     const eventPayload: CommentAddedPayload = {
       requestId: payload.requestId,
-      comment: payload.comment,
-      author: payload.author,
-      timestamp: new Date().toISOString(),
+      commentId: payload.comment.id,
+      text: payload.comment.content,
+      authorId: payload.author.id,
+      authorName: payload.author.name,
+      createdAt: payload.comment.createdAt,
+      isInternal: payload.comment.isInternal,
     };
 
     socketEmitCommentAdded(eventPayload);
@@ -185,9 +195,12 @@ export function emitRequestDocumentUploaded(payload: {
 
     const eventPayload: DocumentUploadedPayload = {
       requestId: payload.requestId,
-      document: payload.document,
-      uploadedBy: payload.uploadedBy,
-      timestamp: new Date().toISOString(),
+      documentId: payload.document.id,
+      fileName: payload.document.fileName,
+      fileType: payload.document.type,
+      uploadedBy: payload.uploadedBy.id,
+      uploadedByName: payload.uploadedBy.name,
+      createdAt: payload.document.uploadedAt,
     };
 
     socketEmitDocumentUploaded(eventPayload);

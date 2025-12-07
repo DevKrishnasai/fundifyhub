@@ -3,7 +3,7 @@ import redis from './redis'
 import { prisma } from '@fundifyhub/prisma'
 import logger from './logger'
 import config from './config'
-import { checkAndIncrementAttempts } from './rateLimiter'
+import { checkAndIncrementAttempts } from '../api/middlewares/ratelimiter.middleware'
 
 type OtpCreateResult = { sessionId: string; expiresAt: number }
 type VerifyResult =

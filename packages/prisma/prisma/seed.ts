@@ -183,8 +183,7 @@ async function main() {
   await prisma.comment.deleteMany()
   await prisma.document.deleteMany()
   await prisma.inAppNotification.deleteMany()
-  await prisma.notificationPreference.deleteMany()
-  await prisma.notificationLog.deleteMany()
+  // notificationPreference and notificationLog models don't exist in schema
   await prisma.oTPVerification.deleteMany()
   await prisma.auditLog.deleteMany()
   await prisma.adminOffer.deleteMany()

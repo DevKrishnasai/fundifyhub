@@ -3,53 +3,30 @@ import { BaseWorker } from '../utils/base-worker-class';
 import type { Logger } from '@fundifyhub/logger';
 import { QUEUE_NAMES, NotificationChannel, SERVICE_NAMES } from '@fundifyhub/types';
 import {
-  NotificationService,
+  sendNotification,
   type NotificationRequest,
-} from '@fundifyhub/notifications';
+} from '../services/notification-dispatcher';
 import type { NotificationJobData } from '@fundifyhub/utils/server';
 import { serviceManager } from '../services/service-manager';
 
 /**
  * NotificationWorker
  *
- * Unified worker for processing all notification jobs through the NotificationService.
+ * Unified worker for processing all notification jobs.
  * This worker:
  * - Processes jobs from the NOTIFICATION_QUEUE
- * - Uses the NotificationService for multi-channel delivery
- * - Handles all channel types (Email, WhatsApp, SMS, Push, In-App)
- * - Supports delivery modes: BROADCAST, INDEPENDENT, FALLBACK, SINGLE
+ * - Uses simple notification dispatcher for multi-channel delivery
+ * - Handles Email, WhatsApp, and In-App notifications
  */
 export class NotificationWorker extends BaseWorker<NotificationJobData> {
-  private notificationService: NotificationService;
-
   constructor(queueName: QUEUE_NAMES, logger: Logger) {
     super(queueName, logger);
-    this.notificationService = NotificationService.getInstance();
 
     // Setup pause/resume based on service availability
     this.setupServiceAvailabilityHandler(logger, queueName).catch((err) => {
       const ctx = logger.child(`[${queueName}]`);
       ctx.warn(String(err));
     });
-
-    // Initialize the notification service
-    this.initializeService(logger).catch((err) => {
-      const ctx = logger.child(`[${queueName}]`);
-      ctx.error(`Failed to initialize notification service: ${err}`);
-    });
-  }
-
-  /**
-   * Initialize the notification service
-   */
-  private async initializeService(logger: Logger): Promise<void> {
-    const contextLogger = logger.child(`[${this.queueName}]`);
-    try {
-      await this.notificationService.initialize();
-      contextLogger.info('Notification service initialized');
-    } catch (err) {
-      contextLogger.error(`Failed to initialize: ${err}`);
-    }
   }
 
   /**
@@ -131,8 +108,8 @@ export class NotificationWorker extends BaseWorker<NotificationJobData> {
       // Update request with available channels
       request.channels = availableChannels;
 
-      // Send notification
-      const result = await this.notificationService.send(request);
+      // Send notification using simple dispatcher
+      const result = await sendNotification(request);
 
       if (result.success) {
         contextLogger.info(`Notification sent successfully: ${data.correlationId}`);
@@ -210,7 +187,6 @@ export class NotificationWorker extends BaseWorker<NotificationJobData> {
    * Graceful shutdown
    */
   async close(): Promise<void> {
-    await this.notificationService.shutdown();
     await super.close();
   }
 }

@@ -3,6 +3,10 @@
  * 
  * Provides easy-to-use functions for queueing notifications from backend controllers.
  * This wraps the enqueue client and provides type-safe notification triggers.
+ * 
+ * TODO: Implement proper BullMQ job queue for notifications
+ * Currently, queueClient is just a Redis client and doesn't have addNotificationJob method.
+ * Need to create proper BullMQ Queue instances for notification jobs.
  */
 
 import queueClient from './queues';
@@ -16,6 +20,13 @@ import {
 import logger from './logger';
 
 const notificationLogger = logger.child('[notifications]');
+
+// Temporary stub for addNotificationJob until proper BullMQ implementation
+declare module 'ioredis' {
+  interface Redis {
+    addNotificationJob(data: unknown): Promise<{ success: boolean; jobId?: string; correlationId?: string; error?: string }>;
+  }
+}
 
 interface NotifyUserParams {
   userId: string;
